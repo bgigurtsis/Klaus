@@ -61,7 +61,8 @@ class MessageCard(QFrame):
 
         is_user = role == "user"
 
-        self.setStyleSheet(f"MessageCard {{ {theme.card_style(role)} }}")
+        self.setProperty("role", "user" if is_user else "assistant")
+        self.setObjectName("message-card")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
@@ -75,50 +76,30 @@ class MessageCard(QFrame):
         header.setSpacing(8)
 
         name = QLabel(theme.role_label(role))
-        name.setStyleSheet(
-            f"color: {theme.role_color(role)}; font-weight: 600;"
-            f"font-size: {theme.FONT_SIZE_SMALL + 1}px; border: none;"
-        )
+        name.setObjectName("card-name-user" if is_user else "card-name-assistant")
         header.addWidget(name)
 
         if timestamp:
             display, tooltip = _relative_time(timestamp)
             ts_label = QLabel(display)
+            ts_label.setObjectName("card-timestamp")
             ts_label.setToolTip(tooltip)
-            ts_label.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px;"
-                "border: none;"
-            )
             header.addWidget(ts_label)
 
         header.addStretch()
 
         if not is_user:
-            btn_color = theme.KLAUS_ACCENT
-            btn_border = "#2a4a2a"
-            btn_hover_bg = "#1e331e"
-
             copy_btn = QPushButton("\u2398 copy")
+            copy_btn.setObjectName("card-accent-btn")
             copy_btn.setFixedHeight(22)
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            copy_btn.setStyleSheet(f"""
-                QPushButton {{
-                    {theme.accent_button_style(btn_color, btn_border)}
-                }}
-                QPushButton:hover {{ {theme.accent_button_hover(btn_hover_bg)} }}
-            """)
             copy_btn.clicked.connect(lambda: self._copy_text(text, copy_btn))
             header.addWidget(copy_btn)
 
             replay_btn = QPushButton("\u25b6 replay")
+            replay_btn.setObjectName("card-accent-btn")
             replay_btn.setFixedHeight(22)
             replay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            replay_btn.setStyleSheet(f"""
-                QPushButton {{
-                    {theme.accent_button_style(btn_color, btn_border)}
-                }}
-                QPushButton:hover {{ {theme.accent_button_hover(btn_hover_bg)} }}
-            """)
             replay_btn.clicked.connect(
                 lambda: self.replay_requested.emit(self._exchange_id)
             )
@@ -129,7 +110,7 @@ class MessageCard(QFrame):
         # Thumbnail (user messages only)
         if thumbnail_bytes and is_user:
             thumb = QLabel()
-            thumb.setStyleSheet("border: none; margin-bottom: 4px;")
+            thumb.setObjectName("card-thumbnail")
             pixmap = QPixmap()
             pixmap.loadFromData(thumbnail_bytes)
             if not pixmap.isNull():
@@ -144,12 +125,9 @@ class MessageCard(QFrame):
 
         # Body text
         body = QLabel(text)
+        body.setObjectName("card-body")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        body.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: {theme.FONT_SIZE_BODY}px;"
-            "border: none;"
-        )
         layout.addWidget(body)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -182,12 +160,10 @@ class ChatWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
 
         self._scroll = QScrollArea()
+        self._scroll.setObjectName("chat-scroll")
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._scroll.setStyleSheet(
-            "QScrollArea { border: none; background: transparent; }"
         )
 
         self._container = QWidget()
@@ -200,12 +176,9 @@ class ChatWidget(QWidget):
         self._empty_label = QLabel(
             "Place a page under the camera and ask a question"
         )
+        self._empty_label.setObjectName("chat-empty")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.setWordWrap(True)
-        self._empty_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_BODY}px;"
-            "padding: 60px 20px; border: none;"
-        )
         self._layout.addWidget(self._empty_label)
 
         self._scroll.setWidget(self._container)
@@ -256,11 +229,8 @@ class ChatWidget(QWidget):
         was_near_bottom = self._is_near_bottom()
         self._hide_empty()
         label = QLabel(text)
+        label.setObjectName("chat-status-msg")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px;"
-            "font-style: italic; padding: 4px; border: none;"
-        )
         self._auto_scroll = was_near_bottom
         self._layout.addWidget(label)
         self._message_widgets.append(label)

@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 
 import anthropic
 
-from klaus.config import ANTHROPIC_API_KEY, CLAUDE_MODEL, SYSTEM_PROMPT
+import klaus.config as config
+from klaus.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from klaus.notes import NotesManager, SET_NOTES_FILE_TOOL, SAVE_NOTE_TOOL
 from klaus.search import WebSearch, TOOL_DEFINITION
 
@@ -81,7 +82,7 @@ class Brain:
         self._history.append({"role": "user", "content": user_content})
         self._strip_old_images()
 
-        system = SYSTEM_PROMPT
+        system = config.SYSTEM_PROMPT
         if memory_context:
             system += (
                 "\n\nContext from previous sessions:\n" + memory_context

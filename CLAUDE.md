@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-01.
+Last updated: 2026-03-01 (user background feature).
 
 ## Project Summary
 
@@ -9,7 +9,7 @@ Klaus is a voice-based research assistant for reading physical papers and books.
 The user places a document under a camera, speaks a question (push-to-talk or
 voice-activated), and Klaus sees the page via Claude's vision API, reasons about
 the question, and responds aloud through text-to-speech. It runs as a PyQt6
-desktop app on Windows.
+desktop app on Windows and macOS.
 
 ## Tech Stack
 
@@ -22,7 +22,8 @@ desktop app on Windows.
 - **Anthropic Claude** (`claude-sonnet-4-6`) -- vision + tool use
 - **Tavily** -- web search exposed as a Claude tool
 - **SQLite** -- persistent memory at `~/.klaus/klaus.db`
-- **Config** -- `~/.klaus/config.toml` (user settings) + `.env` (API keys)
+- **pynput** -- global hotkeys (cross-platform, replaces `keyboard`)
+- **Config** -- `~/.klaus/config.toml` (user settings + API keys) with `.env` fallback
 
 ## Module Map
 
@@ -30,13 +31,13 @@ desktop app on Windows.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `config.py` | 252 | Config via TOML + .env, models, voice settings, system prompt |
-| `main.py` | 511 | Entry point; wires all components, hotkeys, Qt signal bridge |
+| `config.py` | 424 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
+| `main.py` | 652 | Entry point; wires all components, hotkeys (pynput), setup wizard gate, Qt signal bridge |
 | `audio.py` | 390 | PushToTalkRecorder, VoiceActivatedRecorder, AudioPlayer |
 | `brain.py` | 300 | Claude vision + tool-use loop, conversation history, streaming |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
 | `tts.py` | 165 | OpenAI gpt-4o-mini-tts with sentence-level batching |
-| `camera.py` | 126 | OpenCV background thread, frame capture, base64/thumbnail export |
+| `camera.py` | 187 | OpenCV background thread, frame capture, auto-rotation, base64/thumbnail export, camera enumeration |
 | `stt.py` | 103 | Moonshine Voice local transcription |
 | `notes.py` | 100 | Obsidian vault note-taking (set_notes_file, save_note tools) |
 | `search.py` | 50 | Tavily web search tool definition + execution |
@@ -45,12 +46,14 @@ desktop app on Windows.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `chat_widget.py` | 252 | Scrollable chat feed with message cards, thumbnails, replay |
-| `session_panel.py` | 200 | Session list sidebar with context menu |
-| `theme.py` | 158 | Centralized color palette, fonts, QSS fragments |
-| `status_widget.py` | 107 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
-| `main_window.py` | 105 | Top-level window layout, splitter, header |
-| `camera_widget.py` | 86 | Live camera preview (~30 fps) |
+| `theme.py` | 586 | Palette tokens, dimensions, single `application_stylesheet()` QSS, `apply_dark_titlebar()`, `load_fonts()` |
+| `chat_widget.py` | 260 | Scrollable chat feed with message cards, thumbnails, replay |
+| `session_panel.py` | 190 | Session list sidebar with context menu |
+| `main_window.py` | 140 | Top-level window layout, splitter, header, settings button, dark title bar |
+| `setup_wizard.py` | 810 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background) |
+| `settings_dialog.py` | 300 | Tabbed settings dialog (API keys, camera, mic, profile) accessible from gear button |
+| `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
+| `camera_widget.py` | 71 | Live camera preview (~30 fps) |
 
 ## Key Architecture Decisions
 
@@ -60,7 +63,13 @@ desktop app on Windows.
 - **No asyncio**: Anthropic/OpenAI sync clients work fine with threads; PyQt's
   event loop doesn't integrate easily with asyncio.
 - **Input modes**: Push-to-talk (F2 hold) and voice-activated (F3 toggles).
-  Default is voice activation. VAD uses webrtcvad.
+  Default is voice activation. VAD uses webrtcvad. Global hotkeys via pynput
+  (single persistent `Listener` thread; mode logic in callbacks). On macOS,
+  Accessibility permission is required for hotkeys.
+- **Cross-platform**: Windows and macOS. Platform-specific code is guarded by
+  `sys.platform` checks: `cv2.CAP_DSHOW` (Windows camera backend),
+  `moonshine.dll` preload (Windows DLL conflict workaround), DWM dark title
+  bar (Windows only, no-op elsewhere).
 - **TTS sentence batching**: Claude's response is split into sentences; a
   synthesis worker generates audio per chunk; playback starts on the first chunk
   for low perceived latency. Max 4000 chars per API call.
@@ -71,6 +80,38 @@ desktop app on Windows.
   system prompt.
 - **Notes**: Optional Obsidian vault integration. Active only when
   `OBSIDIAN_VAULT_PATH` is set in `.env`.
+- **Single QSS theme**: All styling lives in `theme.py` via one
+  `application_stylesheet()` function. Widgets use `setObjectName()` for
+  targeted selectors (e.g. `#klaus-header`, `#session-list`). Only dynamic
+  state (status bar color) uses inline `setStyleSheet`. Dark Windows title bar
+  via DWM API (`apply_dark_titlebar()`). Dialogs (`QLineEdit`, `QMessageBox`,
+  `QInputDialog`) are styled globally and get dark title bars.
+- **Bundled Inter font**: `klaus/ui/fonts/` contains Inter .ttf files (Regular,
+  Medium, SemiBold, Bold). `theme.load_fonts()` registers them with Qt at
+  startup. Falls back to Segoe UI if missing.
+- **First-run setup wizard**: On first launch (`setup_complete` is false in
+  config.toml), a 7-step wizard runs before the main app: welcome, API key
+  entry, camera selection, microphone test, voice model download, user
+  background (optional), done. The wizard writes config and calls
+  `config.reload()` before handing off to the main event loop.
+  `KlausApp._init_components()` defers all API-dependent object creation until
+  after the wizard completes.
+- **User background**: Optional free-text description stored as `user_background`
+  in `config.toml`. `_build_system_prompt()` assembles the system prompt
+  dynamically, appending the user's background to the intro paragraph when
+  present. Editable in the setup wizard ("About You" step) and the settings
+  dialog ("Profile" tab). `brain.py` accesses `config.SYSTEM_PROMPT` via module
+  reference (not `from`-import) so it picks up changes after `config.reload()`.
+- **API key storage**: Keys are stored in `~/.klaus/config.toml` under the
+  `[api_keys]` section. Falls back to `.env` via `python-dotenv` for backward
+  compatibility. Keys are validated in the wizard by format (prefix + length),
+  not by live API calls.
+- **Camera auto-rotation**: `camera.py` detects portrait frames (h > w) and
+  rotates 90 CW automatically. Configurable via `camera_rotation` in
+  `config.toml` (`auto`, `none`, `90`, `180`, `270`).
+- **Packaging**: `pyproject.toml` with `hatchling` build backend. Entry point:
+  `klaus = "klaus.main:main"`. Homebrew formula in `homebrew/klaus.rb` for
+  macOS distribution via a tap repo.
 
 ## Development Conventions
 
@@ -81,22 +122,22 @@ See `.cursor/rules/` for authoritative style rules:
 - `klaus-knowledge.mdc` -- design rationale and API choices (partially stale)
 
 Other conventions:
-- `.env` for API keys -- never committed
+- API keys in `~/.klaus/config.toml` `[api_keys]` section (`.env` fallback supported)
+- Dependencies in `pyproject.toml` (`requirements.txt` removed)
 - Modules kept under ~200 lines where practical (some exceed this)
-- Tests with pytest, mocking external APIs (`pytest>=8.0.0` is a dependency)
+- Tests with pytest, mocking external APIs (`pytest>=8.0.0` in `[project.optional-dependencies]`)
 
 ## Current Status and Known Gaps
 
-- **No test suite**: pytest is listed in requirements.txt but no `tests/`
-  directory exists.
 - **knowledge_profile unused**: `memory.py` defines `update_knowledge()` but it
   is never called; the knowledge_profile table stays empty.
 - **Stale cursor rules**: `klaus-knowledge.mdc` references `gpt-4o-mini-transcribe`
   for STT (now Moonshine), voice `coral` (now `cedar`), and model
   `claude-sonnet-4-20250514` (now `claude-sonnet-4-6`).
-- **scipy unused**: Listed in requirements.txt but not imported anywhere.
-- **faster-whisper unused**: Listed in requirements.txt but Moonshine Voice is
-  used instead.
+- **Pre-existing test failures**: 11 tests in `test_brain.py` and
+  `test_pipeline.py` fail because they mock `messages.create` but `brain.py`
+  now uses `messages.stream`. One test in `test_audio.py` references a removed
+  `_to_wav_bytes` method.
 
 ## Keeping This File Current
 

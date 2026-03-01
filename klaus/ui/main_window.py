@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSplitter,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -29,13 +30,16 @@ class MainWindow(QMainWindow):
     replay_requested = pyqtSignal(str)            # exchange_id
     mode_toggle_requested = pyqtSignal()
     stop_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Klaus")
         self.setMinimumSize(900, 600)
         self.resize(1100, 700)
-        self.setStyleSheet(theme.GLOBAL_STYLESHEET)
+
+        theme.apply_dark_titlebar(self)
+        self.setStyleSheet(theme.application_stylesheet())
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -45,33 +49,38 @@ class MainWindow(QMainWindow):
 
         # -- Header --
         header = QWidget()
+        header.setObjectName("klaus-header")
         header.setFixedHeight(theme.HEADER_HEIGHT)
-        header.setStyleSheet(theme.HEADER_STYLE)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
         title = QLabel("Klaus")
-        title.setStyleSheet(theme.TITLE_STYLE)
+        title.setObjectName("klaus-title")
         header_layout.addWidget(title)
 
         header_layout.addStretch()
 
         self._session_title_label = QLabel("")
-        self._session_title_label.setStyleSheet(theme.SUBTITLE_STYLE)
+        self._session_title_label.setObjectName("klaus-session-title")
         header_layout.addWidget(self._session_title_label)
+
+        settings_btn = QPushButton("\u2699")
+        settings_btn.setObjectName("klaus-settings-btn")
+        settings_btn.setFixedSize(32, 32)
+        settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        settings_btn.setToolTip("Settings")
+        settings_btn.clicked.connect(self.settings_requested.emit)
+        header_layout.addWidget(settings_btn)
 
         main_layout.addWidget(header)
 
         # -- Body: left sidebar + chat --
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet(
-            f"QSplitter::handle {{ background: {theme.BORDER_MUTED}; width: 1px; }}"
-        )
 
         # Left panel: camera + session list
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(8, 8, 0, 8)
+        left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(8)
 
         self.camera_widget = CameraWidget()

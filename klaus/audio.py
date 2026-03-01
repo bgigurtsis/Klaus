@@ -242,7 +242,7 @@ class VoiceActivatedRecorder:
         status: sd.CallbackFlags,
     ) -> None:
         if status:
-            logger.warning("VAD audio status: %s", status)
+            logger.debug("VAD audio status: %s", status)
         if not self._running or self._paused:
             return
 

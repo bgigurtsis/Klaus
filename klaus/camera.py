@@ -1,6 +1,7 @@
 import base64
-import json
 import logging
+import os
+import sys
 import threading
 import time
 from io import BytesIO
@@ -9,21 +10,78 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from klaus.config import CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT
+from klaus.config import (
+    CAMERA_DEVICE_INDEX,
+    CAMERA_FRAME_WIDTH,
+    CAMERA_FRAME_HEIGHT,
+    CAMERA_ROTATION,
+)
 
 logger = logging.getLogger(__name__)
 
-# #region agent log
-_DEBUG_LOG_PATH = "debug-18f7f4.log"
-def _dbg(message: str, data: dict | None = None, hypothesis: str = "") -> None:
-    import time as _t
-    entry = {"sessionId": "18f7f4", "location": "camera.py", "message": message, "data": data or {}, "hypothesisId": hypothesis, "timestamp": int(_t.time() * 1000)}
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+
+_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+
+
+def enumerate_cameras(max_index: int = 10) -> list[dict]:
+    """Probe camera indices and return info for each available camera.
+
+    Returns a list of dicts with keys ``index``, ``name``, ``width``, ``height``.
+    Temporarily suppresses stderr to silence DSHOW backend warnings on Windows
+    for indices that have no camera attached.
+    """
+    cameras: list[dict] = []
+    devnull = None
+    old_stderr = None
     try:
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
-# #endregion
+        if sys.platform == "win32":
+            devnull = open(os.devnull, "w")
+            old_stderr = os.dup(2)
+            os.dup2(devnull.fileno(), 2)
+
+        for i in range(max_index):
+            cap = cv2.VideoCapture(i, _BACKEND)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            name = f"Camera {i}"
+            backend_name = cap.getBackendName() if hasattr(cap, "getBackendName") else ""
+            if backend_name:
+                name = f"Camera {i} ({backend_name})"
+            cap.release()
+            cameras.append({"index": i, "name": name, "width": w, "height": h})
+    finally:
+        if old_stderr is not None:
+            os.dup2(old_stderr, 2)
+            os.close(old_stderr)
+        if devnull is not None:
+            devnull.close()
+    return cameras
+
+
+_ROTATION_MAP: dict[str, int | None] = {
+    "none": None,
+    "90": cv2.ROTATE_90_CLOCKWISE,
+    "180": cv2.ROTATE_180,
+    "270": cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+
+
+def _resolve_rotation(setting: str, frame_w: int, frame_h: int) -> int | None:
+    """Determine the cv2 rotation constant (or None) from config and frame size."""
+    setting = setting.strip().lower()
+    if setting != "auto":
+        return _ROTATION_MAP.get(setting)
+    if frame_h > frame_w:
+        logger.info(
+            "Auto-rotate: portrait frame detected (%dx%d), rotating 90 CW",
+            frame_w, frame_h,
+        )
+        return cv2.ROTATE_90_CLOCKWISE
+    return None
 
 
 class Camera:
@@ -36,38 +94,17 @@ class Camera:
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._rotation: int | None = None
 
     def start(self) -> None:
         if self._running:
             return
         logger.info("Opening camera (device %d)...", self._device_index)
 
-        # #region agent log
-        _dbg("opencv_build_info", {"version": cv2.__version__, "has_dshow": hasattr(cv2, 'CAP_DSHOW'), "has_msmf": hasattr(cv2, 'CAP_MSMF')}, "H5")
-        backends_to_try = [
-            ("CAP_DSHOW", cv2.CAP_DSHOW),
-            ("CAP_MSMF", cv2.CAP_MSMF),
-            ("CAP_ANY", cv2.CAP_ANY),
-        ]
-        for idx in range(3):
-            for bname, bval in backends_to_try:
-                try:
-                    test_cap = cv2.VideoCapture(idx, bval)
-                    opened = test_cap.isOpened()
-                    backend_name = test_cap.getBackendName() if opened else "N/A"
-                    test_cap.release()
-                    _dbg("camera_probe", {"index": idx, "backend_requested": bname, "opened": opened, "actual_backend": backend_name}, "H1,H2")
-                except Exception as e:
-                    _dbg("camera_probe_error", {"index": idx, "backend_requested": bname, "error": str(e)}, "H1,H2")
-        # #endregion
-
-        self._cap = cv2.VideoCapture(self._device_index, cv2.CAP_DSHOW)
+        self._cap = cv2.VideoCapture(self._device_index, _BACKEND)
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_FRAME_WIDTH)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_FRAME_HEIGHT)
         if not self._cap.isOpened():
-            # #region agent log
-            _dbg("camera_open_failed", {"index": self._device_index, "backend": "CAP_DSHOW"}, "H1")
-            # #endregion
             raise RuntimeError(
                 f"Cannot open camera at index {self._device_index}. "
                 "Check that the document camera is connected."
@@ -79,6 +116,11 @@ class Camera:
             self._device_index, actual_w, actual_h,
             CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT,
         )
+
+        self._rotation = _resolve_rotation(CAMERA_ROTATION, actual_w, actual_h)
+        if self._rotation is not None:
+            logger.info("Camera rotation: %s", CAMERA_ROTATION)
+
         self._running = True
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
@@ -89,6 +131,8 @@ class Camera:
                 break
             ret, frame = self._cap.read()
             if ret:
+                if self._rotation is not None:
+                    frame = cv2.rotate(frame, self._rotation)
                 with self._lock:
                     self._frame = frame
             else:

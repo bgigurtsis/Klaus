@@ -41,6 +41,7 @@ class StatusWidget(QWidget):
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
+        self.setObjectName("klaus-status-bar")
         self._hotkey = hotkey
         self._mode = mode
         self._current_state = "idle"
@@ -48,37 +49,27 @@ class StatusWidget(QWidget):
 
     def _init_ui(self) -> None:
         self.setFixedHeight(theme.STATUS_BAR_HEIGHT)
-        self.setStyleSheet(theme.STATUS_BAR_STYLE)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(14, 0, 14, 0)
         layout.setSpacing(10)
 
         self._state_label = QLabel()
-        self._state_label.setStyleSheet(
-            f"color: {theme.IDLE_COLOR}; font-size: {theme.FONT_SIZE_SMALL}px;"
-            "font-weight: bold;"
-        )
+        self._state_label.setObjectName("klaus-state-label")
         self._apply_state_label("idle")
         layout.addWidget(self._state_label)
 
         self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
+        self._mode_btn.setObjectName("klaus-mode-btn")
         self._mode_btn.setFixedHeight(24)
         self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._mode_btn.setStyleSheet(f"""
-            QPushButton {{ {theme.MODE_BUTTON_STYLE} }}
-            QPushButton:hover {{ {theme.MODE_BUTTON_HOVER} }}
-        """)
         self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
         layout.addWidget(self._mode_btn)
 
         self._stop_btn = QPushButton("Stop")
+        self._stop_btn.setObjectName("klaus-stop-btn")
         self._stop_btn.setFixedHeight(24)
         self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._stop_btn.setStyleSheet(f"""
-            QPushButton {{ {theme.STOP_BUTTON_STYLE} }}
-            QPushButton:hover {{ background-color: #dc2626; }}
-        """)
         self._stop_btn.clicked.connect(self.stop_clicked.emit)
         self._stop_btn.setVisible(False)
         layout.addWidget(self._stop_btn)
@@ -87,17 +78,13 @@ class StatusWidget(QWidget):
 
         hint = self._HOTKEY_HINTS.get(self._mode, "").format(hotkey=self._hotkey)
         self._hotkey_label = QLabel(hint)
-        self._hotkey_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px;"
-        )
+        self._hotkey_label.setObjectName("klaus-hotkey-hint")
         layout.addWidget(self._hotkey_label)
 
         layout.addStretch()
 
         self._stats_label = QLabel("0 Q&A")
-        self._stats_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px;"
-        )
+        self._stats_label.setObjectName("klaus-stats")
         layout.addWidget(self._stats_label)
 
     def _apply_state_label(self, state: str) -> None:
@@ -107,6 +94,7 @@ class StatusWidget(QWidget):
         else:
             text, color = entry
         self._state_label.setText(text)
+        # Dynamic color -- must stay as inline setStyleSheet
         self._state_label.setStyleSheet(
             f"color: {color}; font-size: {theme.FONT_SIZE_SMALL}px; font-weight: bold;"
         )

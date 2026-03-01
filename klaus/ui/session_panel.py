@@ -39,6 +39,36 @@ def _relative_time(ts: float) -> str:
     return f"{d}d ago"
 
 
+def _dark_input_dialog(
+    parent: QWidget, title: str, label: str, text: str = "",
+) -> tuple[str, bool]:
+    """QInputDialog.getText replacement with dark title bar and minimum width."""
+    dlg = QInputDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setLabelText(label)
+    dlg.setTextValue(text)
+    dlg.setMinimumWidth(350)
+    theme.apply_dark_titlebar(dlg)
+    ok = dlg.exec()
+    return dlg.textValue(), bool(ok)
+
+
+def _dark_question_box(
+    parent: QWidget, title: str, text: str,
+) -> bool:
+    """QMessageBox.question replacement with dark title bar."""
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setText(text)
+    box.setStandardButtons(
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+    )
+    box.setDefaultButton(QMessageBox.StandardButton.No)
+    box.setMinimumWidth(350)
+    theme.apply_dark_titlebar(box)
+    return box.exec() == QMessageBox.StandardButton.Yes
+
+
 class SessionPanel(QWidget):
     """Sidebar widget listing sessions with create / rename / delete."""
 
@@ -61,54 +91,26 @@ class SessionPanel(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(4, 0, 4, 0)
 
-        title = QLabel("Sessions")
-        title.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_SMALL}px;"
-            "font-weight: bold; text-transform: uppercase; letter-spacing: 1px;"
-        )
+        title = QLabel("SESSIONS")
+        title.setObjectName("session-panel-title")
         header.addWidget(title)
         header.addStretch()
 
         new_btn = QPushButton("+ New")
+        new_btn.setObjectName("session-new-btn")
         new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         new_btn.setFixedHeight(24)
-        new_btn.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; background: {theme.SURFACE_RAISED};"
-            f"border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 4px;"
-            f"padding: 2px 8px; font-size: {theme.FONT_SIZE_CAPTION}px;"
-        )
         new_btn.clicked.connect(self._on_new_session)
         header.addWidget(new_btn)
 
         layout.addLayout(header)
 
         self._list = QListWidget()
+        self._list.setObjectName("session-list")
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._show_context_menu)
         self._list.currentRowChanged.connect(self._on_row_changed)
-        self._list.setStyleSheet(f"""
-            QListWidget {{
-                background: transparent;
-                border: none;
-                outline: none;
-            }}
-            QListWidget::item {{
-                background: transparent;
-                border: none;
-                border-left: 3px solid transparent;
-                border-radius: 0;
-                padding: 8px 8px 8px 6px;
-                margin: 0;
-            }}
-            QListWidget::item:selected {{
-                background: {theme.SURFACE_RAISED};
-                border-left: 3px solid {theme.USER_ACCENT};
-            }}
-            QListWidget::item:hover:!selected {{
-                background: {theme.SURFACE};
-            }}
-        """)
         layout.addWidget(self._list, stretch=1)
 
     # -- Public API --
@@ -136,6 +138,7 @@ class SessionPanel(QWidget):
             meta = " \u00b7 ".join(meta_parts)
 
             label = QLabel()
+            label.setObjectName("session-item-label")
             label.setTextFormat(Qt.TextFormat.RichText)
             label.setText(
                 f'<div style="color:{theme.TEXT_PRIMARY};'
@@ -145,7 +148,6 @@ class SessionPanel(QWidget):
                 f'font-size:{theme.FONT_SIZE_CAPTION}px;margin-top:2px;">'
                 f'{meta}</div>'
             )
-            label.setStyleSheet("background: transparent; border: none; padding: 0;")
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
             self._list.addItem(item)
@@ -176,7 +178,7 @@ class SessionPanel(QWidget):
                 self.session_selected.emit(sid)
 
     def _on_new_session(self) -> None:
-        title, ok = QInputDialog.getText(
+        title, ok = _dark_input_dialog(
             self, "New Session", "Paper or book title:",
         )
         if ok and title.strip():
@@ -193,21 +195,6 @@ class SessionPanel(QWidget):
         session = self._sessions[row]
 
         menu = QMenu(self)
-        menu.setStyleSheet(f"""
-            QMenu {{
-                background-color: {theme.SURFACE_RAISED};
-                color: {theme.TEXT_PRIMARY};
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: 6px;
-                padding: 4px 0;
-            }}
-            QMenu::item {{
-                padding: 6px 20px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme.SURFACE_OVERLAY};
-            }}
-        """)
 
         rename_action = menu.addAction("Rename")
         delete_action = menu.addAction("Delete")
@@ -218,19 +205,17 @@ class SessionPanel(QWidget):
             return
 
         if action == rename_action:
-            new_title, ok = QInputDialog.getText(
+            new_title, ok = _dark_input_dialog(
                 self, "Rename Session", "New title:", text=session["title"],
             )
             if ok and new_title.strip():
                 self.rename_requested.emit(session["id"], new_title.strip())
 
         elif action == delete_action:
-            reply = QMessageBox.question(
+            confirmed = _dark_question_box(
                 self,
                 "Delete Session",
                 f"Delete \"{session['title']}\" and all its exchanges?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
             )
-            if reply == QMessageBox.StandardButton.Yes:
+            if confirmed:
                 self.delete_requested.emit(session["id"])

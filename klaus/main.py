@@ -6,8 +6,9 @@ import sys
 import time
 import threading
 
-import keyboard
+from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
 
+import klaus.config as config
 from klaus.config import (
     PUSH_TO_TALK_KEY,
     INPUT_MODE,
@@ -19,12 +20,24 @@ from klaus.config import (
     VAD_MIN_RMS_DBFS,
     VAD_MIN_VOICED_RUN_FRAMES,
 )
-from klaus.stt import SpeechToText  # before PyQt6: moonshine.dll must load first
+
+
+def _resolve_pynput_key(key_name: str) -> Key | KeyCode:
+    """Convert a config key name (e.g. ``'F2'``) to a pynput key object."""
+    try:
+        return getattr(Key, key_name.lower())
+    except AttributeError:
+        if len(key_name) == 1:
+            return KeyCode.from_char(key_name)
+        raise ValueError(f"Unknown hotkey: {key_name!r}")
+
+from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
+
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
 from klaus.tts import TextToSpeech
@@ -59,6 +72,23 @@ class KlausApp:
     """Wires all components together into the core interaction loop."""
 
     def __init__(self):
+        self._signals = Signals()
+        self._current_session_id: str | None = None
+        self._processing = False
+        self._speaking = False
+        self._input_mode: str = INPUT_MODE
+        self._guard_stats = _new_guard_stats()
+        self._guard_stats_lock = threading.Lock()
+        self._hotkey_listener: KeyboardListener | None = None
+        self._ptt_pynput_key = _resolve_pynput_key(PUSH_TO_TALK_KEY)
+        self._toggle_pynput_key = Key.f3
+
+    def _init_components(self) -> None:
+        """Create all API-dependent components.
+
+        Called after the setup wizard has finished (if needed) so that API keys
+        and device selections are available.
+        """
         self._camera = Camera()
         self._ptt_recorder = PushToTalkRecorder()
         self._vad_recorder = VoiceActivatedRecorder(
@@ -79,18 +109,26 @@ class KlausApp:
         self._brain = Brain(notes=self._notes)
         self._memory = Memory()
 
-        self._signals = Signals()
-        self._current_session_id: str | None = None
-        self._processing = False
-        self._speaking = False
-        self._input_mode: str = INPUT_MODE
-        self._guard_stats = _new_guard_stats()
-        self._guard_stats_lock = threading.Lock()
-
     def run(self) -> None:
         logger.info("Klaus starting")
         app = QApplication(sys.argv)
         app.setApplicationName("Klaus")
+
+        from klaus.ui import theme
+        theme.load_fonts()
+
+        if not config.is_setup_complete():
+            from klaus.ui.setup_wizard import SetupWizard
+            wizard = SetupWizard()
+            theme.apply_dark_titlebar(wizard)
+            wizard.show()
+            app.exec()
+            if not config.is_setup_complete():
+                logger.info("Setup wizard closed without completing, exiting")
+                sys.exit(0)
+            config.reload()
+
+        self._init_components()
 
         self._window = MainWindow()
         self._connect_signals()
@@ -104,6 +142,7 @@ class KlausApp:
 
         self._load_sessions()
 
+        self._start_hotkey_listener()
         self._setup_input_mode()
         self._signals.mode_changed.emit(self._input_mode)
 
@@ -135,6 +174,7 @@ class KlausApp:
         self._window.replay_requested.connect(self._on_replay)
         self._window.mode_toggle_requested.connect(self._toggle_input_mode)
         self._window.stop_requested.connect(self._on_stop_requested)
+        self._window.settings_requested.connect(self._on_settings_requested)
 
     # -- State handling --
 
@@ -177,20 +217,41 @@ class KlausApp:
 
     # -- Input mode --
 
+    def _start_hotkey_listener(self) -> None:
+        """Start the global hotkey listener (runs once at startup)."""
+        ptt_key = self._ptt_pynput_key
+        toggle_key = self._toggle_pynput_key
+
+        def on_press(key: Key | KeyCode | None) -> None:
+            if key == toggle_key:
+                self._toggle_input_mode()
+            elif key == ptt_key:
+                self._on_key_down()
+
+        def on_release(key: Key | KeyCode | None) -> None:
+            if key == ptt_key:
+                self._on_key_up()
+
+        self._hotkey_listener = KeyboardListener(
+            on_press=on_press, on_release=on_release,
+        )
+        self._hotkey_listener.daemon = True
+        self._hotkey_listener.start()
+        logger.info(
+            "Hotkey listener started (ptt=%s, toggle=%s)",
+            PUSH_TO_TALK_KEY, "F3",
+        )
+        if sys.platform == "darwin":
+            logger.info(
+                "macOS: grant Accessibility permission if hotkeys are unresponsive "
+                "(System Settings > Privacy & Security > Accessibility)"
+            )
+
     def _setup_input_mode(self) -> None:
         """Activate the current input mode and deactivate the other."""
-        keyboard.unhook_all()
-        keyboard.on_press_key("F3", lambda _: self._toggle_input_mode(), suppress=False)
-
         if self._input_mode == "push_to_talk":
             if self._vad_recorder.is_running:
                 self._vad_recorder.stop()
-            keyboard.on_press_key(
-                PUSH_TO_TALK_KEY, lambda _: self._on_key_down(), suppress=False,
-            )
-            keyboard.on_release_key(
-                PUSH_TO_TALK_KEY, lambda _: self._on_key_up(), suppress=False,
-            )
             logger.info("Input mode: push-to-talk (hotkey: %s)", PUSH_TO_TALK_KEY)
         else:
             self._vad_recorder.start()
@@ -558,6 +619,14 @@ class KlausApp:
             logger.info("Stop requested via UI")
             self._tts.stop()
 
+    def _on_settings_requested(self) -> None:
+        """Open the settings dialog."""
+        from klaus.ui.settings_dialog import SettingsDialog
+        dlg = SettingsDialog(self._window)
+        from klaus.ui import theme
+        theme.apply_dark_titlebar(dlg)
+        dlg.exec()
+
     def _on_error(self, message: str) -> None:
         self._window.chat_widget.add_status_message(f"Error: {message}")
 
@@ -565,7 +634,8 @@ class KlausApp:
 
     def _shutdown(self) -> None:
         logger.info("Klaus shutting down")
-        keyboard.unhook_all()
+        if self._hotkey_listener:
+            self._hotkey_listener.stop()
         self._vad_recorder.stop()
         self._tts.stop()
         self._camera.stop()

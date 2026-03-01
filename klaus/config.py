@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import tomllib
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,6 +17,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Klaus configuration
 # Uncomment and edit any line to override the default.
 
+# Set to true after the setup wizard completes.
+# setup_complete = false
+
 # Push-to-talk hotkey (default: F2)
 # hotkey = "F2"
 
@@ -25,6 +29,11 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Camera resolution (default: 1920x1080)
 # camera_width = 1920
 # camera_height = 1080
+
+# Camera rotation (default: auto)
+# "auto" rotates portrait frames to landscape; "none" disables rotation.
+# Fixed angles: "90", "180", "270"
+# camera_rotation = "auto"
 
 # TTS voice (default: marin)
 # Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin
@@ -64,9 +73,17 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Moonshine language code (default: "en")
 # stt_moonshine_language = "en"
 
+# Optional: describe your background so Klaus can tailor explanations.
+# user_background = ""
+
 # Log level (default: INFO)
 # Options: DEBUG, INFO, WARNING, ERROR
 # log_level = "INFO"
+
+[api_keys]
+# anthropic = ""
+# openai = ""
+# tavily = ""
 """
 
 # ---------------------------------------------------------------------------
@@ -104,15 +121,17 @@ else:
     _log.info("Using default config (created template at %s)", CONFIG_PATH)
 
 # ---------------------------------------------------------------------------
-# API keys (.env)
+# API keys -- TOML [api_keys] section first, .env fallback
 # ---------------------------------------------------------------------------
 
 load_dotenv()
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
-OBSIDIAN_VAULT_PATH = os.getenv("OBSIDIAN_VAULT_PATH", "")
+_api_keys: dict = _user_config.get("api_keys", {})
+
+ANTHROPIC_API_KEY: str = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY: str = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
+TAVILY_API_KEY: str = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
+OBSIDIAN_VAULT_PATH: str = os.getenv("OBSIDIAN_VAULT_PATH", "")
 
 _log.info(
     "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
@@ -140,6 +159,7 @@ PUSH_TO_TALK_KEY: str = _user_config.get("hotkey", "F2")
 CAMERA_DEVICE_INDEX: int = _user_config.get("camera_index", 0)
 CAMERA_FRAME_WIDTH: int = _user_config.get("camera_width", 1920)
 CAMERA_FRAME_HEIGHT: int = _user_config.get("camera_height", 1080)
+CAMERA_ROTATION: str = str(_user_config.get("camera_rotation", "auto"))
 TTS_VOICE: str = _user_config.get("voice", "cedar")
 TTS_SPEED: float = float(_user_config.get("tts_speed", 1.0))
 
@@ -154,6 +174,8 @@ VAD_MIN_VOICED_RUN_FRAMES: int = int(_user_config.get("vad_min_voiced_run_frames
 
 STT_MOONSHINE_MODEL: str = str(_user_config.get("stt_moonshine_model", "medium"))
 STT_MOONSHINE_LANGUAGE: str = str(_user_config.get("stt_moonshine_language", "en"))
+
+USER_BACKGROUND: str = str(_user_config.get("user_background", ""))
 
 TTS_VOICE_INSTRUCTIONS = (
     "Speak at a natural conversational pace, not slow or deliberate. "
@@ -186,14 +208,19 @@ _log.info(
     STT_MOONSHINE_MODEL, STT_MOONSHINE_LANGUAGE,
 )
 
-SYSTEM_PROMPT = """\
-You are Klaus, a knowledgeable and articulate research companion. The user \
-is reading a physical paper or book, which you can see via their document \
-camera. They are a cybersecurity professional and interdisciplinary artist \
-who engages seriously with technical and theoretical material across \
-multiple fields. They do not have a formal scientific or mathematical \
-background but are comfortable with abstraction and complexity.
+def _build_system_prompt() -> str:
+    """Assemble the system prompt, injecting user background when available."""
+    intro = (
+        "You are Klaus, a knowledgeable and articulate research companion. "
+        "The user is reading a physical paper or book, which you can see "
+        "via their document camera."
+    )
+    if USER_BACKGROUND:
+        intro += " " + USER_BACKGROUND.strip()
+    return intro + "\n\n" + _SYSTEM_PROMPT_BODY
 
+
+_SYSTEM_PROMPT_BODY = """\
 Brevity rule: three sentences is not a minimum. It is a ceiling. Give \
 the shortest accurate answer, then stop. Do not add a second paragraph, \
 do not connect it back to the page, do not offer additional context. \
@@ -280,3 +307,117 @@ new one. Format notes as clean markdown: use headings, blockquotes for \
 direct quotes, and include page or section references when visible on \
 the page.\
 """
+
+SYSTEM_PROMPT: str = _build_system_prompt()
+
+
+# ---------------------------------------------------------------------------
+# Config persistence helpers (used by setup wizard and settings)
+# ---------------------------------------------------------------------------
+
+def _read_config_text() -> str:
+    """Read config.toml as raw text."""
+    if CONFIG_PATH.exists():
+        return CONFIG_PATH.read_text(encoding="utf-8")
+    return _DEFAULT_CONFIG_TEMPLATE
+
+
+def _write_config_text(text: str) -> None:
+    """Write raw text to config.toml."""
+    CONFIG_PATH.write_text(text, encoding="utf-8")
+
+
+def is_setup_complete() -> bool:
+    """Check whether the first-run wizard has been completed."""
+    return bool(_user_config.get("setup_complete", False))
+
+
+def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
+    """Write API keys to the [api_keys] section of config.toml."""
+    text = _read_config_text()
+    new_section = (
+        "[api_keys]\n"
+        f'anthropic = "{anthropic}"\n'
+        f'openai = "{openai}"\n'
+        f'tavily = "{tavily}"\n'
+    )
+    section_re = re.compile(
+        r"\[api_keys\].*?(?=\n\[|\Z)", re.DOTALL,
+    )
+    if section_re.search(text):
+        text = section_re.sub(new_section.rstrip(), text)
+    else:
+        text = text.rstrip() + "\n\n" + new_section
+    _write_config_text(text)
+
+
+def _set_top_level_value(key: str, value: str) -> None:
+    """Set a top-level key in config.toml, uncommenting if necessary."""
+    text = _read_config_text()
+    uncommented = re.compile(rf"^{re.escape(key)}\s*=\s*.*$", re.MULTILINE)
+    commented = re.compile(rf"^#\s*{re.escape(key)}\s*=\s*.*$", re.MULTILINE)
+    line = f"{key} = {value}"
+
+    if uncommented.search(text):
+        text = uncommented.sub(line, text)
+    elif commented.search(text):
+        text = commented.sub(line, text)
+    else:
+        first_newline = text.index("\n") if "\n" in text else len(text)
+        text = text[:first_newline] + "\n" + line + text[first_newline:]
+    _write_config_text(text)
+
+
+def mark_setup_complete() -> None:
+    """Set ``setup_complete = true`` in config.toml."""
+    _set_top_level_value("setup_complete", "true")
+
+
+def save_camera_index(index: int) -> None:
+    """Persist the chosen camera index to config.toml."""
+    _set_top_level_value("camera_index", str(index))
+
+
+def save_user_background(text: str) -> None:
+    """Persist the user background description to config.toml."""
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    _set_top_level_value("user_background", f'"{escaped}"')
+
+
+def reload() -> None:
+    """Re-read config.toml and update module-level constants.
+
+    Call after the setup wizard writes new values so that components created
+    afterward pick up the fresh configuration.
+    """
+    global _user_config, _api_keys
+    global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY
+    global CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT, CAMERA_ROTATION
+    global USER_BACKGROUND, SYSTEM_PROMPT
+
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, "rb") as f:
+            _user_config = tomllib.load(f)
+    else:
+        _user_config = {}
+
+    _api_keys = _user_config.get("api_keys", {})
+    ANTHROPIC_API_KEY = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    OPENAI_API_KEY = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
+    TAVILY_API_KEY = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
+
+    CAMERA_DEVICE_INDEX = _user_config.get("camera_index", 0)
+    CAMERA_FRAME_WIDTH = _user_config.get("camera_width", 1920)
+    CAMERA_FRAME_HEIGHT = _user_config.get("camera_height", 1080)
+    CAMERA_ROTATION = str(_user_config.get("camera_rotation", "auto"))
+
+    USER_BACKGROUND = str(_user_config.get("user_background", ""))
+    SYSTEM_PROMPT = _build_system_prompt()
+
+    _log.info("Config reloaded from %s", CONFIG_PATH)
+    _log.info(
+        "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
+        "set" if ANTHROPIC_API_KEY else "missing",
+        "set" if OPENAI_API_KEY else "missing",
+        "set" if TAVILY_API_KEY else "missing",
+    )
