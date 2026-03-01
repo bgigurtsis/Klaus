@@ -761,10 +761,10 @@ class SetupWizard(QMainWindow):
         help_btn.setFixedSize(22, 22)
         help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         help_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.SURFACE_LIGHTER}; "
-            f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; "
+            f"QPushButton {{ background: {theme.SURFACE_OVERLAY}; "
+            f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER_DEFAULT}; "
             "border-radius: 11px; font-weight: bold; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {theme.ACCENT}; color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton:hover {{ background: {theme.KLAUS_ACCENT}; color: {theme.TEXT_PRIMARY}; }}"
         )
         help_btn.clicked.connect(self._show_vault_help)
         vault_header.addWidget(help_btn)

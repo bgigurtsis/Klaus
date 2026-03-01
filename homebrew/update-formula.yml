@@ -1,0 +1,32 @@
+# Copy this file to .github/workflows/update-formula.yml in the
+# bgigurtsis/homebrew-klaus tap repo. It receives dispatch events
+# from the main Klaus repo and updates the formula automatically.
+
+name: Update formula
+
+on:
+  repository_dispatch:
+    types: [update-formula]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update Formula/klaus.rb
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          URL="${{ github.event.client_payload.url }}"
+          SHA256="${{ github.event.client_payload.sha256 }}"
+
+          sed -i "s|url \".*\"|url \"${URL}\"|" Formula/klaus.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/klaus.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/klaus.rb
+          git commit -m "Update klaus to ${{ github.event.client_payload.version }}"
+          git push

@@ -31,6 +31,12 @@ klaus
 
 On first launch, a setup wizard walks you through API keys, camera, mic, and voice model setup.
 
+### Updating
+
+**Windows:** `pipx upgrade klaus-assistant`
+
+**macOS:** `brew upgrade klaus`
+
 ## Manual Install
 
 Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
