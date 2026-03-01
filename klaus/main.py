@@ -1,5 +1,6 @@
 """Klaus -- Voice Research Assistant. Entry point."""
 
+import functools
 import logging
 import queue
 import sys
@@ -38,6 +39,25 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_slot(func):
+    """Prevent unhandled exceptions from reaching PyQt6's C++ layer.
+
+    PyQt6 calls abort() when a Python exception escapes a slot invoked from
+    C++ signal dispatch.  This decorator catches and logs the exception so the
+    app stays alive.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            logger.error(
+                "Unhandled exception in slot %s", func.__name__, exc_info=True,
+            )
+    return wrapper
+
 
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
@@ -184,6 +204,7 @@ class KlausApp:
 
     # -- State handling --
 
+    @_safe_slot
     def _on_state_changed(self, state: str) -> None:
         """Route state changes to the status widget."""
         self._window.status_widget.set_state(state)
@@ -289,6 +310,7 @@ class KlausApp:
             self._ptt_recorder.stop_recording()
             logger.info("Cancelled active push-to-talk capture")
 
+    @_safe_slot
     def _toggle_input_mode(self) -> None:
         """Switch between push-to-talk and voice activation."""
         if self._processing:
@@ -393,6 +415,7 @@ class KlausApp:
             count = 0
         self._signals.exchange_count_updated.emit(count)
 
+    @_safe_slot
     def _refresh_session_list(self) -> None:
         """Reload and repopulate the session panel."""
         sessions = self._memory.list_sessions()
@@ -416,6 +439,7 @@ class KlausApp:
                 exchange_id=ex.id,
             )
 
+    @_safe_slot
     def _on_session_changed(self, session_id: str) -> None:
         logger.info("Switched to session %s", session_id[:8])
         self._current_session_id = session_id
@@ -432,6 +456,7 @@ class KlausApp:
                 self._window.set_current_session_title(s.title)
                 break
 
+    @_safe_slot
     def _on_new_session(self, title: str) -> None:
         session = self._memory.create_session(title)
         self._current_session_id = session.id
@@ -444,6 +469,7 @@ class KlausApp:
         self._window.set_current_session_title(title)
         self._update_exchange_count()
 
+    @_safe_slot
     def _on_session_renamed(self, session_id: str, new_title: str) -> None:
         """Handle session rename from the UI."""
         logger.info("Renaming session %s to '%s'", session_id[:8], new_title)
@@ -452,6 +478,7 @@ class KlausApp:
         if session_id == self._current_session_id:
             self._window.set_current_session_title(new_title)
 
+    @_safe_slot
     def _on_session_deleted(self, session_id: str) -> None:
         """Handle session delete from the UI."""
         logger.info("Deleting session %s", session_id[:8])
@@ -477,6 +504,7 @@ class KlausApp:
 
     # -- Push-to-talk --
 
+    @_safe_slot
     def _on_key_down(self) -> None:
         if self._input_mode != "push_to_talk":
             return
@@ -487,6 +515,7 @@ class KlausApp:
         self._ptt_recorder.start_recording()
         self._signals.state_changed.emit("listening")
 
+    @_safe_slot
     def _on_key_up(self) -> None:
         if self._input_mode != "push_to_talk":
             return
@@ -605,6 +634,7 @@ class KlausApp:
 
     # -- UI callbacks --
 
+    @_safe_slot
     def _on_transcription_ready(self, text: str, timestamp: float, thumbnail: bytes) -> None:
         self._window.chat_widget.add_message(
             role="user",
@@ -613,6 +643,7 @@ class KlausApp:
             thumbnail_bytes=thumbnail if thumbnail else None,
         )
 
+    @_safe_slot
     def _on_response_ready(self, text: str, timestamp: float, exchange_id: str) -> None:
         self._window.chat_widget.add_message(
             role="assistant",
@@ -621,6 +652,7 @@ class KlausApp:
             exchange_id=exchange_id,
         )
 
+    @_safe_slot
     def _on_replay(self, exchange_id: str) -> None:
         exchanges = self._memory.get_exchanges(self._current_session_id or "")
         for ex in exchanges:
@@ -635,12 +667,14 @@ class KlausApp:
         self._tts.speak(text)
         self._signals.state_changed.emit("idle")
 
+    @_safe_slot
     def _on_stop_requested(self) -> None:
         """Handle stop button click from the UI."""
         if self._speaking:
             logger.info("Stop requested via UI")
             self._tts.stop()
 
+    @_safe_slot
     def _on_settings_requested(self) -> None:
         """Open the settings dialog."""
         from klaus.ui.settings_dialog import SettingsDialog
@@ -649,6 +683,7 @@ class KlausApp:
         theme.apply_dark_titlebar(dlg)
         dlg.exec()
 
+    @_safe_slot
     def _on_error(self, message: str) -> None:
         self._window.chat_widget.add_status_message(f"Error: {message}")
 

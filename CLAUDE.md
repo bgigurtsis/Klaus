@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-01 (Obsidian vault path in config.toml, setup wizard, settings).
+Last updated: 2026-03-01 (safe-slot decorator for PyQt6 SIGABRT crash fix).
 
 ## Project Summary
 
@@ -32,7 +32,7 @@ desktop app on Windows and macOS.
 | Module | Lines | Purpose |
 |--------|------:|---------|
 | `config.py` | 445 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
-| `main.py` | 674 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge |
+| `main.py` | 692 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator |
 | `audio.py` | 390 | PushToTalkRecorder, VoiceActivatedRecorder, AudioPlayer |
 | `brain.py` | 300 | Claude vision + tool-use loop, conversation history, streaming |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
@@ -117,6 +117,13 @@ desktop app on Windows and macOS.
 - **Camera auto-rotation**: `camera.py` detects portrait frames (h > w) and
   rotates 90 CW automatically. Configurable via `camera_rotation` in
   `config.toml` (`auto`, `none`, `90`, `180`, `270`).
+- **Safe slots**: PyQt6 calls `abort()` when an unhandled Python exception
+  escapes a slot invoked from C++ signal dispatch. All `KlausApp` slot handlers
+  connected to UI signals use the `@_safe_slot` decorator (defined in
+  `main.py`) which catches and logs exceptions so the app stays alive. Hardware
+  enumeration calls (`sd.query_devices`, `enumerate_cameras`, `sd.InputStream`)
+  in `SettingsDialog` and `VoiceActivatedRecorder` are also wrapped with
+  try/except for the same reason.
 - **Packaging**: `pyproject.toml` with `hatchling` build backend. Entry point:
   `klaus = "klaus.main:main"`. Homebrew formula in `homebrew/klaus.rb` for
   macOS distribution via a tap repo.

@@ -163,7 +163,11 @@ class SettingsDialog(QDialog):
 
         from klaus.camera import enumerate_cameras
         self._camera_combo.addItem("No camera (audio only)", -1)
-        cameras = enumerate_cameras()
+        try:
+            cameras = enumerate_cameras()
+        except Exception as exc:
+            logger.warning("Failed to enumerate cameras: %s", exc)
+            cameras = []
         selected = 0
         for cam in cameras:
             self._camera_combo.addItem(
@@ -293,11 +297,13 @@ class SettingsDialog(QDialog):
         self._mic_combo = QComboBox()
         layout.addWidget(self._mic_combo)
 
-        devices = sd.query_devices()
-        default_input = sd.default.device[0] if isinstance(sd.default.device, tuple) else sd.default.device
-        for i, dev in enumerate(devices):
-            if dev["max_input_channels"] > 0:
-                self._mic_combo.addItem(dev["name"], i)
+        try:
+            devices = sd.query_devices()
+            for i, dev in enumerate(devices):
+                if dev["max_input_channels"] > 0:
+                    self._mic_combo.addItem(dev["name"], i)
+        except Exception as exc:
+            logger.warning("Failed to enumerate audio devices: %s", exc)
 
         self._mic_meter = QProgressBar()
         self._mic_meter.setObjectName("wizard-mic-meter")

@@ -184,14 +184,19 @@ class VoiceActivatedRecorder:
                     self._sensitivity,
                 )
 
-            self._stream = sd.InputStream(
-                samplerate=self._sample_rate,
-                channels=CHANNELS,
-                dtype=DTYPE,
-                blocksize=FRAME_SIZE,
-                callback=self._audio_callback,
-            )
-            self._stream.start()
+            try:
+                self._stream = sd.InputStream(
+                    samplerate=self._sample_rate,
+                    channels=CHANNELS,
+                    dtype=DTYPE,
+                    blocksize=FRAME_SIZE,
+                    callback=self._audio_callback,
+                )
+                self._stream.start()
+            except Exception as exc:
+                self._running = False
+                logger.error("Failed to open mic for VAD: %s", exc)
+                return
 
     def stop(self) -> None:
         """Stop the stream and discard any in-progress speech."""
