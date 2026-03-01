@@ -24,7 +24,9 @@ class Klaus < Formula
   depends_on "portaudio"
 
   def install
-    virtualenv_install_with_resources
+    virtualenv_create(libexec, "python@3.12")
+    system libexec/"bin/pip3", "install", "--no-cache-dir", buildpath
+    bin.install_symlink libexec/"bin/Klaus"
   end
 
   def caveats

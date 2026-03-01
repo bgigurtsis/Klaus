@@ -46,3 +46,4 @@ debug-*.log
 # ONNX / model caches (Moonshine downloads these at runtime)
 *.onnx
 CLAUDE.md
+homebrew-klaus
