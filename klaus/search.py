@@ -2,7 +2,7 @@ import logging
 
 from tavily import TavilyClient
 
-from klaus.config import TAVILY_API_KEY
+import klaus.config as config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class WebSearch:
     """Wraps Tavily search for use as a Claude tool."""
 
     def __init__(self):
-        self._client = TavilyClient(api_key=TAVILY_API_KEY)
+        self._client = TavilyClient(api_key=config.TAVILY_API_KEY)
 
     def search(self, query: str, max_results: int = 5) -> str:
         """Run a search and return formatted results as a string for Claude."""

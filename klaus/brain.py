@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import anthropic
 
 import klaus.config as config
-from klaus.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from klaus.config import CLAUDE_MODEL
 from klaus.notes import NotesManager, SET_NOTES_FILE_TOOL, SAVE_NOTE_TOOL
 from klaus.search import WebSearch, TOOL_DEFINITION
 
@@ -44,7 +44,7 @@ class Brain:
     """Manages conversation with Claude, including vision and tool use."""
 
     def __init__(self, notes: NotesManager | None = None):
-        self._client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        self._client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         self._search = WebSearch()
         self._notes = notes
         self._history: list[dict] = []
