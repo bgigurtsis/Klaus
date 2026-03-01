@@ -37,6 +37,24 @@ On first launch, a setup wizard walks you through API keys, camera, mic, and voi
 
 **macOS:** `brew upgrade klaus`
 
+## Camera Setup
+
+**Required:** A camera is required for Klaus to ingest what you're currently reading and to use it as context.
+
+A USB document camera (AKA visualiser) is reccomended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface works. Either should gives Klaus a clear, stable view of the full page.
+
+Some reccomended apps to connect your phone to your computer are listed below: 
+
+| Setup | App |
+|-------|-----|
+| macOS + iPhone | Built-in -- [Continuity Camera](https://support.apple.com/en-us/102546) (iOS 16+, macOS Ventura+, no install needed) |
+| macOS + Android | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + Mac, pair via QR or USB |
+| Windows + Android | [DroidCam](https://www.dev47apps.com/) (free) -- install on phone + PC, connect over Wi-Fi or USB |
+| Windows + iPhone | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + PC, pair via QR or USB |
+
+Klaus auto-detects portrait orientation and rotates the image. Override with `camera_rotation` in `~/.klaus/config.toml` if needed.
+
+
 ## Other install options
 
 **Prerequisites:** Python 3.11+, camera, mic, speakers. On Windows, install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Desktop development with C++) so `webrtcvad` can compile. On macOS without Homebrew: `brew install python@3.13 portaudio`.
@@ -63,19 +81,6 @@ End-to-end latency from question to first spoken word is 2-3 seconds (STT + Clau
 | 100 questions/day | ~$2.50-3.50/day |
 
 Largest cost driver is Claude (vision + context window). STT is free (local). TTS is $0.015/min of generated audio.
-
-## Camera Setup
-
-**Recommended:** A USB document camera (visualiser) is reccomended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface. Either gives Klaus a clear, stable view of the full page.
-
-| Setup | App |
-|-------|-----|
-| macOS + iPhone | Built-in -- [Continuity Camera](https://support.apple.com/en-us/102546) (iOS 16+, macOS Ventura+, no install needed) |
-| macOS + Android | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + Mac, pair via QR or USB |
-| Windows + Android | [DroidCam](https://www.dev47apps.com/) (free) -- install on phone + PC, connect over Wi-Fi or USB |
-| Windows + iPhone | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + PC, pair via QR or USB |
-
-Klaus auto-detects portrait orientation and rotates the image. Override with `camera_rotation` in `~/.klaus/config.toml` if needed.
 
 ## Usage
 
