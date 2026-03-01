@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QIcon, QKeyEvent
 
 import klaus.config as config
 from klaus.ui import theme
@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self._qt_ptt_key: int = Qt.Key.Key_F2
         self._qt_toggle_key: int = Qt.Key.Key_F3
         self.setWindowTitle("Klaus")
+        self.setWindowIcon(QIcon(str(theme.ICON_PATH)))
         self.setMinimumSize(900, 600)
         self.resize(1100, 700)
 

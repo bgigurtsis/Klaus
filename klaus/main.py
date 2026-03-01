@@ -35,8 +35,9 @@ def _resolve_pynput_key(key_name: str) -> Key | KeyCode:
 
 from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
 
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,7 @@ class KlausApp:
 
         from klaus.ui import theme
         theme.load_fonts()
+        app.setWindowIcon(QIcon(str(theme.ICON_PATH)))
 
         if not config.is_setup_complete():
             from klaus.ui.setup_wizard import SetupWizard

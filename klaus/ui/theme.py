@@ -15,6 +15,7 @@ import sys
 logger = logging.getLogger(__name__)
 
 _FONTS_DIR = Path(__file__).parent / "fonts"
+ICON_PATH = Path(__file__).parent / "icons" / "icon.png"
 
 # ---------------------------------------------------------------------------
 # Color palette

@@ -8,6 +8,7 @@ import threading
 import numpy as np
 import sounddevice as sd
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -42,6 +43,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
+        self.setWindowIcon(QIcon(str(theme.ICON_PATH)))
         self.setMinimumSize(520, 380)
         self.resize(560, 420)
         self.setStyleSheet(theme.application_stylesheet())

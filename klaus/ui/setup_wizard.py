@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import sounddevice as sd
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
-from PyQt6.QtGui import QDesktopServices, QImage, QPixmap
+from PyQt6.QtGui import QDesktopServices, QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -181,6 +181,7 @@ class SetupWizard(QMainWindow):
         self.setMinimumSize(640, 520)
         self.resize(700, 560)
         self.setStyleSheet(theme.application_stylesheet())
+        self.setWindowIcon(QIcon(str(theme.ICON_PATH)))
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -288,6 +289,15 @@ class SetupWizard(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(16)
+
+        logo = QLabel()
+        pixmap = QPixmap(str(theme.ICON_PATH)).scaled(
+            96, 96, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        logo.setPixmap(pixmap)
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(logo)
 
         title = QLabel("Klaus")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)

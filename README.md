@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="klaus/ui/icons/icon.png" width="96" alt="Klaus">
+</p>
+
 # Klaus
 
 A voice-based research assistant for reading physical papers and books. Place a paper under a document camera (or phone on a tripod), speak a question, and Klaus sees the page and answers aloud in a natural voice.
