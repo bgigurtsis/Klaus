@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -12,12 +14,35 @@ from PyQt6.QtWidgets import (
     QSplitter,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QKeyEvent
 
+import klaus.config as config
 from klaus.ui import theme
 from klaus.ui.camera_widget import CameraWidget
 from klaus.ui.chat_widget import ChatWidget
 from klaus.ui.session_panel import SessionPanel
 from klaus.ui.status_widget import StatusWidget
+
+logger = logging.getLogger(__name__)
+
+_QT_KEY_MAP: dict[str, Qt.Key] = {
+    "f1": Qt.Key.Key_F1, "f2": Qt.Key.Key_F2, "f3": Qt.Key.Key_F3,
+    "f4": Qt.Key.Key_F4, "f5": Qt.Key.Key_F5, "f6": Qt.Key.Key_F6,
+    "f7": Qt.Key.Key_F7, "f8": Qt.Key.Key_F8, "f9": Qt.Key.Key_F9,
+    "f10": Qt.Key.Key_F10, "f11": Qt.Key.Key_F11, "f12": Qt.Key.Key_F12,
+    "space": Qt.Key.Key_Space, "escape": Qt.Key.Key_Escape,
+    "tab": Qt.Key.Key_Tab, "backspace": Qt.Key.Key_Backspace,
+}
+
+
+def resolve_qt_key(key_name: str) -> int:
+    """Map a config key name (e.g. ``'F2'``) to a ``Qt.Key`` value."""
+    lower = key_name.lower()
+    if lower in _QT_KEY_MAP:
+        return _QT_KEY_MAP[lower]
+    if len(key_name) == 1:
+        return ord(key_name.upper())
+    raise ValueError(f"Unknown hotkey for Qt: {key_name!r}")
 
 
 class MainWindow(QMainWindow):
@@ -32,8 +57,14 @@ class MainWindow(QMainWindow):
     stop_requested = pyqtSignal()
     settings_requested = pyqtSignal()
 
+    ptt_key_pressed = pyqtSignal()
+    ptt_key_released = pyqtSignal()
+    toggle_key_pressed = pyqtSignal()
+
     def __init__(self):
         super().__init__()
+        self._qt_ptt_key: int = Qt.Key.Key_F2
+        self._qt_toggle_key: int = Qt.Key.Key_F3
         self.setWindowTitle("Klaus")
         self.setMinimumSize(900, 600)
         self.resize(1100, 700)
@@ -109,7 +140,10 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter, stretch=1)
 
         # -- Status Bar --
-        self.status_widget = StatusWidget()
+        self.status_widget = StatusWidget(
+            hotkey=config.PUSH_TO_TALK_KEY,
+            toggle_key=config.TOGGLE_KEY,
+        )
         self.status_widget.mode_toggle_clicked.connect(
             self.mode_toggle_requested.emit
         )
@@ -138,3 +172,33 @@ class MainWindow(QMainWindow):
     def get_current_session_id(self) -> str | None:
         """Return the currently selected session id from the session panel."""
         return self.session_panel._current_id
+
+    # -- In-app keyboard shortcuts (no Accessibility permission needed) --
+
+    def set_hotkeys(self, ptt_key: str, toggle_key: str) -> None:
+        """Configure which keys trigger PTT and mode toggle via Qt events."""
+        self._qt_ptt_key = resolve_qt_key(ptt_key)
+        self._qt_toggle_key = resolve_qt_key(toggle_key)
+        logger.info(
+            "Qt in-app hotkeys configured (ptt=%s, toggle=%s)", ptt_key, toggle_key,
+        )
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.isAutoRepeat():
+            return
+        key = event.key()
+        if key == self._qt_ptt_key:
+            self.ptt_key_pressed.emit()
+        elif key == self._qt_toggle_key:
+            self.toggle_key_pressed.emit()
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if event.isAutoRepeat():
+            return
+        key = event.key()
+        if key == self._qt_ptt_key:
+            self.ptt_key_released.emit()
+        else:
+            super().keyReleaseEvent(event)

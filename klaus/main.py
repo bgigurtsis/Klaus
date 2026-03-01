@@ -11,6 +11,7 @@ from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
 import klaus.config as config
 from klaus.config import (
     PUSH_TO_TALK_KEY,
+    TOGGLE_KEY,
     INPUT_MODE,
     VAD_SENSITIVITY,
     VAD_SILENCE_TIMEOUT,
@@ -81,7 +82,7 @@ class KlausApp:
         self._guard_stats_lock = threading.Lock()
         self._hotkey_listener: KeyboardListener | None = None
         self._ptt_pynput_key = _resolve_pynput_key(PUSH_TO_TALK_KEY)
-        self._toggle_pynput_key = Key.f3
+        self._toggle_pynput_key = _resolve_pynput_key(TOGGLE_KEY)
 
     def _init_components(self) -> None:
         """Create all API-dependent components.
@@ -139,6 +140,7 @@ class KlausApp:
             logger.warning("Camera unavailable: %s", e)
 
         self._window.camera_widget.set_camera(self._camera)
+        self._window.set_hotkeys(PUSH_TO_TALK_KEY, TOGGLE_KEY)
 
         self._load_sessions()
 
@@ -175,6 +177,10 @@ class KlausApp:
         self._window.mode_toggle_requested.connect(self._toggle_input_mode)
         self._window.stop_requested.connect(self._on_stop_requested)
         self._window.settings_requested.connect(self._on_settings_requested)
+
+        self._window.ptt_key_pressed.connect(self._on_key_down)
+        self._window.ptt_key_released.connect(self._on_key_up)
+        self._window.toggle_key_pressed.connect(self._toggle_input_mode)
 
     # -- State handling --
 
@@ -218,7 +224,13 @@ class KlausApp:
     # -- Input mode --
 
     def _start_hotkey_listener(self) -> None:
-        """Start the global hotkey listener (runs once at startup)."""
+        """Start the pynput global hotkey listener.
+
+        On macOS this requires Accessibility permission, which is hard to grant
+        when running as a Python script.  If the listener fails to start we log
+        a warning but carry on -- the Qt in-app key events (keyPressEvent on
+        MainWindow) still work when the window is focused.
+        """
         ptt_key = self._ptt_pynput_key
         toggle_key = self._toggle_pynput_key
 
@@ -232,19 +244,29 @@ class KlausApp:
             if key == ptt_key:
                 self._on_key_up()
 
-        self._hotkey_listener = KeyboardListener(
-            on_press=on_press, on_release=on_release,
-        )
-        self._hotkey_listener.daemon = True
-        self._hotkey_listener.start()
-        logger.info(
-            "Hotkey listener started (ptt=%s, toggle=%s)",
-            PUSH_TO_TALK_KEY, "F3",
-        )
+        try:
+            self._hotkey_listener = KeyboardListener(
+                on_press=on_press, on_release=on_release,
+            )
+            self._hotkey_listener.daemon = True
+            self._hotkey_listener.start()
+            logger.info(
+                "Global hotkey listener started (ptt=%s, toggle=%s)",
+                PUSH_TO_TALK_KEY, TOGGLE_KEY,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Global hotkey listener failed to start: %s. "
+                "In-app hotkeys still work when the Klaus window is focused.",
+                exc,
+            )
+
         if sys.platform == "darwin":
             logger.info(
-                "macOS: grant Accessibility permission if hotkeys are unresponsive "
-                "(System Settings > Privacy & Security > Accessibility)"
+                "macOS: F-keys trigger system actions by default "
+                "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
+                "keys as standard function keys' in System Settings > Keyboard, "
+                "or set a different key in ~/.klaus/config.toml (toggle_key)."
             )
 
     def _setup_input_mode(self) -> None:

@@ -30,19 +30,21 @@ class StatusWidget(QWidget):
     }
 
     _HOTKEY_HINTS = {
-        "push_to_talk": "Hold {hotkey} to speak  \u00b7  F3 to switch",
-        "voice_activation": "Just speak  \u00b7  F3 to switch mode",
+        "push_to_talk": "Hold {hotkey} to speak  \u00b7  {toggle} to switch",
+        "voice_activation": "Just speak  \u00b7  {toggle} to switch mode",
     }
 
     def __init__(
         self,
         hotkey: str = "F2",
+        toggle_key: str = "F3",
         mode: str = "voice_activation",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("klaus-status-bar")
         self._hotkey = hotkey
+        self._toggle_key = toggle_key
         self._mode = mode
         self._current_state = "idle"
         self._init_ui()
@@ -76,7 +78,9 @@ class StatusWidget(QWidget):
 
         layout.addStretch()
 
-        hint = self._HOTKEY_HINTS.get(self._mode, "").format(hotkey=self._hotkey)
+        hint = self._HOTKEY_HINTS.get(self._mode, "").format(
+            hotkey=self._hotkey, toggle=self._toggle_key,
+        )
         self._hotkey_label = QLabel(hint)
         self._hotkey_label.setObjectName("klaus-hotkey-hint")
         layout.addWidget(self._hotkey_label)
@@ -109,7 +113,9 @@ class StatusWidget(QWidget):
         """Update the mode button label and hotkey hint."""
         self._mode = mode
         self._mode_btn.setText(self._MODE_LABELS.get(mode, "Voice"))
-        hint = self._HOTKEY_HINTS.get(mode, "").format(hotkey=self._hotkey)
+        hint = self._HOTKEY_HINTS.get(mode, "").format(
+            hotkey=self._hotkey, toggle=self._toggle_key,
+        )
         self._hotkey_label.setText(hint)
         self._apply_state_label(self._current_state)
 

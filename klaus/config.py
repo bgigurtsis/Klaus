@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import sys
 import tomllib
 from pathlib import Path
 from dotenv import load_dotenv
@@ -22,6 +23,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 
 # Push-to-talk hotkey (default: F2)
 # hotkey = "F2"
+
+# Toggle input mode hotkey (default: § on macOS, F3 on Windows)
+# toggle_key = "§"
 
 # Camera device index (default: 0)
 # camera_index = 0
@@ -156,6 +160,8 @@ TTS_MODEL = "gpt-4o-mini-tts"
 # ---------------------------------------------------------------------------
 
 PUSH_TO_TALK_KEY: str = _user_config.get("hotkey", "F2")
+_DEFAULT_TOGGLE_KEY = "§" if sys.platform == "darwin" else "F3"
+TOGGLE_KEY: str = _user_config.get("toggle_key", _DEFAULT_TOGGLE_KEY)
 CAMERA_DEVICE_INDEX: int = _user_config.get("camera_index", 0)
 CAMERA_FRAME_WIDTH: int = _user_config.get("camera_width", 1920)
 CAMERA_FRAME_HEIGHT: int = _user_config.get("camera_height", 1080)
@@ -392,6 +398,7 @@ def reload() -> None:
     """
     global _user_config, _api_keys
     global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY
+    global PUSH_TO_TALK_KEY, TOGGLE_KEY
     global CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT, CAMERA_ROTATION
     global USER_BACKGROUND, SYSTEM_PROMPT
 
@@ -405,6 +412,9 @@ def reload() -> None:
     ANTHROPIC_API_KEY = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
     OPENAI_API_KEY = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
     TAVILY_API_KEY = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
+
+    PUSH_TO_TALK_KEY = _user_config.get("hotkey", "F2")
+    TOGGLE_KEY = _user_config.get("toggle_key", _DEFAULT_TOGGLE_KEY)
 
     CAMERA_DEVICE_INDEX = _user_config.get("camera_index", 0)
     CAMERA_FRAME_WIDTH = _user_config.get("camera_width", 1920)

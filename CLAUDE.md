@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-01 (user background feature).
+Last updated: 2026-03-01 (Qt in-app hotkeys, macOS accessibility fix).
 
 ## Project Summary
 
@@ -31,8 +31,8 @@ desktop app on Windows and macOS.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `config.py` | 424 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
-| `main.py` | 652 | Entry point; wires all components, hotkeys (pynput), setup wizard gate, Qt signal bridge |
+| `config.py` | 434 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
+| `main.py` | 674 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge |
 | `audio.py` | 390 | PushToTalkRecorder, VoiceActivatedRecorder, AudioPlayer |
 | `brain.py` | 300 | Claude vision + tool-use loop, conversation history, streaming |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
@@ -49,7 +49,7 @@ desktop app on Windows and macOS.
 | `theme.py` | 586 | Palette tokens, dimensions, single `application_stylesheet()` QSS, `apply_dark_titlebar()`, `load_fonts()` |
 | `chat_widget.py` | 260 | Scrollable chat feed with message cards, thumbnails, replay |
 | `session_panel.py` | 190 | Session list sidebar with context menu |
-| `main_window.py` | 140 | Top-level window layout, splitter, header, settings button, dark title bar |
+| `main_window.py` | 204 | Top-level window layout, splitter, header, settings button, Qt key events for in-app hotkeys |
 | `setup_wizard.py` | 810 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background) |
 | `settings_dialog.py` | 300 | Tabbed settings dialog (API keys, camera, mic, profile) accessible from gear button |
 | `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
@@ -63,9 +63,15 @@ desktop app on Windows and macOS.
 - **No asyncio**: Anthropic/OpenAI sync clients work fine with threads; PyQt's
   event loop doesn't integrate easily with asyncio.
 - **Input modes**: Push-to-talk (F2 hold) and voice-activated (F3 toggles).
-  Default is voice activation. VAD uses webrtcvad. Global hotkeys via pynput
-  (single persistent `Listener` thread; mode logic in callbacks). On macOS,
-  Accessibility permission is required for hotkeys.
+  Default is voice activation. VAD uses webrtcvad. Both PTT and toggle keys
+  are configurable in `config.toml` (`hotkey`, `toggle_key`). Two hotkey
+  backends run in parallel: **Qt key events** on `MainWindow`
+  (`keyPressEvent`/`keyReleaseEvent`) work when the window is focused with
+  no OS permissions; **pynput** provides global hotkeys but requires macOS
+  Accessibility permission and starts gracefully (logs a warning on failure).
+  On macOS, F-keys trigger system actions (F3 = Mission Control) by default;
+  users can press Fn+key, enable "Use standard function keys", or configure
+  a different key.
 - **Cross-platform**: Windows and macOS. Platform-specific code is guarded by
   `sys.platform` checks: `cv2.CAP_DSHOW` (Windows camera backend),
   `moonshine.dll` preload (Windows DLL conflict workaround), DWM dark title
