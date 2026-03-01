@@ -18,10 +18,12 @@ from PyQt6.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -212,6 +214,7 @@ class SetupWizard(QMainWindow):
             "tavily": "",
             "camera_index": -1,
             "user_background": "",
+            "obsidian_vault_path": "",
         }
 
         self._build_step_welcome()
@@ -252,6 +255,7 @@ class SetupWizard(QMainWindow):
             self._camera_preview.stop()
         if self._current_step == 5:
             self._collected["user_background"] = self._background_edit.toPlainText().strip()
+            self._collected["obsidian_vault_path"] = self._vault_path_edit.text().strip()
         self._set_step(self._current_step + 1)
 
     def _go_back(self) -> None:
@@ -740,8 +744,45 @@ class SetupWizard(QMainWindow):
             "e.g. I'm a software engineer interested in physics and philosophy. "
             "I have a strong math background but I'm new to biology."
         )
-        self._background_edit.setFixedHeight(120)
+        self._background_edit.setFixedHeight(100)
         layout.addWidget(self._background_edit)
+
+        layout.addSpacing(12)
+
+        vault_header = QHBoxLayout()
+        vault_label = QLabel("Obsidian vault path")
+        vault_label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
+            "background: transparent; border: none;"
+        )
+        vault_header.addWidget(vault_label)
+
+        help_btn = QPushButton("?")
+        help_btn.setFixedSize(22, 22)
+        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setStyleSheet(
+            f"QPushButton {{ background: {theme.SURFACE_LIGHTER}; "
+            f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER}; "
+            "border-radius: 11px; font-weight: bold; font-size: 13px; }}"
+            f"QPushButton:hover {{ background: {theme.ACCENT}; color: {theme.TEXT_PRIMARY}; }}"
+        )
+        help_btn.clicked.connect(self._show_vault_help)
+        vault_header.addWidget(help_btn)
+        vault_header.addStretch()
+        layout.addLayout(vault_header)
+
+        vault_row = QHBoxLayout()
+        self._vault_path_edit = QLineEdit()
+        self._vault_path_edit.setReadOnly(True)
+        self._vault_path_edit.setPlaceholderText("Optional — click Browse to select")
+        vault_row.addWidget(self._vault_path_edit)
+
+        browse_btn = QPushButton("Browse\u2026")
+        browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        browse_btn.setFixedWidth(90)
+        browse_btn.clicked.connect(self._browse_vault_path)
+        vault_row.addWidget(browse_btn)
+        layout.addLayout(vault_row)
 
         skip_btn = QPushButton("Skip")
         skip_btn.setObjectName("wizard-link-btn")
@@ -752,6 +793,33 @@ class SetupWizard(QMainWindow):
 
         layout.addStretch()
         self._stack.addWidget(page)
+
+    def _browse_vault_path(self) -> None:
+        """Open a native folder picker for the Obsidian vault directory."""
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Obsidian Vault Folder",
+        )
+        if path:
+            self._vault_path_edit.setText(path)
+
+    def _show_vault_help(self) -> None:
+        """Show an informational dialog explaining the Obsidian vault setting."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Obsidian Notes")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(
+            "Obsidian is a free app for writing and organising markdown notes "
+            "locally on your computer.\n\n"
+            "If you use Obsidian, Klaus can save notes, quotes, and summaries "
+            "directly into your vault while you read.\n\n"
+            "To find your vault folder:\n"
+            "  \u2022  Open Obsidian\n"
+            "  \u2022  Go to Settings \u2192 About (at the bottom)\n"
+            "  \u2022  Look for the vault path listed there\n\n"
+            "This is entirely optional. If you don't use Obsidian or don't "
+            "want note-taking, just leave this blank."
+        )
+        msg.exec()
 
     # -----------------------------------------------------------------------
     # Step 7 -- Done
@@ -807,6 +875,9 @@ class SetupWizard(QMainWindow):
         bg = self._collected.get("user_background", "")
         if bg:
             cfg.save_user_background(bg)
+        vault = self._collected.get("obsidian_vault_path", "")
+        if vault:
+            cfg.save_obsidian_vault_path(vault)
         cfg.mark_setup_complete()
         cfg.reload()
         logger.info("Setup wizard completed")

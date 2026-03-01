@@ -31,7 +31,7 @@ klaus
 
 On first launch, a setup wizard walks you through API keys, camera, mic, and voice model setup.
 
-## Install
+## Manual Install
 
 Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
 
@@ -113,6 +113,21 @@ Klaus needs three API keys. The setup wizard will ask for them, or you can add t
 
 Optional: set `OBSIDIAN_VAULT_PATH` in `.env` to enable note-saving to your Obsidian vault.
 
+## Camera Setup
+
+**Recommended:** A USB document camera (visualiser) or a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface. Either gives Klaus a clear, stable view of the full page.
+
+A phone works well as a substitute. Install a free app to make it appear as a webcam, then select it in Klaus camera settings:
+
+| Setup | App |
+|-------|-----|
+| macOS + iPhone | Built-in -- [Continuity Camera](https://support.apple.com/en-us/102546) (iOS 16+, macOS Ventura+, no install needed) |
+| macOS + Android | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + Mac, pair via QR or USB |
+| Windows + Android | [DroidCam](https://www.dev47apps.com/) (free) -- install on phone + PC, connect over Wi-Fi or USB |
+| Windows + iPhone | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + PC, pair via QR or USB |
+
+Klaus auto-detects portrait orientation and rotates the image. Override with `camera_rotation` in `~/.klaus/config.toml` if needed.
+
 ## Usage
 
 | Action | How |
@@ -128,18 +143,6 @@ Optional: set `OBSIDIAN_VAULT_PATH` in `.env` to enable note-saving to your Obsi
 | Change settings | Gear icon in the header |
 
 Klaus captures the page image when your question ends and sends it with your transcript to Claude. If Claude is uncertain about a claim, it searches the web via Tavily before answering.
-
-## Using a Phone as Your Camera
-
-You don't need a dedicated document camera. A phone on a cheap tripod pointed down at your desk works well.
-
-**macOS** -- Continuity Camera works natively. Any iPhone running iOS 16+ paired with a Mac on macOS Ventura+ appears as a webcam automatically. No extra app needed; just select the iPhone in Klaus settings.
-
-**Windows** -- Install [DroidCam](https://www.dev47apps.com/) (free, Android and iOS) or [Camo](https://reincubate.com/camo/) (free tier, Android and iOS). These create a virtual webcam that Klaus picks up. Connect your phone, then select the virtual camera in Klaus settings.
-
-**Mounting** -- An adjustable gooseneck phone mount or a small phone tripod aimed straight down at the reading surface gives the best results. These run about $10-15 on Amazon. Make sure the full page is visible in the camera preview.
-
-Klaus auto-detects portrait orientation from phone cameras and rotates the image to landscape. If auto-detection gets it wrong, set `camera_rotation` in `~/.klaus/config.toml` to `"none"`, `"90"`, `"180"`, or `"270"`.
 
 ## Configuration
 

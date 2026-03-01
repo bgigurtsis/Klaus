@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-01 (Qt in-app hotkeys, macOS accessibility fix).
+Last updated: 2026-03-01 (Obsidian vault path in config.toml, setup wizard, settings).
 
 ## Project Summary
 
@@ -31,7 +31,7 @@ desktop app on Windows and macOS.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `config.py` | 434 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
+| `config.py` | 445 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
 | `main.py` | 674 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge |
 | `audio.py` | 390 | PushToTalkRecorder, VoiceActivatedRecorder, AudioPlayer |
 | `brain.py` | 300 | Claude vision + tool-use loop, conversation history, streaming |
@@ -50,8 +50,8 @@ desktop app on Windows and macOS.
 | `chat_widget.py` | 260 | Scrollable chat feed with message cards, thumbnails, replay |
 | `session_panel.py` | 190 | Session list sidebar with context menu |
 | `main_window.py` | 204 | Top-level window layout, splitter, header, settings button, Qt key events for in-app hotkeys |
-| `setup_wizard.py` | 810 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background) |
-| `settings_dialog.py` | 300 | Tabbed settings dialog (API keys, camera, mic, profile) accessible from gear button |
+| `setup_wizard.py` | 860 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background, Obsidian vault) |
+| `settings_dialog.py` | 350 | Tabbed settings dialog (API keys, camera, mic, profile + Obsidian vault) accessible from gear button |
 | `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
 | `camera_widget.py` | 71 | Live camera preview (~30 fps) |
 
@@ -84,8 +84,10 @@ desktop app on Windows and macOS.
 - **Persistent memory**: SQLite at `~/.klaus/klaus.db` with tables for sessions,
   exchanges, and knowledge_profile. Knowledge summary is injected into Claude's
   system prompt.
-- **Notes**: Optional Obsidian vault integration. Active only when
-  `OBSIDIAN_VAULT_PATH` is set in `.env`.
+- **Notes**: Optional Obsidian vault integration. `OBSIDIAN_VAULT_PATH` is stored
+  in `config.toml` (with `.env` fallback). Configurable in the setup wizard
+  ("About You" step) and settings dialog ("Profile" tab) via a native folder
+  picker. Notes are disabled when the path is empty.
 - **Single QSS theme**: All styling lives in `theme.py` via one
   `application_stylesheet()` function. Widgets use `setObjectName()` for
   targeted selectors (e.g. `#klaus-header`, `#session-list`). Only dynamic

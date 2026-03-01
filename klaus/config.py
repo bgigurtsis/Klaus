@@ -80,6 +80,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Optional: describe your background so Klaus can tailor explanations.
 # user_background = ""
 
+# Optional: path to your Obsidian vault folder for the notes feature.
+# obsidian_vault_path = ""
+
 # Log level (default: INFO)
 # Options: DEBUG, INFO, WARNING, ERROR
 # log_level = "INFO"
@@ -135,7 +138,7 @@ _api_keys: dict = _user_config.get("api_keys", {})
 ANTHROPIC_API_KEY: str = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY: str = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
 TAVILY_API_KEY: str = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
-OBSIDIAN_VAULT_PATH: str = os.getenv("OBSIDIAN_VAULT_PATH", "")
+OBSIDIAN_VAULT_PATH: str = _user_config.get("obsidian_vault_path", "") or os.getenv("OBSIDIAN_VAULT_PATH", "")
 
 _log.info(
     "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
@@ -390,6 +393,12 @@ def save_user_background(text: str) -> None:
     _set_top_level_value("user_background", f'"{escaped}"')
 
 
+def save_obsidian_vault_path(path: str) -> None:
+    """Persist the Obsidian vault path to config.toml."""
+    escaped = path.replace("\\", "/")
+    _set_top_level_value("obsidian_vault_path", f'"{escaped}"')
+
+
 def reload() -> None:
     """Re-read config.toml and update module-level constants.
 
@@ -397,7 +406,7 @@ def reload() -> None:
     afterward pick up the fresh configuration.
     """
     global _user_config, _api_keys
-    global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY
+    global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY, OBSIDIAN_VAULT_PATH
     global PUSH_TO_TALK_KEY, TOGGLE_KEY
     global CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT, CAMERA_ROTATION
     global USER_BACKGROUND, SYSTEM_PROMPT
@@ -412,6 +421,7 @@ def reload() -> None:
     ANTHROPIC_API_KEY = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
     OPENAI_API_KEY = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
     TAVILY_API_KEY = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
+    OBSIDIAN_VAULT_PATH = _user_config.get("obsidian_vault_path", "") or os.getenv("OBSIDIAN_VAULT_PATH", "")
 
     PUSH_TO_TALK_KEY = _user_config.get("hotkey", "F2")
     TOGGLE_KEY = _user_config.get("toggle_key", _DEFAULT_TOGGLE_KEY)
