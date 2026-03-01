@@ -299,9 +299,14 @@ class SettingsDialog(QDialog):
 
         try:
             devices = sd.query_devices()
+            selected_mic = 0
             for i, dev in enumerate(devices):
                 if dev["max_input_channels"] > 0:
                     self._mic_combo.addItem(dev["name"], i)
+                    if i == config.MIC_DEVICE_INDEX:
+                        selected_mic = self._mic_combo.count() - 1
+            if selected_mic:
+                self._mic_combo.setCurrentIndex(selected_mic)
         except Exception as exc:
             logger.warning("Failed to enumerate audio devices: %s", exc)
 
@@ -371,6 +376,9 @@ class SettingsDialog(QDialog):
         cam_idx = self._camera_combo.currentData()
         if cam_idx is not None and cam_idx >= 0:
             config.save_camera_index(cam_idx)
+        mic_idx = self._mic_combo.currentData()
+        if mic_idx is not None:
+            config.save_mic_index(mic_idx)
         bg = self._background_edit.toPlainText().strip()
         config.save_user_background(bg)
         vault = self._vault_path_edit.text().strip()

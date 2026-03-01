@@ -9,6 +9,7 @@ import numpy as np
 import sounddevice as sd
 from openai import OpenAI
 
+import klaus.config as _config
 from klaus.config import OPENAI_API_KEY, TTS_MODEL, TTS_SPEED, TTS_VOICE, TTS_VOICE_INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,10 @@ class TextToSpeech:
         self._client = OpenAI(api_key=OPENAI_API_KEY)
         self._stop_event = threading.Event()
         self._playback_thread: threading.Thread | None = None
+
+    def reload_client(self) -> None:
+        """Recreate the OpenAI client to pick up key changes from config.reload()."""
+        self._client = OpenAI(api_key=_config.OPENAI_API_KEY)
 
     def speak(self, text: str, on_sentence_start: callable = None) -> None:
         """Synthesize and play text. Batches into sentences for low-latency start.

@@ -52,6 +52,11 @@ class Brain:
         if self._notes is not None:
             self._tools.extend([SET_NOTES_FILE_TOOL, SAVE_NOTE_TOOL])
 
+    def reload_clients(self) -> None:
+        """Recreate API clients to pick up key changes from config.reload()."""
+        self._client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        self._search = WebSearch()
+
     def ask(
         self,
         question: str,

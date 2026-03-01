@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-01 (safe-slot decorator for PyQt6 SIGABRT crash fix).
+Last updated: 2026-03-01 (settings live reload: camera, mic, vault path, API keys).
 
 ## Project Summary
 
@@ -31,12 +31,12 @@ desktop app on Windows and macOS.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `config.py` | 445 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
-| `main.py` | 692 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator |
-| `audio.py` | 390 | PushToTalkRecorder, VoiceActivatedRecorder, AudioPlayer |
-| `brain.py` | 300 | Claude vision + tool-use loop, conversation history, streaming |
+| `config.py` | 454 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, save/reload helpers |
+| `main.py` | 746 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator, post-settings live reload |
+| `audio.py` | 452 | PushToTalkRecorder, VoiceActivatedRecorder (with device selection), AudioPlayer |
+| `brain.py` | 345 | Claude vision + tool-use loop, conversation history, streaming, `reload_clients()` |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
-| `tts.py` | 165 | OpenAI gpt-4o-mini-tts with sentence-level batching |
+| `tts.py` | 197 | OpenAI gpt-4o-mini-tts with sentence-level batching, `reload_client()` |
 | `camera.py` | 187 | OpenCV background thread, frame capture, auto-rotation, base64/thumbnail export, camera enumeration |
 | `stt.py` | 103 | Moonshine Voice local transcription |
 | `notes.py` | 100 | Obsidian vault note-taking (set_notes_file, save_note tools) |
@@ -51,7 +51,7 @@ desktop app on Windows and macOS.
 | `session_panel.py` | 190 | Session list sidebar with context menu |
 | `main_window.py` | 204 | Top-level window layout, splitter, header, settings button, Qt key events for in-app hotkeys |
 | `setup_wizard.py` | 860 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background, Obsidian vault) |
-| `settings_dialog.py` | 350 | Tabbed settings dialog (API keys, camera, mic, profile + Obsidian vault) accessible from gear button |
+| `settings_dialog.py` | 389 | Tabbed settings dialog (API keys, camera, mic, profile + Obsidian vault) accessible from gear button |
 | `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
 | `camera_widget.py` | 71 | Live camera preview (~30 fps) |
 
@@ -114,6 +114,14 @@ desktop app on Windows and macOS.
   `[api_keys]` section. Falls back to `.env` via `python-dotenv` for backward
   compatibility. Keys are validated in the wizard by format (prefix + length),
   not by live API calls.
+- **Settings live reload**: After the settings dialog saves and `config.reload()`
+  runs, `_on_settings_requested` in `main.py` applies changes live: camera is
+  stopped/restarted on device change, VAD recorder is recreated on mic device
+  change (`MIC_DEVICE_INDEX` stored in config.toml, -1 = system default),
+  `NotesManager` is recreated on vault path change, and `Brain.reload_clients()`
+  / `TextToSpeech.reload_client()` hot-swap API clients. User background was
+  already dynamic. Hotkeys, VAD params, TTS voice/speed, and STT model are not
+  in the dialog and still require an app restart.
 - **Camera auto-rotation**: `camera.py` detects portrait frames (h > w) and
   rotates 90 CW automatically. Configurable via `camera_rotation` in
   `config.toml` (`auto`, `none`, `90`, `180`, `270`).

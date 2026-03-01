@@ -30,6 +30,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Camera device index (default: 0)
 # camera_index = 0
 
+# Microphone device index (default: -1, uses system default)
+# mic_index = -1
+
 # Camera resolution (default: 1920x1080)
 # camera_width = 1920
 # camera_height = 1080
@@ -169,6 +172,7 @@ CAMERA_DEVICE_INDEX: int = _user_config.get("camera_index", 0)
 CAMERA_FRAME_WIDTH: int = _user_config.get("camera_width", 1920)
 CAMERA_FRAME_HEIGHT: int = _user_config.get("camera_height", 1080)
 CAMERA_ROTATION: str = str(_user_config.get("camera_rotation", "auto"))
+MIC_DEVICE_INDEX: int = int(_user_config.get("mic_index", -1))
 TTS_VOICE: str = _user_config.get("voice", "cedar")
 TTS_SPEED: float = float(_user_config.get("tts_speed", 1.0))
 
@@ -387,6 +391,11 @@ def save_camera_index(index: int) -> None:
     _set_top_level_value("camera_index", str(index))
 
 
+def save_mic_index(index: int) -> None:
+    """Persist the chosen microphone device index to config.toml."""
+    _set_top_level_value("mic_index", str(index))
+
+
 def save_user_background(text: str) -> None:
     """Persist the user background description to config.toml."""
     escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -409,6 +418,7 @@ def reload() -> None:
     global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY, OBSIDIAN_VAULT_PATH
     global PUSH_TO_TALK_KEY, TOGGLE_KEY
     global CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT, CAMERA_ROTATION
+    global MIC_DEVICE_INDEX
     global USER_BACKGROUND, SYSTEM_PROMPT
 
     if CONFIG_PATH.exists():
@@ -430,6 +440,7 @@ def reload() -> None:
     CAMERA_FRAME_WIDTH = _user_config.get("camera_width", 1920)
     CAMERA_FRAME_HEIGHT = _user_config.get("camera_height", 1080)
     CAMERA_ROTATION = str(_user_config.get("camera_rotation", "auto"))
+    MIC_DEVICE_INDEX = int(_user_config.get("mic_index", -1))
 
     USER_BACKGROUND = str(_user_config.get("user_background", ""))
     SYSTEM_PROMPT = _build_system_prompt()

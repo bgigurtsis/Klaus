@@ -115,11 +115,13 @@ class VoiceActivatedRecorder:
         min_duration: float = 0.3,
         min_rms_dbfs: float = -37.0,
         min_voiced_run_frames: int = 6,
+        device: int | None = None,
     ):
         self._on_speech_start = on_speech_start
         self._on_speech_end = on_speech_end
         self._on_speech_discard = on_speech_discard
         self._sample_rate = sample_rate
+        self._device = device
         self._sensitivity = max(0, min(3, sensitivity))
         self._silence_timeout = silence_timeout
         self._min_voiced_ratio = max(0.0, min(1.0, min_voiced_ratio))
@@ -190,6 +192,7 @@ class VoiceActivatedRecorder:
                     channels=CHANNELS,
                     dtype=DTYPE,
                     blocksize=FRAME_SIZE,
+                    device=self._device,
                     callback=self._audio_callback,
                 )
                 self._stream.start()

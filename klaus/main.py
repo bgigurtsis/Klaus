@@ -676,12 +676,49 @@ class KlausApp:
 
     @_safe_slot
     def _on_settings_requested(self) -> None:
-        """Open the settings dialog."""
+        """Open the settings dialog, then apply any changed settings live."""
         from klaus.ui.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self._window)
         from klaus.ui import theme
         theme.apply_dark_titlebar(dlg)
         dlg.exec()
+
+        if self._camera._device_index != config.CAMERA_DEVICE_INDEX:
+            self._camera.stop()
+            self._camera = Camera(config.CAMERA_DEVICE_INDEX)
+            try:
+                self._camera.start()
+            except RuntimeError as e:
+                logger.warning("Camera unavailable after settings change: %s", e)
+            self._window.camera_widget.set_camera(self._camera)
+
+        new_mic = config.MIC_DEVICE_INDEX if config.MIC_DEVICE_INDEX >= 0 else None
+        if new_mic != self._vad_recorder._device:
+            self._vad_recorder.stop()
+            self._vad_recorder = VoiceActivatedRecorder(
+                on_speech_start=self._on_vad_speech_start,
+                on_speech_end=self._on_vad_speech_end,
+                on_speech_discard=self._on_vad_discard,
+                sensitivity=VAD_SENSITIVITY,
+                silence_timeout=VAD_SILENCE_TIMEOUT,
+                min_duration=VAD_MIN_DURATION,
+                min_voiced_ratio=VAD_MIN_VOICED_RATIO,
+                min_voiced_frames=VAD_MIN_VOICED_FRAMES,
+                min_rms_dbfs=VAD_MIN_RMS_DBFS,
+                min_voiced_run_frames=VAD_MIN_VOICED_RUN_FRAMES,
+                device=new_mic,
+            )
+            if self._input_mode == "voice_activation":
+                self._vad_recorder.start()
+
+        vault = config.OBSIDIAN_VAULT_PATH or ""
+        current_base = str(self._notes._base) if self._notes._base.parts else ""
+        if vault != current_base:
+            self._notes = NotesManager(config.OBSIDIAN_VAULT_PATH)
+            self._brain._notes = self._notes
+
+        self._brain.reload_clients()
+        self._tts.reload_client()
 
     @_safe_slot
     def _on_error(self, message: str) -> None:
