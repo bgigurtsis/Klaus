@@ -1,7 +1,8 @@
-"""Tests for klaus.stt -- speech-to-text via OpenAI."""
+"""Tests for klaus.stt -- speech-to-text via Moonshine Voice."""
 
 import io
 import wave
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -22,56 +23,81 @@ def _make_wav_bytes(duration_ms=500, sample_rate=16000):
     return buf.getvalue()
 
 
-class TestSpeechToText:
-    @patch("klaus.stt.OpenAI")
-    def test_transcribe_returns_string(self, mock_openai_cls):
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.audio.transcriptions.create.return_value = "  Hello world  "
+def _make_transcript(texts: list[str]):
+    """Build a fake Transcript with TranscriptLine-like objects."""
+    lines = [
+        SimpleNamespace(text=t, is_complete=True) for t in texts
+    ]
+    return SimpleNamespace(lines=lines)
 
-        stt = SpeechToText()
-        result = stt.transcribe(_make_wav_bytes())
+
+def _patch_moonshine():
+    """Patch moonshine_voice imports inside _load_moonshine."""
+    mock_transcriber_cls = MagicMock()
+    mock_transcriber = MagicMock()
+    mock_transcriber_cls.return_value = mock_transcriber
+    mock_get_model = MagicMock(return_value=("/fake/model", "5"))
+
+    patcher = patch.dict("sys.modules", {
+        "moonshine_voice": MagicMock(
+            Transcriber=mock_transcriber_cls,
+            get_model_for_language=mock_get_model,
+        ),
+    })
+    return patcher, mock_transcriber
+
+
+class TestSpeechToText:
+    def test_transcribe_returns_string(self):
+        patcher, mock_transcriber = _patch_moonshine()
+        mock_transcriber.transcribe_without_streaming.return_value = _make_transcript(
+            ["Hello world"]
+        )
+        with patcher:
+            stt = SpeechToText()
+            result = stt.transcribe(_make_wav_bytes())
 
         assert result == "Hello world"
-        mock_client.audio.transcriptions.create.assert_called_once()
+        mock_transcriber.transcribe_without_streaming.assert_called_once()
 
-    @patch("klaus.stt.OpenAI")
-    def test_transcribe_returns_object_with_text(self, mock_openai_cls):
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_result = MagicMock()
-        mock_result.text = "  Some transcription  "
-        mock_result.strip = MagicMock(side_effect=AttributeError)
-        mock_client.audio.transcriptions.create.return_value = mock_result
+    def test_transcribe_joins_multiple_lines(self):
+        patcher, mock_transcriber = _patch_moonshine()
+        mock_transcriber.transcribe_without_streaming.return_value = _make_transcript(
+            ["First line.", "Second line."]
+        )
+        with patcher:
+            stt = SpeechToText()
+            result = stt.transcribe(_make_wav_bytes())
 
-        stt = SpeechToText()
-        result = stt.transcribe(_make_wav_bytes())
+        assert result == "First line. Second line."
 
-        assert result == "Some transcription"
+    def test_transcribe_strips_whitespace(self):
+        patcher, mock_transcriber = _patch_moonshine()
+        mock_transcriber.transcribe_without_streaming.return_value = _make_transcript(
+            ["  padded text  "]
+        )
+        with patcher:
+            stt = SpeechToText()
+            result = stt.transcribe(_make_wav_bytes())
 
-    @patch("klaus.stt.OpenAI")
-    def test_transcribe_passes_correct_model(self, mock_openai_cls):
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.audio.transcriptions.create.return_value = "test"
+        assert result == "padded text"
 
-        stt = SpeechToText()
-        stt.transcribe(_make_wav_bytes())
+    def test_transcribe_empty_lines_ignored(self):
+        patcher, mock_transcriber = _patch_moonshine()
+        mock_transcriber.transcribe_without_streaming.return_value = _make_transcript(
+            ["", "  ", "actual text"]
+        )
+        with patcher:
+            stt = SpeechToText()
+            result = stt.transcribe(_make_wav_bytes())
 
-        call_kwargs = mock_client.audio.transcriptions.create.call_args.kwargs
-        assert call_kwargs["model"] == "gpt-4o-mini-transcribe"
-        assert call_kwargs["response_format"] == "text"
+        assert result == "actual text"
 
-    @patch("klaus.stt.OpenAI")
-    def test_transcribe_sends_wav_file(self, mock_openai_cls):
-        mock_client = MagicMock()
-        mock_openai_cls.return_value = mock_client
-        mock_client.audio.transcriptions.create.return_value = "test"
+    def test_transcribe_no_lines_returns_empty(self):
+        patcher, mock_transcriber = _patch_moonshine()
+        mock_transcriber.transcribe_without_streaming.return_value = _make_transcript([])
+        with patcher:
+            stt = SpeechToText()
+            result = stt.transcribe(_make_wav_bytes())
 
-        stt = SpeechToText()
-        wav = _make_wav_bytes()
-        stt.transcribe(wav)
-
-        call_kwargs = mock_client.audio.transcriptions.create.call_args.kwargs
-        file_arg = call_kwargs["file"]
-        assert file_arg.name == "recording.wav"
+        assert result == ""

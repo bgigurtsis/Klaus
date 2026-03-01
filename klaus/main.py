@@ -7,8 +7,6 @@ import time
 import threading
 
 import keyboard
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, pyqtSignal
 
 from klaus.config import (
     PUSH_TO_TALK_KEY,
@@ -21,11 +19,14 @@ from klaus.config import (
     VAD_MIN_RMS_DBFS,
     VAD_MIN_VOICED_RUN_FRAMES,
 )
+from klaus.stt import SpeechToText  # before PyQt6: moonshine.dll must load first
+
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
-from klaus.stt import SpeechToText
 from klaus.tts import TextToSpeech
 from klaus.brain import Brain
 from klaus.memory import Memory
@@ -38,8 +39,6 @@ def _new_guard_stats() -> dict[str, int]:
     return {
         "vad_discarded": 0,
         "quality_gate_discarded": 0,
-        "stt_requests": 0,
-        "empty_transcripts": 0,
     }
 
 
@@ -154,15 +153,10 @@ class KlausApp:
             self._guard_stats = _new_guard_stats()
             snapshot = dict(self._guard_stats)
         logger.info(
-            (
-                "STT guard stats reset (session=%s): vad_discarded=%d | "
-                "quality_gate_discarded=%d | stt_requests=%d | empty_transcripts=%d"
-            ),
+            "STT guard stats reset (session=%s): vad_discarded=%d | quality_gate_discarded=%d",
             self._session_tag(),
             snapshot["vad_discarded"],
             snapshot["quality_gate_discarded"],
-            snapshot["stt_requests"],
-            snapshot["empty_transcripts"],
         )
 
     def _increment_guard_stat(self, key: str, event: str, reason: str = "-") -> None:
@@ -173,18 +167,12 @@ class KlausApp:
             self._guard_stats[key] += 1
             snapshot = dict(self._guard_stats)
         logger.info(
-            (
-                "STT guard event=%s reason=%s session=%s "
-                "vad_discarded=%d quality_gate_discarded=%d stt_requests=%d "
-                "empty_transcripts=%d"
-            ),
+            "STT guard event=%s reason=%s session=%s vad_discarded=%d quality_gate_discarded=%d",
             event,
             reason,
             self._session_tag(),
             snapshot["vad_discarded"],
             snapshot["quality_gate_discarded"],
-            snapshot["stt_requests"],
-            snapshot["empty_transcripts"],
         )
 
     # -- Input mode --
@@ -436,17 +424,7 @@ class KlausApp:
         try:
             logger.info("Transcribing audio...")
             transcript = self._stt.transcribe(wav_bytes)
-            if self._stt.last_used_cloud:
-                self._increment_guard_stat(
-                    key="stt_requests",
-                    event="openai_stt_request",
-                )
             if not transcript:
-                if self._stt.last_used_cloud:
-                    self._increment_guard_stat(
-                        key="empty_transcripts",
-                        event="empty_transcript",
-                    )
                 logger.info("Empty transcript, returning to idle")
                 self._signals.state_changed.emit("idle")
                 return

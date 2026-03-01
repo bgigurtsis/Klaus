@@ -58,13 +58,11 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Minimum strongest contiguous voiced run of 30ms frames (default: 6)
 # vad_min_voiced_run_frames = 6
 #
-# Optional local STT precheck before paid OpenAI transcription.
-# This is OFF by default. When enabled, install faster-whisper first:
-# pip install faster-whisper
-# stt_local_precheck_enabled = true
-# stt_local_precheck_model = "tiny.en"
-# stt_local_precheck_language = "en"
-# stt_local_precheck_min_chars = 3
+# Moonshine STT model size (default: "medium")
+# Options: tiny, small, medium
+# stt_moonshine_model = "medium"
+# Moonshine language code (default: "en")
+# stt_moonshine_language = "en"
 
 # Log level (default: INFO)
 # Options: DEBUG, INFO, WARNING, ERROR
@@ -100,20 +98,6 @@ logging.basicConfig(
 _log = logging.getLogger(__name__)
 
 
-def _as_bool(value: object, default: bool) -> bool:
-    """Coerce config values to bool while tolerating string inputs."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "off"}:
-            return False
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return default
-
 if _user_config:
     _log.info("Loaded config from %s", CONFIG_PATH)
 else:
@@ -146,7 +130,6 @@ else:
 # ---------------------------------------------------------------------------
 
 CLAUDE_MODEL = "claude-sonnet-4-6"
-STT_MODEL = "gpt-4o-mini-transcribe"
 TTS_MODEL = "gpt-4o-mini-tts"
 
 # ---------------------------------------------------------------------------
@@ -169,13 +152,8 @@ VAD_MIN_VOICED_FRAMES: int = int(_user_config.get("vad_min_voiced_frames", 8))
 VAD_MIN_RMS_DBFS: float = float(_user_config.get("vad_min_rms_dbfs", -37.0))
 VAD_MIN_VOICED_RUN_FRAMES: int = int(_user_config.get("vad_min_voiced_run_frames", 6))
 
-STT_LOCAL_PRECHECK_ENABLED: bool = _as_bool(
-    _user_config.get("stt_local_precheck_enabled", True),
-    default=True,
-)
-STT_LOCAL_PRECHECK_MODEL: str = str(_user_config.get("stt_local_precheck_model", "tiny.en"))
-STT_LOCAL_PRECHECK_LANGUAGE: str = str(_user_config.get("stt_local_precheck_language", "en"))
-STT_LOCAL_PRECHECK_MIN_CHARS: int = int(_user_config.get("stt_local_precheck_min_chars", 3))
+STT_MOONSHINE_MODEL: str = str(_user_config.get("stt_moonshine_model", "medium"))
+STT_MOONSHINE_LANGUAGE: str = str(_user_config.get("stt_moonshine_language", "en"))
 
 TTS_VOICE_INSTRUCTIONS = (
     "Speak at a natural conversational pace, not slow or deliberate. "
@@ -204,11 +182,8 @@ _log.info(
     VAD_MIN_VOICED_RUN_FRAMES,
 )
 _log.info(
-    "STT precheck: enabled=%s | model=%s | language=%s | min_chars=%d",
-    STT_LOCAL_PRECHECK_ENABLED,
-    STT_LOCAL_PRECHECK_MODEL,
-    STT_LOCAL_PRECHECK_LANGUAGE,
-    STT_LOCAL_PRECHECK_MIN_CHARS,
+    "STT: moonshine_model=%s | moonshine_language=%s",
+    STT_MOONSHINE_MODEL, STT_MOONSHINE_LANGUAGE,
 )
 
 SYSTEM_PROMPT = """\

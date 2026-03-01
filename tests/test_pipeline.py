@@ -27,6 +27,30 @@ def _make_wav_bytes(duration_ms=500, sample_rate=16000):
     return buf.getvalue()
 
 
+def _make_transcript(texts: list[str]):
+    """Build a fake Transcript with TranscriptLine-like objects."""
+    lines = [SimpleNamespace(text=t, is_complete=True) for t in texts]
+    return SimpleNamespace(lines=lines)
+
+
+def _patch_moonshine(transcript_text: str):
+    """Return a context-manager patcher and the mock transcriber instance."""
+    mock_transcriber_cls = MagicMock()
+    mock_transcriber = MagicMock()
+    mock_transcriber_cls.return_value = mock_transcriber
+    mock_transcriber.transcribe_without_streaming.return_value = _make_transcript(
+        [transcript_text]
+    )
+    mock_get_model = MagicMock(return_value=("/fake/model", "5"))
+    patcher = patch.dict("sys.modules", {
+        "moonshine_voice": MagicMock(
+            Transcriber=mock_transcriber_cls,
+            get_model_for_language=mock_get_model,
+        ),
+    })
+    return patcher, mock_transcriber
+
+
 def _make_text_block(text):
     return SimpleNamespace(type="text", text=text)
 
@@ -44,14 +68,12 @@ class TestFullPipelineNoToolUse:
 
     @patch("klaus.tts.sd")
     @patch("klaus.tts.OpenAI")
-    @patch("klaus.stt.OpenAI")
     @patch("klaus.brain.WebSearch")
     @patch("klaus.brain.anthropic.Anthropic")
     def test_question_answer_flow(
         self,
         mock_anthropic_cls,
         mock_search_cls,
-        mock_stt_openai_cls,
         mock_tts_openai_cls,
         mock_sd,
         tmp_db,
@@ -62,9 +84,7 @@ class TestFullPipelineNoToolUse:
             [_make_text_block("A p-value represents the probability of observing your data if the null hypothesis is true.")]
         )
 
-        mock_stt_client = MagicMock()
-        mock_stt_openai_cls.return_value = mock_stt_client
-        mock_stt_client.audio.transcriptions.create.return_value = "What does p-value mean?"
+        moonshine_patcher, mock_moonshine = _patch_moonshine("What does p-value mean?")
 
         tts_wav = _make_wav_bytes(duration_ms=100, sample_rate=24000)
         mock_tts_client = MagicMock()
@@ -77,22 +97,23 @@ class TestFullPipelineNoToolUse:
         mock_stream.active = False
         mock_sd.get_stream.return_value = mock_stream
 
-        from klaus.stt import SpeechToText
-        from klaus.tts import TextToSpeech
-        from klaus.camera import Camera
+        with moonshine_patcher:
+            from klaus.stt import SpeechToText
+            from klaus.tts import TextToSpeech
+            from klaus.camera import Camera
 
-        stt = SpeechToText()
-        tts = TextToSpeech()
-        brain = Brain()
-        memory = Memory(db_path=tmp_db)
-        camera = Camera()
-        camera._frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            stt = SpeechToText()
+            tts = TextToSpeech()
+            brain = Brain()
+            memory = Memory(db_path=tmp_db)
+            camera = Camera()
+            camera._frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
-        session = memory.create_session("Statistics Paper")
+            session = memory.create_session("Statistics Paper")
 
-        wav_input = _make_wav_bytes()
-        transcript = stt.transcribe(wav_input)
-        assert transcript == "What does p-value mean?"
+            wav_input = _make_wav_bytes()
+            transcript = stt.transcribe(wav_input)
+            assert transcript == "What does p-value mean?"
 
         image_b64 = camera.capture_base64_jpeg()
 
@@ -128,14 +149,12 @@ class TestFullPipelineWithToolUse:
 
     @patch("klaus.tts.sd")
     @patch("klaus.tts.OpenAI")
-    @patch("klaus.stt.OpenAI")
     @patch("klaus.brain.WebSearch")
     @patch("klaus.brain.anthropic.Anthropic")
     def test_question_triggers_search(
         self,
         mock_anthropic_cls,
         mock_search_cls,
-        mock_stt_openai_cls,
         mock_tts_openai_cls,
         mock_sd,
         tmp_db,
@@ -159,9 +178,7 @@ class TestFullPipelineWithToolUse:
         )
         mock_claude.messages.create.side_effect = [tool_response, final_response]
 
-        mock_stt_client = MagicMock()
-        mock_stt_openai_cls.return_value = mock_stt_client
-        mock_stt_client.audio.transcriptions.create.return_value = "Who is Shannon and what did he prove?"
+        moonshine_patcher, mock_moonshine = _patch_moonshine("Who is Shannon and what did he prove?")
 
         tts_wav = _make_wav_bytes(duration_ms=100, sample_rate=24000)
         mock_tts_client = MagicMock()
@@ -174,17 +191,19 @@ class TestFullPipelineWithToolUse:
         mock_stream.active = False
         mock_sd.get_stream.return_value = mock_stream
 
-        from klaus.stt import SpeechToText
-        from klaus.tts import TextToSpeech
+        with moonshine_patcher:
+            from klaus.stt import SpeechToText
+            from klaus.tts import TextToSpeech
 
-        stt = SpeechToText()
-        tts = TextToSpeech()
-        brain = Brain()
-        memory = Memory(db_path=tmp_db)
+            stt = SpeechToText()
+            tts = TextToSpeech()
+            brain = Brain()
+            memory = Memory(db_path=tmp_db)
 
-        session = memory.create_session("Information Theory Book")
+            session = memory.create_session("Information Theory Book")
 
-        transcript = stt.transcribe(_make_wav_bytes())
+            transcript = stt.transcribe(_make_wav_bytes())
+
         exchange = brain.ask(question=transcript)
 
         assert "Shannon" in exchange.assistant_text

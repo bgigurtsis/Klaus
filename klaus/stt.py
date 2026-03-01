@@ -1,139 +1,119 @@
+import ctypes
 import io
 import logging
+import sys
+import time
 import wave
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-from openai import OpenAI
 from klaus.config import (
-    OPENAI_API_KEY,
-    STT_LOCAL_PRECHECK_ENABLED,
-    STT_LOCAL_PRECHECK_LANGUAGE,
-    STT_LOCAL_PRECHECK_MIN_CHARS,
-    STT_LOCAL_PRECHECK_MODEL,
-    STT_MODEL,
+    STT_MOONSHINE_LANGUAGE,
+    STT_MOONSHINE_MODEL,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _preload_native_lib() -> None:
+    """Pre-load moonshine.dll before PyQt6 to avoid WinError 1114 on Windows.
+
+    PyQt6 loads DLLs that conflict with moonshine's native library if it hasn't
+    been loaded first.  Calling this at import time (before PyQt6) sidesteps the
+    issue entirely.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import moonshine_voice
+        dll = Path(moonshine_voice.__file__).parent / "moonshine.dll"
+        if dll.exists():
+            ctypes.CDLL(str(dll))
+    except Exception:
+        pass
+
+
+_preload_native_lib()
+
+
 class SpeechToText:
-    """Transcribes audio using OpenAI gpt-4o-mini-transcribe."""
+    """Transcribes audio using Moonshine Voice (local, on-device)."""
 
-    def __init__(self):
-        self._client = OpenAI(api_key=OPENAI_API_KEY)
-        self._last_used_cloud = False
-        self._local_precheck_enabled = STT_LOCAL_PRECHECK_ENABLED
-        self._local_precheck_model_name = STT_LOCAL_PRECHECK_MODEL
-        self._local_precheck_language = STT_LOCAL_PRECHECK_LANGUAGE.strip() or None
-        self._local_precheck_min_chars = max(0, STT_LOCAL_PRECHECK_MIN_CHARS)
-        self._local_precheck_model: Any | None = None
-
-        if self._local_precheck_enabled:
-            self._local_precheck_model = self._load_local_precheck_model()
-
-    @property
-    def last_used_cloud(self) -> bool:
-        """Whether the most recent transcribe call hit OpenAI STT."""
-        return self._last_used_cloud
+    def __init__(self) -> None:
+        self._transcriber = self._load_moonshine()
 
     def transcribe(self, wav_bytes: bytes) -> str:
-        """Send WAV audio bytes to gpt-4o-mini-transcribe, return the transcribed text."""
-        self._last_used_cloud = False
+        """Transcribe WAV audio bytes to text."""
+        return self._transcribe_moonshine(wav_bytes)
 
-        if self._local_precheck_model is not None and not self._passes_local_precheck(wav_bytes):
-            logger.info("Local STT precheck rejected clip, skipping OpenAI transcription")
-            return ""
+    # ------------------------------------------------------------------
+    # Moonshine backend
+    # ------------------------------------------------------------------
 
-        logger.info("Transcribing audio (%.1f KB, model=%s)", len(wav_bytes) / 1024, STT_MODEL)
-        buf = io.BytesIO(wav_bytes)
-        buf.name = "recording.wav"
+    def _load_moonshine(self) -> Any:
+        """Load the Moonshine Voice transcriber, downloading the model if needed."""
+        try:
+            from moonshine_voice import (
+                Transcriber,
+                get_model_for_language,
+            )
+        except ImportError as exc:
+            raise RuntimeError(
+                "moonshine-voice is not installed. "
+                "Install with `pip install moonshine-voice`."
+            ) from exc
 
-        self._last_used_cloud = True
-        result = self._client.audio.transcriptions.create(
-            model=STT_MODEL,
-            file=buf,
-            response_format="text",
+        logger.info(
+            "Loading Moonshine STT (model=%s, language=%s) ...",
+            STT_MOONSHINE_MODEL,
+            STT_MOONSHINE_LANGUAGE,
         )
-        text = result.strip() if isinstance(result, str) else result.text.strip()
+        t0 = time.monotonic()
+        model_path, model_arch = get_model_for_language(
+            STT_MOONSHINE_LANGUAGE
+        )
+        transcriber = Transcriber(
+            model_path=model_path, model_arch=model_arch
+        )
+        elapsed = time.monotonic() - t0
+        logger.info(
+            "Moonshine STT ready in %.1fs (language=%s, path=%s)",
+            elapsed,
+            STT_MOONSHINE_LANGUAGE,
+            model_path,
+        )
+        return transcriber
+
+    def _transcribe_moonshine(self, wav_bytes: bytes) -> str:
+        """Run Moonshine Voice on WAV bytes, return transcript text."""
+        audio, sample_rate = self._decode_wav(wav_bytes)
+        logger.info(
+            "Transcribing audio (%.1f KB, backend=moonshine)",
+            len(wav_bytes) / 1024,
+        )
+
+        transcript = self._transcriber.transcribe_without_streaming(
+            audio.tolist(), sample_rate
+        )
+
+        parts = [line.text.strip() for line in transcript.lines if line.text.strip()]
+        text = " ".join(parts)
         logger.info("Transcript (%d chars): %s", len(text), text[:80])
         return text
 
-    def _load_local_precheck_model(self) -> Any | None:
-        """Load optional local Whisper model used as an STT precheck gate."""
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            logger.warning(
-                (
-                    "Local STT precheck enabled but faster-whisper is not installed. "
-                    "Install with `pip install faster-whisper` to enable it."
-                )
-            )
-            self._local_precheck_enabled = False
-            return None
-
-        try:
-            model = WhisperModel(
-                self._local_precheck_model_name,
-                device="cpu",
-                compute_type="int8",
-            )
-        except (RuntimeError, ValueError, OSError) as exc:
-            logger.warning(
-                "Failed to load local STT precheck model '%s': %s",
-                self._local_precheck_model_name,
-                exc,
-            )
-            self._local_precheck_enabled = False
-            return None
-
-        logger.info(
-            "Local STT precheck enabled (model=%s, min_chars=%d, language=%s)",
-            self._local_precheck_model_name,
-            self._local_precheck_min_chars,
-            self._local_precheck_language or "auto",
-        )
-        return model
-
-    def _passes_local_precheck(self, wav_bytes: bytes) -> bool:
-        """Return True when local precheck detects likely speech content."""
-        try:
-            audio = self._wav_bytes_to_float32(wav_bytes)
-            segments, _ = self._local_precheck_model.transcribe(
-                audio,
-                beam_size=1,
-                best_of=1,
-                temperature=0.0,
-                language=self._local_precheck_language,
-                condition_on_previous_text=False,
-                without_timestamps=True,
-            )
-            preview = " ".join(seg.text.strip() for seg in segments).strip()
-        except (RuntimeError, ValueError, OSError) as exc:
-            logger.warning("Local STT precheck failed, falling back to OpenAI STT: %s", exc)
-            return True
-
-        content_chars = self._content_char_count(preview)
-        if content_chars < self._local_precheck_min_chars:
-            logger.info(
-                "Local STT precheck rejected clip (%d chars < %d)",
-                content_chars,
-                self._local_precheck_min_chars,
-            )
-            return False
-
-        logger.debug("Local STT precheck accepted clip (%d chars)", content_chars)
-        return True
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _wav_bytes_to_float32(wav_bytes: bytes) -> np.ndarray:
-        """Decode WAV bytes to mono float32 samples in [-1, 1]."""
+    def _decode_wav(wav_bytes: bytes) -> tuple[np.ndarray, int]:
+        """Decode WAV bytes to mono float32 samples in [-1, 1] and sample rate."""
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
             channels = wf.getnchannels()
             sample_width = wf.getsampwidth()
-            frame_count = wf.getnframes()
-            raw_frames = wf.readframes(frame_count)
+            sample_rate = wf.getframerate()
+            raw_frames = wf.readframes(wf.getnframes())
 
         if sample_width != 2:
             raise ValueError(f"Unsupported WAV sample width: {sample_width}")
@@ -141,9 +121,4 @@ class SpeechToText:
         audio = np.frombuffer(raw_frames, dtype=np.int16).astype(np.float32)
         if channels > 1:
             audio = audio.reshape(-1, channels).mean(axis=1)
-        return audio / 32768.0
-
-    @staticmethod
-    def _content_char_count(text: str) -> int:
-        """Count alphanumeric chars, ignoring punctuation-only noise."""
-        return sum(1 for ch in text if ch.isalnum())
+        return audio / 32768.0, sample_rate
