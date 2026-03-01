@@ -12,8 +12,6 @@
 #   shasum -a 256 Klaus-0.1.0.tar.gz
 
 class Klaus < Formula
-  include Language::Python::Virtualenv
-
   desc "Voice-powered research assistant for physical books and papers"
   homepage "https://github.com/bgigurtsis/Klaus"
   url "https://github.com/bgigurtsis/Klaus/archive/refs/tags/v0.1.0.tar.gz"
@@ -24,9 +22,10 @@ class Klaus < Formula
   depends_on "portaudio"
 
   def install
-    virtualenv_create(libexec, "python@3.12")
-    system libexec/"bin/pip3", "install", "--no-cache-dir", buildpath
-    bin.install_symlink libexec/"bin/Klaus"
+    python3 = Formula["python@3.12"].opt_bin/"python3.12"
+    system python3, "-m", "venv", libexec
+    system libexec/"bin/pip", "install", buildpath
+    bin.install_symlink libexec/"bin/klaus"
   end
 
   def caveats
