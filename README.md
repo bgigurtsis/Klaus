@@ -37,64 +37,11 @@ On first launch, a setup wizard walks you through API keys, camera, mic, and voi
 
 **macOS:** `brew upgrade klaus`
 
-## Manual Install
+## Other install options
 
-Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
+**Prerequisites:** Python 3.11+, camera, mic, speakers. On Windows, install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Desktop development with C++) so `webrtcvad` can compile. On macOS without Homebrew: `brew install python@3.13 portaudio`.
 
-### Windows
-
-1. Install [Python 3.11+](https://www.python.org/downloads/) (check "Add to PATH" during install).
-
-2. Install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) -- needed to compile `webrtcvad`. Select the "Desktop development with C++" workload.
-
-3. Set up [pipx](https://pipx.pypa.io/) (one-time, installs apps with PATH handled automatically):
-
-```
-pip install pipx
-pipx ensurepath
-```
-
-Close and reopen your terminal so the new PATH takes effect.
-
-4. Install Klaus:
-
-```
-pipx install klaus-assistant
-klaus
-```
-
-Global hotkeys (F2/F3) work without app focus. No extra permissions required on Windows.
-
-### macOS
-
-Install via Homebrew:
-
-```
-brew tap bgigurtsis/klaus
-brew install klaus
-klaus
-```
-
-Or manually:
-
-1. Install Python 3.11+ and PortAudio:
-
-```
-brew install python@3.13 portaudio
-```
-
-2. Set up pipx and install Klaus:
-
-```
-pip install pipx
-pipx ensurepath
-pipx install klaus-assistant
-klaus
-```
-
-On macOS, the system will prompt you to grant **Accessibility** permission to your terminal (or Klaus) for global hotkeys to work. Go to System Settings > Privacy & Security > Accessibility and enable the app.
-
-### From source (development)
+**From source (development):**
 
 ```
 git clone https://github.com/bgigurtsis/Klaus.git
@@ -103,27 +50,23 @@ pip install -e .
 klaus
 ```
 
-### First launch
+**API keys:** The setup wizard asks for them on first launch, or add to `~/.klaus/config.toml` under `[api_keys]`: [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Tavily](https://app.tavily.com/home) (free tier: 1,000 searches/mo). Optional: `OBSIDIAN_VAULT_PATH` in `.env` for Obsidian notes.
 
-On first launch, a setup wizard walks you through API key entry, camera selection, microphone test, voice model download, and an optional background profile. No manual config file editing required.
+## Latency & Cost
 
-### API keys
+End-to-end latency from question to first spoken word is 2-3 seconds (STT + Claude + first TTS chunk). TTS streams sentence-by-sentence so playback starts before the full response is generated.
 
-Klaus needs three API keys. The setup wizard will ask for them, or you can add them to `~/.klaus/config.toml` under `[api_keys]`:
+| Usage | Approx. cost |
+|-------|-------------|
+| 10 questions | ~$0.05 |
+| 50 questions | ~$0.25 |
+| 100 questions/day | ~$2.50-3.50/day |
 
-| Key | Where to get it |
-|-----|-----------------|
-| Anthropic | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
-| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Tavily | [app.tavily.com](https://app.tavily.com/home) (free tier: 1,000 searches/mo) |
-
-Optional: set `OBSIDIAN_VAULT_PATH` in `.env` to enable note-saving to your Obsidian vault.
+Largest cost driver is Claude (vision + context window). STT is free (local). TTS is $0.015/min of generated audio.
 
 ## Camera Setup
 
-**Recommended:** A USB document camera (visualiser) or a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface. Either gives Klaus a clear, stable view of the full page.
-
-A phone works well as a substitute. Install a free app to make it appear as a webcam, then select it in Klaus camera settings:
+**Recommended:** A USB document camera (visualiser) is reccomended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface. Either gives Klaus a clear, stable view of the full page.
 
 | Setup | App |
 |-------|-----|
@@ -135,18 +78,6 @@ A phone works well as a substitute. Install a free app to make it appear as a we
 Klaus auto-detects portrait orientation and rotates the image. Override with `camera_rotation` in `~/.klaus/config.toml` if needed.
 
 ## Usage
-
-| Action | How |
-|--------|-----|
-| Ask a question (push-to-talk) | Hold **F2**, speak, release |
-| Ask a question (voice activation) | Just speak (default mode) |
-| Toggle input mode | **F3** |
-| Switch papers | Session dropdown in the header |
-| New session | **+ New Session** |
-| Replay an answer | Replay button on any response card |
-| Stop playback | Stop button in the status bar |
-| Save notes | Ask Klaus to save to an Obsidian file by name |
-| Change settings | Gear icon in the header |
 
 Klaus captures the page image when your question ends and sends it with your transcript to Claude. If Claude is uncertain about a claim, it searches the web via Tavily before answering.
 
@@ -181,17 +112,6 @@ Camera (live feed) -----------------------------------/        |
 
 Speech-to-text runs entirely locally via Moonshine Medium (245M params, ~300ms latency, no API cost). Voice activation uses WebRTC VAD with multi-stage filtering (voiced ratio, RMS loudness, contiguous voiced runs) to reject background noise before audio reaches STT.
 
-## Latency & Cost
-
-End-to-end latency from question to first spoken word is 2-3 seconds (STT + Claude + first TTS chunk). TTS streams sentence-by-sentence so playback starts before the full response is generated.
-
-| Usage | Approx. cost |
-|-------|-------------|
-| 10 questions | ~$0.05 |
-| 50 questions | ~$0.25 |
-| 100 questions/day | ~$2.50-3.50/day |
-
-Largest cost driver is Claude (vision + context window). STT is free (local). TTS is $0.015/min of generated audio.
 
 ## Module Layout
 
