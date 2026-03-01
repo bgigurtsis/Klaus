@@ -15,8 +15,8 @@ class Klaus < Formula
   include Language::Python::Virtualenv
 
   desc "Voice-powered research assistant for physical books and papers"
-  homepage "https://github.com/billyferguson/Klaus"
-  url "https://github.com/billyferguson/Klaus/archive/refs/tags/v0.1.0.tar.gz"
+  homepage "https://github.com/bgigurtsis/Klaus"
+  url "https://github.com/bgigurtsis/Klaus/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "PLACEHOLDER_SHA256"
   license "MIT"
 

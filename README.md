@@ -19,7 +19,7 @@ Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
 3. Clone and install:
 
 ```
-git clone https://github.com/billyferguson/Klaus.git
+git clone https://github.com/bgigurtsis/Klaus.git
 cd Klaus
 pip install .
 klaus
@@ -44,7 +44,7 @@ brew install portaudio
 3. Clone and install:
 
 ```
-git clone https://github.com/billyferguson/Klaus.git
+git clone https://github.com/bgigurtsis/Klaus.git
 cd Klaus
 pip install .
 klaus
@@ -53,7 +53,7 @@ klaus
 Or install directly via Homebrew:
 
 ```
-brew tap billyferguson/klaus
+brew tap bgigurtsis/klaus
 brew install klaus
 klaus
 ```

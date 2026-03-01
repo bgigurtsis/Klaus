@@ -46,9 +46,9 @@ dev = [
 klaus = "klaus.main:main"
 
 [project.urls]
-Homepage = "https://github.com/billyferguson/Klaus"
-Repository = "https://github.com/billyferguson/Klaus"
-Issues = "https://github.com/billyferguson/Klaus/issues"
+Homepage = "https://github.com/bgigurtsis/Klaus"
+Repository = "https://github.com/bgigurtsis/Klaus"
+Issues = "https://github.com/bgigurtsis/Klaus/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["klaus"]
