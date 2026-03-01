@@ -6,6 +6,31 @@ A voice-based research assistant for reading physical papers and books. Place a 
 
 **Platforms:** Windows and macOS
 
+## Quick Setup
+
+**Windows:**
+
+```
+pip install pipx && pipx ensurepath
+```
+
+Restart your terminal, then:
+
+```
+pipx install klaus-assistant
+klaus
+```
+
+**macOS:**
+
+```
+brew tap bgigurtsis/klaus
+brew install klaus
+klaus
+```
+
+On first launch, a setup wizard walks you through API keys, camera, mic, and voice model setup.
+
 ## Install
 
 Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
@@ -16,12 +41,19 @@ Requires Python 3.11+, a camera or webcam, a microphone, and speakers.
 
 2. Install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) -- needed to compile `webrtcvad`. Select the "Desktop development with C++" workload.
 
-3. Clone and install:
+3. Set up [pipx](https://pipx.pypa.io/) (one-time, installs apps with PATH handled automatically):
 
 ```
-git clone https://github.com/bgigurtsis/Klaus.git
-cd Klaus
-pip install .
+pip install pipx
+pipx ensurepath
+```
+
+Close and reopen your terminal so the new PATH takes effect.
+
+4. Install Klaus:
+
+```
+pipx install klaus-assistant
 klaus
 ```
 
@@ -29,28 +61,7 @@ Global hotkeys (F2/F3) work without app focus. No extra permissions required on 
 
 ### macOS
 
-1. Install Python 3.11+ via [Homebrew](https://brew.sh/):
-
-```
-brew install python@3.13
-```
-
-2. Install PortAudio (required by `sounddevice`):
-
-```
-brew install portaudio
-```
-
-3. Clone and install:
-
-```
-git clone https://github.com/bgigurtsis/Klaus.git
-cd Klaus
-pip install .
-klaus
-```
-
-Or install directly via Homebrew:
+Install via Homebrew:
 
 ```
 brew tap bgigurtsis/klaus
@@ -58,7 +69,33 @@ brew install klaus
 klaus
 ```
 
+Or manually:
+
+1. Install Python 3.11+ and PortAudio:
+
+```
+brew install python@3.13 portaudio
+```
+
+2. Set up pipx and install Klaus:
+
+```
+pip install pipx
+pipx ensurepath
+pipx install klaus-assistant
+klaus
+```
+
 On macOS, the system will prompt you to grant **Accessibility** permission to your terminal (or Klaus) for global hotkeys to work. Go to System Settings > Privacy & Security > Accessibility and enable the app.
+
+### From source (development)
+
+```
+git clone https://github.com/bgigurtsis/Klaus.git
+cd Klaus
+pip install -e .
+klaus
+```
 
 ### First launch
 

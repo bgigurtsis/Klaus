@@ -47,3 +47,4 @@ debug-*.log
 *.onnx
 CLAUDE.md
 homebrew-klaus
+*.tar.gz
