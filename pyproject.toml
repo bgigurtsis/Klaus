@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "klaus-assistant"
-version = "0.3.2"
+version = "0.3.3"
 description = "Voice-powered research assistant for physical books and papers"
 readme = "README.md"
 license = "MIT"
@@ -33,6 +33,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "Pillow>=10.4.0",
     "tavily-python>=0.5.0",
+    "keyring>=25.6.0; sys_platform == 'darwin'",
     "pyobjc-framework-AVFoundation>=10.3; sys_platform == 'darwin'",
     "setuptools<82",
     "webrtcvad>=2.0.10",

@@ -78,7 +78,7 @@ pip install -e .
 klaus
 ```
 
-**API keys:** The setup wizard asks for them on first launch, or add to `~/.klaus/config.toml` under `[api_keys]`: [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Tavily](https://app.tavily.com/home) (free tier: 1,000 searches/mo). Optional: `OBSIDIAN_VAULT_PATH` in `.env` for Obsidian notes.
+**API keys:** The setup wizard asks for them on first launch. On macOS, Klaus stores them in Apple Keychain and resolves keys in this order: environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`) first, then Keychain, then legacy `~/.klaus/config.toml` fallback if Keychain is unavailable. Provider links: [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Tavily](https://app.tavily.com/home) (free tier: 1,000 searches/mo). Optional: `OBSIDIAN_VAULT_PATH` in `.env` for Obsidian notes.
 
 ## Latency & Cost
 

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-02 (live device switching + real device names).
+Last updated: 2026-03-02 (app icon + dock name).
 
 ## Project Summary
 
@@ -33,7 +33,7 @@ desktop app on Windows and macOS.
 | Module | Lines | Purpose |
 |--------|------:|---------|
 | `config.py` | 527 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, query-router thresholds/feature flags, save/reload helpers, immediate runtime setters for camera/mic |
-| `main.py` | 877 | Entry point; wires all components, hotkeys (pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator, live device-switch handlers with rollback, post-settings client reload; routes questions before full context capture |
+| `main.py` | 941 | Entry point; wires all components, hotkeys (conditional pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator, live device-switch handlers with rollback, post-settings client reload, app icon + dock name setup (skipped on macOS 26 + Py 3.14), shifted-key variant mapping for macOS ISO keyboards; routes questions before full context capture |
 | `audio.py` | 486 | PushToTalkRecorder, VoiceActivatedRecorder (with device selection, suspend/resume stream), AudioPlayer |
 | `brain.py` | 440 | Claude vision + tool-use loop, route-aware context assembly, sentence-cap enforcement, conversation history, streaming, `reload_clients()` |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
@@ -57,6 +57,7 @@ desktop app on Windows and macOS.
 | `settings_dialog.py` | 443 | Tabbed settings dialog (API keys, camera, mic, profile + Obsidian vault) with immediate camera/mic apply + persistence signals |
 | `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
 | `camera_widget.py` | 71 | Live camera preview (~30 fps) |
+| `icon.png` | -- | Application icon (owl logo); used for window, taskbar, and macOS dock |
 
 ## Key Architecture Decisions
 
@@ -154,6 +155,13 @@ desktop app on Windows and macOS.
   enumeration calls (`list_camera_devices`, `list_input_devices`, `sd.InputStream`)
   in settings/setup flows and `VoiceActivatedRecorder` are wrapped with
   try/except for the same reason.
+- **App icon**: `klaus/ui/icon.png` is set as the window icon via
+  `QApplication.setWindowIcon()` (cross-platform). On macOS, pyobjc overrides
+  the dock icon (`NSApplication.setApplicationIconImage_`) and the menu-bar /
+  dock name (`NSBundle.mainBundle().infoDictionary()["CFBundleName"] = "Klaus"`)
+  so the app shows "Klaus" instead of "Python". Both pyobjc calls use
+  `Foundation` and `AppKit`, which are transitive dependencies of the existing
+  `pyobjc-framework-AVFoundation` requirement.
 - **Packaging**: `pyproject.toml` with `hatchling` build backend. Entry point:
   `klaus = "klaus.main:main"`. Homebrew formula in `homebrew/klaus.rb` for
   macOS distribution via a tap repo.

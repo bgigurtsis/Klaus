@@ -6,6 +6,7 @@ import logging
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -99,14 +100,10 @@ class SettingsDialog(QDialog):
 
         self._key_edits: dict[str, QLineEdit] = {}
         self._key_indicators: dict[str, QLabel] = {}
+        self._key_clear_checks: dict[str, QCheckBox] = {}
+        self._api_key_sources = config.get_api_key_sources()
 
-        current_keys = {
-            "anthropic": config.ANTHROPIC_API_KEY,
-            "openai": config.OPENAI_API_KEY,
-            "tavily": config.TAVILY_API_KEY,
-        }
-
-        for label, slug, prefix, min_len in KEY_PATTERNS:
+        for label, slug, prefix, _min_len in KEY_PATTERNS:
             row = QHBoxLayout()
             row.setSpacing(8)
 
@@ -119,11 +116,10 @@ class SettingsDialog(QDialog):
             row.addWidget(name)
 
             edit = QLineEdit()
-            edit.setPlaceholderText(f"{prefix}...")
+            source = self._api_key_sources.get(slug, "missing")
+            edit.setPlaceholderText(self._api_key_placeholder(prefix, source))
             edit.setEchoMode(QLineEdit.EchoMode.Password)
-            if current_keys.get(slug):
-                edit.setText(current_keys[slug])
-            edit.textChanged.connect(lambda _, s=slug: self._validate_key(s))
+            edit.textChanged.connect(lambda _, s=slug: self._on_key_text_changed(s))
             self._key_edits[slug] = edit
             row.addWidget(edit, stretch=1)
 
@@ -134,7 +130,19 @@ class SettingsDialog(QDialog):
             self._key_indicators[slug] = indicator
             row.addWidget(indicator)
 
+            clear_box = QCheckBox("Clear")
+            clear_box.stateChanged.connect(lambda _, s=slug: self._on_key_clear_toggled(s))
+            self._key_clear_checks[slug] = clear_box
+            row.addWidget(clear_box)
+
             layout.addLayout(row)
+
+            source_hint = QLabel(self._api_key_source_hint(source))
+            source_hint.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+                "background: transparent; border: none; padding-left: 98px;"
+            )
+            layout.addWidget(source_hint)
 
         for slug in self._key_edits:
             self._validate_key(slug)
@@ -142,9 +150,50 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return page
 
+    @staticmethod
+    def _api_key_placeholder(prefix: str, source: str) -> str:
+        if source == "keychain":
+            return "Stored in Apple Keychain; enter new key to replace"
+        if source == "env":
+            return "Set by environment variable; enter key to persist locally"
+        if source == "config":
+            return "Stored in config.toml fallback; enter new key to replace"
+        return f"{prefix}..."
+
+    @staticmethod
+    def _api_key_source_hint(source: str) -> str:
+        if source == "keychain":
+            return "Currently stored in Apple Keychain."
+        if source == "env":
+            return "Currently provided by environment variable."
+        if source == "config":
+            return "Currently stored in config.toml fallback."
+        return "No stored value."
+
+    def _on_key_text_changed(self, slug: str) -> None:
+        text = self._key_edits[slug].text().strip()
+        clear_box = self._key_clear_checks[slug]
+        if text and clear_box.isChecked():
+            clear_box.blockSignals(True)
+            clear_box.setChecked(False)
+            clear_box.blockSignals(False)
+        self._validate_key(slug)
+
+    def _on_key_clear_toggled(self, slug: str) -> None:
+        if self._key_clear_checks[slug].isChecked():
+            edit = self._key_edits[slug]
+            edit.blockSignals(True)
+            edit.clear()
+            edit.blockSignals(False)
+        self._validate_key(slug)
+
     def _validate_key(self, slug: str) -> None:
+        clear_checked = self._key_clear_checks[slug].isChecked()
         text = self._key_edits[slug].text().strip()
         indicator = self._key_indicators[slug]
+        if clear_checked:
+            indicator.setText("")
+            return
         if not text:
             indicator.setText("")
             return
@@ -439,11 +488,22 @@ class SettingsDialog(QDialog):
     # -- Save --
 
     def _save(self) -> None:
-        config.save_api_keys(
-            self._key_edits["anthropic"].text().strip(),
-            self._key_edits["openai"].text().strip(),
-            self._key_edits["tavily"].text().strip(),
-        )
+        for label, slug, _prefix, _min_len in KEY_PATTERNS:
+            if self._key_clear_checks[slug].isChecked():
+                config.clear_api_key(slug)
+                continue
+
+            text = self._key_edits[slug].text().strip()
+            if not text:
+                continue
+
+            is_valid, message = validate_api_key(slug, text)
+            if not is_valid:
+                self._tabs.setCurrentIndex(0)
+                QMessageBox.warning(self, "Invalid API key", f"{label}: {message}")
+                return
+            config.set_api_key(slug, text)
+
         bg = self._background_edit.toPlainText().strip()
         config.save_user_background(bg)
         vault = self._vault_path_edit.text().strip()

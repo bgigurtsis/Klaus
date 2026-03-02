@@ -35,6 +35,10 @@ _QT_KEY_MAP: dict[str, Qt.Key] = {
     "tab": Qt.Key.Key_Tab, "backspace": Qt.Key.Key_Backspace,
 }
 
+_QT_SHIFTED_VARIANTS: dict[int, int] = {
+    ord("±"): ord("§"),
+}
+
 
 def resolve_qt_key(key_name: str) -> int:
     """Map a config key name (e.g. ``'F2'``) to a ``Qt.Key`` value."""
@@ -55,17 +59,17 @@ def hotkey_action_for_keypress(
     platform_name: str,
 ) -> str | None:
     """Return ``ptt_down``, ``toggle``, or ``None`` for a key press."""
-    if key != ptt_key and key != toggle_key:
+    effective_key = _QT_SHIFTED_VARIANTS.get(key, key) if shift_pressed else key
+
+    if effective_key != ptt_key and effective_key != toggle_key:
         return None
 
-    # On macOS, if the same physical key is used for PTT and toggle (default §),
-    # require Shift for toggle and treat plain press as push-to-talk.
-    if platform_name == "darwin" and ptt_key == toggle_key and key == ptt_key:
+    if platform_name == "darwin" and ptt_key == toggle_key and effective_key == ptt_key:
         return "toggle" if shift_pressed else "ptt_down"
 
-    if key == toggle_key:
+    if effective_key == toggle_key:
         return "toggle"
-    if key == ptt_key:
+    if effective_key == ptt_key:
         return "ptt_down"
     return None
 
@@ -218,11 +222,10 @@ class MainWindow(QMainWindow):
         if event.isAutoRepeat():
             return
         key = event.key()
+        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         action = hotkey_action_for_keypress(
             key=key,
-            shift_pressed=bool(
-                event.modifiers() & Qt.KeyboardModifier.ShiftModifier
-            ),
+            shift_pressed=shift,
             ptt_key=self._qt_ptt_key,
             toggle_key=self._qt_toggle_key,
             platform_name=sys.platform,

@@ -6,7 +6,10 @@ import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
 from dotenv import load_dotenv
+
+from klaus import secrets_store
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -113,6 +116,7 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Options: DEBUG, INFO, WARNING, ERROR
 # log_level = "INFO"
 
+# Legacy API key fallback (used when Keychain is unavailable on macOS)
 [api_keys]
 # anthropic = ""
 # openai = ""
@@ -177,6 +181,13 @@ CLAUDE_MODEL = "claude-sonnet-4-6"
 TTS_MODEL = "gpt-4o-mini-tts"
 _DEFAULT_PTT_KEY = "§" if sys.platform == "darwin" else "F2"
 _DEFAULT_TOGGLE_KEY = "§" if sys.platform == "darwin" else "F3"
+
+API_KEY_SLUGS: tuple[str, ...] = ("anthropic", "openai", "tavily")
+_API_KEY_ENV_VARS: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "tavily": "TAVILY_API_KEY",
+}
 
 TTS_VOICE_INSTRUCTIONS = (
     "Speak at a natural conversational pace, not slow or deliberate. "
@@ -432,6 +443,7 @@ the page.\
 """
 
 _api_keys: dict = {}
+_api_key_sources: dict[str, str] = {slug: "missing" for slug in API_KEY_SLUGS}
 _runtime_settings: RuntimeSettings
 
 # Set by _apply_runtime_settings.
@@ -505,8 +517,50 @@ _RUNTIME_EXPORTS: dict[str, str] = {
 }
 
 
+def _legacy_api_keys_from_config(user_config: dict) -> dict[str, str]:
+    legacy = user_config.get("api_keys", {})
+    if not isinstance(legacy, dict):
+        return {slug: "" for slug in API_KEY_SLUGS}
+    return {slug: _as_str(legacy.get(slug, ""), "") for slug in API_KEY_SLUGS}
+
+
+def _resolve_api_key(slug: str, legacy_value: str) -> tuple[str, str]:
+    env_name = _API_KEY_ENV_VARS[slug]
+    env_value = _as_str(os.getenv(env_name, ""), "")
+    if env_value:
+        return env_value, "env"
+
+    if secrets_store.is_keychain_supported():
+        try:
+            keychain_value = _as_str(secrets_store.get_api_key(slug), "")
+        except secrets_store.SecretsStoreError as exc:
+            _log.warning(
+                "Keychain read failed for %s; falling back to config if present. error=%s",
+                slug,
+                exc,
+            )
+        else:
+            if keychain_value:
+                return keychain_value, "keychain"
+
+    if legacy_value:
+        return legacy_value, "config"
+    return "", "missing"
+
+
 def _settings_from_config(user_config: dict) -> RuntimeSettings:
-    api_keys = user_config.get("api_keys", {})
+    global _api_key_sources
+
+    legacy_api_keys = _legacy_api_keys_from_config(user_config)
+    resolved_api_keys: dict[str, str] = {}
+    api_key_sources: dict[str, str] = {}
+    for slug in API_KEY_SLUGS:
+        value, source = _resolve_api_key(slug, legacy_api_keys[slug])
+        resolved_api_keys[slug] = value
+        api_key_sources[slug] = source
+
+    _api_key_sources = api_key_sources
+
     user_background = _as_str(user_config.get("user_background", ""), "")
     values: dict[str, object] = {}
     for spec in _RUNTIME_SETTING_SPECS:
@@ -515,18 +569,9 @@ def _settings_from_config(user_config: dict) -> RuntimeSettings:
             raw = os.getenv(spec.env_var, "")
         values[spec.runtime_field] = spec.coerce(raw, spec.default)
 
-    values["anthropic_api_key"] = _as_str(
-        api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", ""),
-        "",
-    )
-    values["openai_api_key"] = _as_str(
-        api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", ""),
-        "",
-    )
-    values["tavily_api_key"] = _as_str(
-        api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", ""),
-        "",
-    )
+    values["anthropic_api_key"] = resolved_api_keys["anthropic"]
+    values["openai_api_key"] = resolved_api_keys["openai"]
+    values["tavily_api_key"] = resolved_api_keys["tavily"]
     values["user_background"] = user_background
     values["system_prompt"] = _build_system_prompt(user_background)
     return RuntimeSettings(**values)
@@ -597,9 +642,8 @@ def get_runtime_settings() -> RuntimeSettings:
     return _runtime_settings
 
 
-_runtime_settings = _settings_from_config(_user_config)
-_apply_runtime_settings(_runtime_settings)
-_log_runtime_settings(_runtime_settings)
+def get_api_key_sources() -> dict[str, str]:
+    return dict(_api_key_sources)
 
 
 # ---------------------------------------------------------------------------
@@ -632,11 +676,14 @@ def _escape_toml_basic_string(value: str) -> str:
     )
 
 
-def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
-    """Write API keys to the [api_keys] section of config.toml."""
-    safe_anthropic = _escape_toml_basic_string(anthropic.strip())
-    safe_openai = _escape_toml_basic_string(openai.strip())
-    safe_tavily = _escape_toml_basic_string(tavily.strip())
+_API_KEYS_SECTION_RE = re.compile(r"\[api_keys\].*?(?=\n\[|\Z)", re.DOTALL)
+
+
+def _write_legacy_api_keys(anthropic: str, openai: str, tavily: str) -> None:
+    """Write API keys to the legacy [api_keys] section of config.toml."""
+    safe_anthropic = _escape_toml_basic_string(anthropic)
+    safe_openai = _escape_toml_basic_string(openai)
+    safe_tavily = _escape_toml_basic_string(tavily)
     text = _read_config_text()
     new_section = (
         "[api_keys]\n"
@@ -644,14 +691,92 @@ def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
         f'openai = "{safe_openai}"\n'
         f'tavily = "{safe_tavily}"\n'
     )
-    section_re = re.compile(
-        r"\[api_keys\].*?(?=\n\[|\Z)", re.DOTALL,
-    )
-    if section_re.search(text):
-        text = section_re.sub(lambda _m: new_section.rstrip(), text)
+    if _API_KEYS_SECTION_RE.search(text):
+        text = _API_KEYS_SECTION_RE.sub(lambda _m: new_section.rstrip(), text)
     else:
         text = text.rstrip() + "\n\n" + new_section
     _write_config_text(text)
+
+
+def _remove_legacy_api_keys_section() -> bool:
+    text = _read_config_text()
+    if not _API_KEYS_SECTION_RE.search(text):
+        return False
+    updated = _API_KEYS_SECTION_RE.sub("", text)
+    cleaned = updated.rstrip() + "\n"
+    _write_config_text(cleaned)
+    return True
+
+
+def _read_legacy_api_keys_from_disk() -> dict[str, str]:
+    loaded, _ = _load_user_config()
+    return _legacy_api_keys_from_config(loaded)
+
+
+def set_api_key(slug: str, value: str) -> None:
+    """Persist one API key using Keychain on macOS with config fallback."""
+    if slug not in API_KEY_SLUGS:
+        raise ValueError(f"Unknown API key slug: {slug!r}")
+
+    normalized = value.strip()
+    if secrets_store.is_keychain_supported():
+        try:
+            if normalized:
+                secrets_store.set_api_key(slug, normalized)
+            else:
+                secrets_store.delete_api_key(slug)
+        except secrets_store.SecretsStoreError as exc:
+            _log.warning(
+                "Keychain write failed for %s; falling back to config.toml storage. error=%s",
+                slug,
+                exc,
+            )
+        else:
+            _remove_legacy_api_keys_section()
+            return
+
+    legacy = _read_legacy_api_keys_from_disk()
+    legacy[slug] = normalized
+    _write_legacy_api_keys(
+        legacy["anthropic"],
+        legacy["openai"],
+        legacy["tavily"],
+    )
+
+
+def clear_api_key(slug: str) -> None:
+    """Clear one API key from persisted storage."""
+    set_api_key(slug, "")
+
+
+def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
+    """Persist API keys using Keychain on macOS with config fallback."""
+    normalized = {
+        "anthropic": anthropic.strip(),
+        "openai": openai.strip(),
+        "tavily": tavily.strip(),
+    }
+    if secrets_store.is_keychain_supported():
+        try:
+            for slug, value in normalized.items():
+                if value:
+                    secrets_store.set_api_key(slug, value)
+                else:
+                    secrets_store.delete_api_key(slug)
+        except secrets_store.SecretsStoreError as exc:
+            _log.warning(
+                "Keychain write failed; falling back to config.toml storage. error=%s",
+                exc,
+            )
+        else:
+            _remove_legacy_api_keys_section()
+            return
+
+    _write_legacy_api_keys(
+        normalized["anthropic"],
+        normalized["openai"],
+        normalized["tavily"],
+    )
 
 
 def _set_top_level_value(key: str, value: str) -> None:
@@ -714,6 +839,38 @@ def save_obsidian_vault_path(path: str) -> None:
     _set_top_level_value("obsidian_vault_path", f'"{escaped}"')
 
 
+def _migrate_legacy_api_keys_to_keychain(user_config: dict) -> dict:
+    """Move legacy plaintext keys into Keychain and purge [api_keys] on success."""
+    if not secrets_store.is_keychain_supported():
+        return user_config
+    if "api_keys" not in user_config:
+        return user_config
+
+    legacy = _legacy_api_keys_from_config(user_config)
+    try:
+        for slug in API_KEY_SLUGS:
+            legacy_value = legacy[slug]
+            if not legacy_value:
+                continue
+            if secrets_store.has_api_key(slug):
+                continue
+            secrets_store.set_api_key(slug, legacy_value)
+    except secrets_store.SecretsStoreError as exc:
+        _log.warning(
+            "Failed to migrate legacy API keys to Keychain; keeping config fallback. error=%s",
+            exc,
+        )
+        return user_config
+
+    removed = _remove_legacy_api_keys_section()
+    if removed:
+        _log.info("Migrated legacy [api_keys] section to Apple Keychain")
+
+    updated = dict(user_config)
+    updated.pop("api_keys", None)
+    return updated
+
+
 def reload() -> None:
     """Re-read config.toml and update module-level constants.
 
@@ -730,7 +887,14 @@ def reload() -> None:
             load_error,
         )
 
+    _user_config = _migrate_legacy_api_keys_to_keychain(_user_config)
     _runtime_settings = _settings_from_config(_user_config)
     _apply_runtime_settings(_runtime_settings)
     _log.info("Config reloaded from %s", CONFIG_PATH)
     _log_runtime_settings(_runtime_settings, prefix="Reloaded")
+
+
+_user_config = _migrate_legacy_api_keys_to_keychain(_user_config)
+_runtime_settings = _settings_from_config(_user_config)
+_apply_runtime_settings(_runtime_settings)
+_log_runtime_settings(_runtime_settings)

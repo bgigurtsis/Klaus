@@ -441,8 +441,8 @@ class SetupWizard(QMainWindow):
         layout.addStretch()
 
         footer = QLabel(
-            "Your keys are stored locally in ~/.klaus/config.toml\n"
-            "and never leave your machine."
+            "On macOS, your keys are stored in Apple Keychain.\n"
+            "If Keychain is unavailable, Klaus falls back to ~/.klaus/config.toml."
         )
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(

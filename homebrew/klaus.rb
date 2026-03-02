@@ -20,23 +20,25 @@ class Klaus < Formula
 
   depends_on "python@3.12"
   depends_on "portaudio"
+  depends_on "rust" => :build
 
   def install
     python3 = Formula["python@3.12"].opt_bin/"python3.12"
     system python3, "-m", "venv", libexec
-    system libexec/"bin/pip", "install", buildpath
+    system libexec/"bin/pip", "install", "--no-binary", "jiter", buildpath
     bin.install_symlink libexec/"bin/klaus"
   end
 
   def caveats
     <<~EOS
-      Klaus needs Accessibility permission for global hotkeys.
-      Grant it in: System Settings > Privacy & Security > Accessibility
+      Start Klaus with:
+        klaus
 
-      On first launch, a setup wizard will walk you through API key
-      configuration, camera selection, and voice model download.
+      On first launch a setup wizard will guide you through API keys,
+      camera selection, and voice model download.
 
-      Run `klaus` to start.
+      Global hotkeys require Accessibility permission:
+        System Settings > Privacy & Security > Accessibility
     EOS
   end
 

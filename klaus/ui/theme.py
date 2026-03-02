@@ -61,7 +61,8 @@ KLAUS_BTN_HOVER_BG = "#1e331e"
 # Fonts
 # ---------------------------------------------------------------------------
 
-FONT_FAMILY = '"Inter", "Segoe UI", "SF Pro Text", sans-serif'
+_PLATFORM_FALLBACK = '"Segoe UI"' if sys.platform == "win32" else '".AppleSystemUIFont"'
+FONT_FAMILY = f'"Inter", {_PLATFORM_FALLBACK}, sans-serif'
 FONT_SIZE_BODY = 15
 FONT_SIZE_SMALL = 13
 FONT_SIZE_CAPTION = 12

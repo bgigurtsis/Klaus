@@ -69,7 +69,8 @@ class SpeechToText:
             ) from exc
 
         logger.info(
-            "Loading Moonshine STT (model=%s, language=%s) ...",
+            "Loading Moonshine STT (model=%s, language=%s) — "
+            "first launch may take 10-30s to download and compile the model ...",
             self._settings.stt_moonshine_model,
             self._settings.stt_moonshine_language,
         )

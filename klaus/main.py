@@ -7,35 +7,17 @@ import platform
 import sys
 import threading
 
-from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
-
-import klaus.config as config
-
-
-def _resolve_pynput_key(key_name: str) -> Key | KeyCode:
-    """Convert a config key name (e.g. ``'F2'``) to a pynput key object."""
-    try:
-        return getattr(Key, key_name.lower())
-    except AttributeError:
-        if len(key_name) == 1:
-            return KeyCode.from_char(key_name)
-        raise ValueError(f"Unknown hotkey: {key_name!r}")
-
-from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
-
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import QObject, pyqtSignal
-
-logger = logging.getLogger(__name__)
-_SHIFT_KEYS = {Key.shift, Key.shift_l, Key.shift_r}
-
 
 def _should_disable_global_hotkeys() -> bool:
     """Return True when starting pynput global hotkeys is known to crash.
 
     macOS 26 + Python 3.14 has a crash path in pynput/Carbon keyboard APIs
-    (HIToolbox dispatch queue assertion). Keep the app alive by disabling
+    (HIToolbox dispatch queue assertion).  Keep the app alive by disabling
     global hotkeys and relying on in-app Qt hotkeys.
+
+    Also used at import time to skip loading pynput altogether, since merely
+    importing pynput loads pyobjc extensions that trigger intermittent
+    segfaults in the ctypes layer on this platform combination.
     """
     if sys.platform != "darwin":
         return False
@@ -49,6 +31,42 @@ def _should_disable_global_hotkeys() -> bool:
         return False
 
     return mac_major >= 26 and sys.version_info >= (3, 14)
+
+
+if not _should_disable_global_hotkeys():
+    from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
+    _PYNPUT_AVAILABLE = True
+    _SHIFT_KEYS: set = {Key.shift, Key.shift_l, Key.shift_r}
+else:
+    Key = KeyCode = KeyboardListener = None  # type: ignore[assignment,misc]
+    _PYNPUT_AVAILABLE = False
+    _SHIFT_KEYS = set()
+
+_PYNPUT_SHIFTED_VARIANTS: dict[str, str] = {
+    "±": "§",
+}
+
+import klaus.config as config
+
+
+def _resolve_pynput_key(key_name: str) -> object:
+    """Convert a config key name (e.g. ``'F2'``) to a pynput key object.
+
+    Only valid when ``_PYNPUT_AVAILABLE`` is True.
+    """
+    try:
+        return getattr(Key, key_name.lower())
+    except AttributeError:
+        if len(key_name) == 1:
+            return KeyCode.from_char(key_name)
+        raise ValueError(f"Unknown hotkey: {key_name!r}")
+
+from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
+
+from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtCore import QObject, pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 
 def _mark_key_pressed(pressed: set[object], key: object | None) -> bool:
@@ -71,6 +89,16 @@ def _is_shift_active(pressed: set[object]) -> bool:
     return any(key in pressed for key in _SHIFT_KEYS)
 
 
+def _resolve_shifted_key(key: Key | KeyCode | None, shift_active: bool) -> Key | KeyCode | None:
+    """Map a shifted character back to its unshifted base key (e.g. ± → §)."""
+    if not shift_active or key is None:
+        return key
+    char = getattr(key, "char", None)
+    if char and char in _PYNPUT_SHIFTED_VARIANTS:
+        return KeyCode.from_char(_PYNPUT_SHIFTED_VARIANTS[char])
+    return key
+
+
 def _hotkey_action_for_press(
     *,
     platform_name: str,
@@ -82,15 +110,17 @@ def _hotkey_action_for_press(
     """Classify a key press as ``ptt_down``, ``toggle``, or ``None``."""
     if key is None:
         return None
-    if key != ptt_key and key != toggle_key:
+
+    effective = _resolve_shifted_key(key, shift_active)
+    if effective != ptt_key and effective != toggle_key:
         return None
 
-    if platform_name == "darwin" and ptt_key == toggle_key and key == ptt_key:
+    if platform_name == "darwin" and ptt_key == toggle_key and effective == ptt_key:
         return "toggle" if shift_active else "ptt_down"
 
-    if key == toggle_key:
+    if effective == toggle_key:
         return "toggle"
-    if key == ptt_key:
+    if effective == ptt_key:
         return "ptt_down"
     return None
 
@@ -168,11 +198,15 @@ class KlausApp:
         self._input_mode: str = self._runtime_settings.input_mode
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
-        self._hotkey_listener: KeyboardListener | None = None
+        self._hotkey_listener = None
         self._ptt_key_name = self._runtime_settings.push_to_talk_key
         self._toggle_key_name = self._runtime_settings.toggle_key
-        self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
-        self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+        if _PYNPUT_AVAILABLE:
+            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
+            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+        else:
+            self._ptt_pynput_key = None
+            self._toggle_pynput_key = None
         self._active_camera_index: int = config.CAMERA_DEVICE_INDEX
         self._active_mic_device: int | None = _configured_mic_device()
 
@@ -247,8 +281,40 @@ class KlausApp:
 
     def run(self) -> None:
         logger.info("Klaus starting")
+
+        _skip_pyobjc = _should_disable_global_hotkeys()
+        if sys.platform == "darwin" and not _skip_pyobjc:
+            import ctypes, ctypes.util
+            from Foundation import NSBundle, NSProcessInfo
+            _libc = ctypes.CDLL(ctypes.util.find_library("c"))
+            _libc.setprogname(b"Klaus")
+            bundle = NSBundle.mainBundle()
+            info = bundle.infoDictionary()
+            info["CFBundleName"] = "Klaus"
+            info["CFBundleDisplayName"] = "Klaus"
+            NSProcessInfo.processInfo().setProcessName_("Klaus")
+        elif _skip_pyobjc:
+            logger.debug(
+                "Skipping pyobjc process-name setup (macOS %s + Python %s "
+                "has intermittent ctypes segfaults in pyobjc)",
+                platform.mac_ver()[0], platform.python_version(),
+            )
+
         app = QApplication(sys.argv)
         app.setApplicationName("Klaus")
+        app.setApplicationDisplayName("Klaus")
+
+        from pathlib import Path
+        from PyQt6.QtGui import QIcon
+        _icon_path = Path(__file__).resolve().parent / "ui" / "icon.png"
+        if _icon_path.is_file():
+            app.setWindowIcon(QIcon(str(_icon_path)))
+            if sys.platform == "darwin" and not _skip_pyobjc:
+                from AppKit import NSApplication, NSImage
+                ns_app = NSApplication.sharedApplication()
+                ns_image = NSImage.alloc().initByReferencingFile_(str(_icon_path))
+                ns_image.setName_("NSApplicationIcon")
+                ns_app.setApplicationIconImage_(ns_image)
 
         from klaus.ui import theme
         theme.load_fonts()
@@ -829,8 +895,9 @@ class KlausApp:
         self._runtime_settings = config.get_runtime_settings()
         self._ptt_key_name = self._runtime_settings.push_to_talk_key
         self._toggle_key_name = self._runtime_settings.toggle_key
-        self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
-        self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+        if _PYNPUT_AVAILABLE:
+            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
+            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
         self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
         if self._hotkey_listener:
             self._hotkey_listener.stop()
