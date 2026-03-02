@@ -199,7 +199,7 @@ flowchart LR
     Router --> Claude["Claude (vision + tools)"]
     Capture --> Claude
     Claude --> TTS[OpenAI TTS]
-    TTS --> Audio Output
+    TTS --> Output[Audio Output]
     Claude --> Tavily[Web Search]
     Claude --> Obsidian[Notes]
     Claude --> SQLite[Memory]
