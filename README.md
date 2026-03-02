@@ -129,7 +129,13 @@ A camera is required for Klaus to see what you're reading.
 
 A USB document camera (also called a visualiser) is recommended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface works well. Either gives Klaus a clear, stable view of the full page.
 
-Some recommended apps to connect your phone as a webcam:
+I personally use this model: 
+
+https://www.amazon.com/PAKOTOO-Document-Teachers-Classroom-Distance (Amazon US)
+
+https://www.amazon.co.uk/kitchbai-Visualiser-Teaching-Classroom-Chromebook (Amazon UK)
+
+Or, some recommended apps to connect your phone as a webcam:
 
 | Setup | App |
 |-------|-----|
