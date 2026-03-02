@@ -6,7 +6,7 @@ Klaus is a desktop voice assistant that lets you ask questions about what you're
 
 The experience is tuned for fast study loops: read, ask, clarify, continue. Klaus searches the web when it's unsure about a claim, remembers context across turns, and can write notes directly to your Obsidian vault on request.
 
-Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds Moonshine Medium, a local speech-to-text model. This model is downloaded on first use. A hybrid query router (local heuristics with `claude-haiku-4-5` fallback) decides what context each question needs. The main reasoning loop runs on `claude-sonnet-4-6` with tool use, and output streams sentence-by-sentence to OpenAI `gpt-4o-mini-tts`. End-to-end latency is 2-4 seconds.
+Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshine](https://github.com/usefulsensors/moonshine) Medium, a local speech-to-text model. This model is downloaded on first use. A hybrid query router (local heuristics with `claude-haiku-4-5` fallback) decides what context each question needs. The main reasoning loop runs on `claude-sonnet-4-6` with tool use, and output streams sentence-by-sentence to OpenAI `gpt-4o-mini-tts`. End-to-end latency is 2-4 seconds.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds Moonshin
 
 - **Vision-grounded Q&A** -- place a page under a camera, ask a question, and Klaus will read the page before answering your question so that it has all the context
 - **Web search** -- Tavily search triggers automatically when Claude is uncertain about a claim
-- **Voice input** -- voice-activated recording (WebRTC VAD) or push-to-talk; speech-to-text runs locally via Moonshine Medium (no API cost, ~300ms)
+- **Voice input** -- voice-activated recording (WebRTC VAD) or push-to-talk; speech-to-text runs locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium (no API cost, ~300ms)
 - **Streamed speech output** -- OpenAI TTS streams sentence-by-sentence so playback starts before the full response is generated (2-3s end-to-end)
 - **Smart query routing** -- a hybrid local + LLM router classifies each question and decides what context (image, history, memory, notes) to include
 - **Obsidian notes** -- dictate notes hands-free; Klaus writes them directly to your Obsidian vault
@@ -163,7 +163,7 @@ End-to-end latency from question to first spoken word is 2-4 seconds (STT + Clau
 | 50 questions | ~$0.25 |
 | 100 questions/day | ~$2.50-3.50/day |
 
-Largest cost driver is Claude Sonnet 4.6 (vision + context window). Reasoning model can be changed as you wish in the config.toml for either a cheaper or more expensive model. In my experience Sonnet 4.6 is a nice middleground. STT is free via a local copy of Moonshine Medium. TTS is $0.015/min of generated audio.
+Largest cost driver is Claude Sonnet 4.6 (vision + context window). Reasoning model can be changed as you wish in the config.toml for either a cheaper or more expensive model. In my experience Sonnet 4.6 is a nice middleground. STT is free via a local copy of [Moonshine](https://github.com/usefulsensors/moonshine) Medium. TTS is $0.015/min of generated audio.
 
 ## Configuration
 
@@ -200,13 +200,13 @@ flowchart LR
     Capture --> Claude
     Claude --> TTS[OpenAI TTS]
     TTS --> Output[Audio Output]
-    Claude --> Tavily[Web Search]
-    Claude --> Obsidian[Notes]
-    Claude --> SQLite[Memory]
+    Claude <--> Tavily[Web Search]
+    Claude <--> Obsidian[Notes]
+    Claude <--> SQLite[Memory]
     Claude --> ChatUI[Chat UI]
 ```
 
-Speech-to-text runs entirely locally via Moonshine Medium (245M params, ~300ms latency, no API cost). Voice activation uses WebRTC VAD with multi-stage filtering (voiced ratio, RMS loudness, contiguous voiced runs) to reject background noise before audio reaches STT.
+Speech-to-text runs entirely locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium (245M params, ~300ms latency, no API cost). Voice activation uses WebRTC VAD with multi-stage filtering (voiced ratio, RMS loudness, contiguous voiced runs) to reject background noise before audio reaches STT.
 
 The query router classifies each transcript before answer generation. Most turns are handled by fast local heuristics; uncertain turns can invoke a lightweight LLM router call with a strict timeout. The route controls whether image, history, memory, and notes context are sent to Claude and applies per-turn sentence caps.
 
