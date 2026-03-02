@@ -2,11 +2,11 @@
 
 **Voice-powered research assistant for physical books and papers.**
 
-Klaus is a desktop voice assistant that lets you study hands-free. Place a page under a camera, ask a question out loud, and Klaus reads the page, reasons about your question through Claude's vision API, and answers in natural speech -- all while keeping the conversation visible in a chat UI.
+Klaus is a desktop voice assistant that lets you ask questions about what you're reading hands free. Place a page under a camera, ask a question out loud, Klaus reads the page and reasons about your question through Claude's vision API before answering in natural speech.
 
 The experience is tuned for fast study loops: read, ask, clarify, continue. Klaus searches the web when it's unsure about a claim, remembers context across turns, and can write notes directly to your Obsidian vault on request.
 
-Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds Moonshine Medium, a local speech-to-text model. A hybrid query router (local heuristics with `claude-haiku-4-5` fallback) decides what context each question needs. The main reasoning loop runs on `claude-sonnet-4-6` with tool use, and output streams sentence-by-sentence to OpenAI `gpt-4o-mini-tts`. End-to-end latency is 2-3 seconds.
+Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds Moonshine Medium, a local speech-to-text model. This model is downloaded on first use. A hybrid query router (local heuristics with `claude-haiku-4-5` fallback) decides what context each question needs. The main reasoning loop runs on `claude-sonnet-4-6` with tool use, and output streams sentence-by-sentence to OpenAI `gpt-4o-mini-tts`. End-to-end latency is 2-4 seconds.
 
 ## Table of Contents
 
@@ -151,11 +151,11 @@ Toggle between modes with the toggle key (default `§` on macOS, `F3` on Windows
 
 When you finish speaking, Klaus captures a frame from the camera and sends the page image along with your transcript to Claude. Claude reasons over the page, optionally searches the web via Tavily, and responds aloud. The response streams sentence-by-sentence so you hear the first sentence within 2-3 seconds.
 
-**Obsidian integration** -- if you've configured a vault path (in the setup wizard or settings), you can ask Klaus to take notes. It writes markdown files directly to your Obsidian vault.
+**Obsidian integration** -- if you've configured a vault path (in the setup wizard or settings), you can ask Klaus to take notes as you speak. Ensure that you specify which markdown file you want it to put the notes in. It will then write markdown files directly to your Obsidian vault.
 
 ## Latency and Cost
 
-End-to-end latency from question to first spoken word is 2-3 seconds (STT + Claude + first TTS chunk). TTS streams sentence-by-sentence so playback starts before the full response is generated.
+End-to-end latency from question to first spoken word is 2-4 seconds (STT + Claude + first TTS chunk). TTS streams sentence-by-sentence so playback starts before the full response is generated.
 
 | Usage | Approx. cost |
 |-------|-------------|
@@ -163,7 +163,7 @@ End-to-end latency from question to first spoken word is 2-3 seconds (STT + Clau
 | 50 questions | ~$0.25 |
 | 100 questions/day | ~$2.50-3.50/day |
 
-Largest cost driver is Claude (vision + context window). STT is free (local). TTS is $0.015/min of generated audio.
+Largest cost driver is Claude Sonnet 4.6 (vision + context window). Reasoning model can be changed as you wish in the config.toml for either a cheaper or more expensive model. In my experience Sonnet 4.6 is a nice middleground. STT is free via a local copy of Moonshine Medium. TTS is $0.015/min of generated audio.
 
 ## Configuration
 
