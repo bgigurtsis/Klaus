@@ -44,54 +44,86 @@ class MicDevice:
     is_default: bool
 
 
-def _macos_avfoundation_camera_names() -> list[str]:
-    """Return best-effort camera names from AVFoundation on macOS."""
+def _avfoundation_device_name_at(index: int) -> str | None:
+    """Get the name of the AVFoundation video device at *index* using a fresh
+    DiscoverySession — the same approach OpenCV 4.x uses internally on each
+    ``cv2.VideoCapture(index)`` call.
+
+    A fresh session is created per call so that the device ordering always
+    reflects the current system state and matches what OpenCV sees.  Virtual
+    cameras (OBS, Iriun, etc.) register dynamically, so the ordering can
+    shift between calls — querying right before OpenCV opens the device
+    keeps the two in sync.
+    """
     if sys.platform != "darwin":
-        return []
+        return None
+    try:
+        from AVFoundation import (
+            AVCaptureDeviceDiscoverySession,
+            AVCaptureDeviceTypeBuiltInWideAngleCamera,
+            AVCaptureDeviceTypeExternal,
+            AVMediaTypeVideo,
+        )
+        session = (
+            AVCaptureDeviceDiscoverySession
+            .discoverySessionWithDeviceTypes_mediaType_position_(
+                [
+                    AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                    AVCaptureDeviceTypeExternal,
+                ],
+                AVMediaTypeVideo,
+                0,  # AVCaptureDevicePositionUnspecified
+            )
+        )
+        devices = session.devices()
+        if devices and index < len(devices):
+            return str(devices[index].localizedName()).strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def _macos_avfoundation_camera_count() -> int:
+    """Return the number of AVFoundation video devices (used for probe limit)."""
+    if sys.platform != "darwin":
+        return 0
+    try:
+        from AVFoundation import (
+            AVCaptureDeviceDiscoverySession,
+            AVCaptureDeviceTypeBuiltInWideAngleCamera,
+            AVCaptureDeviceTypeExternal,
+            AVMediaTypeVideo,
+        )
+        session = (
+            AVCaptureDeviceDiscoverySession
+            .discoverySessionWithDeviceTypes_mediaType_position_(
+                [
+                    AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                    AVCaptureDeviceTypeExternal,
+                ],
+                AVMediaTypeVideo,
+                0,
+            )
+        )
+        devices = session.devices()
+        return len(devices) if devices else 0
+    except Exception:
+        pass
     try:
         from AVFoundation import AVCaptureDevice, AVMediaTypeVideo
-    except Exception:
-        return []
-
-    names: list[str] = []
-    try:
         devices = AVCaptureDevice.devicesWithMediaType_(AVMediaTypeVideo)
+        return len(devices) if devices else 0
     except Exception:
-        return []
-
-    # region agent log
-    _raw_names = []
-    # endregion
-    for device in devices or []:
-        try:
-            localized = device.localizedName()
-        except Exception:
-            continue
-        name = str(localized).strip()
-        # region agent log
-        _uid = ""
-        try: _uid = str(device.uniqueID())
-        except Exception: pass
-        _raw_names.append({"name": name, "uid": _uid})
-        # endregion
-        if not name or name in names:
-            continue
-        names.append(name)
-    # region agent log
-    import json as _json, time as _time
-    with open("/Users/billygigurtsis/Programming/Klaus/.cursor/debug-b06de1.log", "a") as _f:
-        _f.write(_json.dumps({"sessionId":"b06de1","hypothesisId":"A,B,C","location":"device_catalog.py:_macos_avfoundation_camera_names","message":"AVFoundation raw devices","data":{"raw_names":_raw_names,"filtered_names":names,"count_raw":len(_raw_names),"count_filtered":len(names)},"timestamp":int(_time.time()*1000)}) + "\n")
-    # endregion
-    return names
+        return 0
 
 
 def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
     """Probe camera indices and return display-friendly camera metadata."""
     cameras: list[dict] = []
-    av_names = _macos_avfoundation_camera_names()
+    av_count = _macos_avfoundation_camera_count()
     probe_limit = max_index
-    if av_names:
-        probe_limit = min(max_index, max(len(av_names) + 2, 4))
+    if av_count:
+        probe_limit = min(max_index, max(av_count + 2, 4))
     devnull = None
     old_stderr = None
     found_any = False
@@ -103,11 +135,16 @@ def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
             os.dup2(devnull.fileno(), 2)
 
         for i in range(probe_limit):
+            # Query AVFoundation for device name at index i using a fresh
+            # DiscoverySession right before OpenCV opens the same index,
+            # ensuring both see the same device ordering.
+            inline_av_name = _avfoundation_device_name_at(i)
+
             cap = cv2.VideoCapture(i, _BACKEND)
             if not cap.isOpened():
                 cap.release()
                 failure_streak += 1
-                if not av_names and found_any and failure_streak >= 3:
+                if not av_count and found_any and failure_streak >= 3:
                     break
                 continue
 
@@ -121,11 +158,8 @@ def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
                 fallback = f"{fallback} ({backend_name})"
             cap.release()
 
-            display_name = fallback
-            source = "opencv"
-            if i < len(av_names):
-                display_name = av_names[i]
-                source = "avfoundation"
+            display_name = inline_av_name or fallback
+            source = "avfoundation" if inline_av_name else "opencv"
 
             cameras.append(
                 {

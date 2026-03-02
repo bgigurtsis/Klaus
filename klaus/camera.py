@@ -89,6 +89,8 @@ class Camera:
     def start(self) -> None:
         if self._running:
             return
+        if self._device_index < 0:
+            raise RuntimeError("No camera selected (device index %d)" % self._device_index)
         logger.info("Opening camera (device %d)...", self._device_index)
 
         self._cap = cv2.VideoCapture(self._device_index, _BACKEND)
