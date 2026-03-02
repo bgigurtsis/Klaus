@@ -12,6 +12,19 @@ Main reasoning loop runs on `claude-sonnet-4-6`. Tools include Tavily for search
 
 **Platforms:** Windows and macOS
 
+## Features
+
+- **Vision-grounded Q&A** -- place a page under a camera, ask a question, and Klaus reads the page and answers aloud
+- **Voice input** -- voice-activated recording (WebRTC VAD) or push-to-talk; speech-to-text runs locally via Moonshine Medium (no API cost, ~300ms)
+- **Streamed speech output** -- OpenAI TTS streams sentence-by-sentence so playback starts before the full response is generated (2-3s end-to-end)
+- **Smart query routing** -- a hybrid local + LLM router classifies each question and decides what context (image, history, memory, notes) to include
+- **Web search** -- Tavily search triggers automatically when Claude is uncertain about a claim
+- **Obsidian notes** -- dictate notes hands-free; Klaus writes them directly to your Obsidian vault
+- **Conversation memory** -- SQLite-backed session history with persistent knowledge profile
+- **Secure API key storage** -- Apple Keychain on macOS (auto-migrates legacy plaintext keys); `config.toml` fallback on Windows
+- **First-run setup wizard** -- walks you through API keys, camera selection, mic test, voice model download, and user profile
+- **Cross-platform** -- macOS and Windows with platform-specific optimizations (AVFoundation camera names, DWM dark title bar, etc.)
+
 ## Quick Setup
 
 **Windows:**
@@ -78,7 +91,23 @@ pip install -e .
 klaus
 ```
 
-**API keys:** The setup wizard asks for them on first launch. On macOS, Klaus stores them in Apple Keychain and resolves keys in this order: environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`) first, then Keychain, then legacy `~/.klaus/config.toml` fallback if Keychain is unavailable. Provider links: [Anthropic](https://console.anthropic.com/settings/keys), [OpenAI](https://platform.openai.com/api-keys), [Tavily](https://app.tavily.com/home) (free tier: 1,000 searches/mo). Optional: `OBSIDIAN_VAULT_PATH` in `.env` for Obsidian notes.
+**API keys:** The setup wizard asks for them on first launch. You need keys from three providers:
+
+- [Anthropic](https://console.anthropic.com/settings/keys) (Claude -- vision + reasoning)
+- [OpenAI](https://platform.openai.com/api-keys) (TTS)
+- [Tavily](https://app.tavily.com/home) (web search, free tier: 1,000 searches/mo)
+
+On **macOS**, keys are stored in **Apple Keychain**. Klaus resolves each key in this order:
+
+1. Environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`)
+2. Apple Keychain
+3. Legacy `~/.klaus/config.toml` `[api_keys]` section (fallback if Keychain is unavailable)
+
+Existing plaintext keys in `config.toml` are automatically migrated to Keychain on first launch.
+
+On **Windows**, keys are stored in `~/.klaus/config.toml`.
+
+Optional: set `OBSIDIAN_VAULT_PATH` in `~/.klaus/config.toml` (or `.env`) for Obsidian note integration.
 
 ## Latency & Cost
 
@@ -151,6 +180,7 @@ Speech-to-text runs entirely locally via Moonshine Medium (245M params, ~300ms l
 ## Data
 
 - Config: `~/.klaus/config.toml`
+- API keys: Apple Keychain on macOS; `~/.klaus/config.toml` on Windows
 - Database: `~/.klaus/klaus.db` (sessions, exchanges, knowledge profile)
 - No images stored, only a short hash of each page capture
 - Delete the database to start fresh
