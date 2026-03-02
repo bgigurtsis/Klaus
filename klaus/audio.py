@@ -113,7 +113,7 @@ class VoiceActivatedRecorder:
         min_voiced_ratio: float = 0.25,
         min_voiced_frames: int = 5,
         min_duration: float = 0.3,
-        min_rms_dbfs: float = -37.0,
+        min_rms_dbfs: float = -45.0,
         min_voiced_run_frames: int = 6,
         device: int | None = None,
     ):
@@ -241,6 +241,39 @@ class VoiceActivatedRecorder:
         self._current_voiced_run = 0
         self._max_voiced_run = 0
         logger.debug("VAD resumed")
+
+    def suspend_stream(self) -> None:
+        """Stop the physical mic stream. Safe to call from non-callback threads.
+
+        Use this (instead of pause) when you need to free the CoreAudio device,
+        e.g. before TTS playback. Call resume_stream() to reopen.
+        """
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+        logger.debug("VAD stream suspended")
+
+    def resume_stream(self) -> None:
+        """Reopen the physical mic stream after suspend_stream()."""
+        if self._running and self._stream is None:
+            try:
+                self._stream = sd.InputStream(
+                    samplerate=self._sample_rate,
+                    channels=CHANNELS,
+                    dtype=DTYPE,
+                    blocksize=FRAME_SIZE,
+                    device=self._device,
+                    callback=self._audio_callback,
+                )
+                self._stream.start()
+            except Exception as exc:
+                logger.error("Failed to reopen mic stream: %s", exc)
+                return
+        logger.debug("VAD stream resumed")
 
     def _audio_callback(
         self,

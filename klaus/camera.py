@@ -10,12 +10,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from klaus.config import (
-    CAMERA_DEVICE_INDEX,
-    CAMERA_FRAME_WIDTH,
-    CAMERA_FRAME_HEIGHT,
-    CAMERA_ROTATION,
-)
+import klaus.config as config
 
 logger = logging.getLogger(__name__)
 
@@ -25,41 +20,18 @@ _BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
 
 
 def enumerate_cameras(max_index: int = 10) -> list[dict]:
-    """Probe camera indices and return info for each available camera.
+    """Return available cameras as dicts for backward compatibility."""
+    from klaus.device_catalog import list_camera_devices
 
-    Returns a list of dicts with keys ``index``, ``name``, ``width``, ``height``.
-    Temporarily suppresses stderr to silence DSHOW backend warnings on Windows
-    for indices that have no camera attached.
-    """
-    cameras: list[dict] = []
-    devnull = None
-    old_stderr = None
-    try:
-        if sys.platform == "win32":
-            devnull = open(os.devnull, "w")
-            old_stderr = os.dup(2)
-            os.dup2(devnull.fileno(), 2)
-
-        for i in range(max_index):
-            cap = cv2.VideoCapture(i, _BACKEND)
-            if not cap.isOpened():
-                cap.release()
-                continue
-            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            name = f"Camera {i}"
-            backend_name = cap.getBackendName() if hasattr(cap, "getBackendName") else ""
-            if backend_name:
-                name = f"Camera {i} ({backend_name})"
-            cap.release()
-            cameras.append({"index": i, "name": name, "width": w, "height": h})
-    finally:
-        if old_stderr is not None:
-            os.dup2(old_stderr, 2)
-            os.close(old_stderr)
-        if devnull is not None:
-            devnull.close()
-    return cameras
+    return [
+        {
+            "index": cam.index,
+            "name": cam.display_name,
+            "width": cam.width,
+            "height": cam.height,
+        }
+        for cam in list_camera_devices(max_index=max_index)
+    ]
 
 
 _ROTATION_MAP: dict[str, int | None] = {
@@ -87,8 +59,26 @@ def _resolve_rotation(setting: str, frame_w: int, frame_h: int) -> int | None:
 class Camera:
     """Continuously captures frames from a document camera in a background thread."""
 
-    def __init__(self, device_index: int = CAMERA_DEVICE_INDEX):
-        self._device_index = device_index
+    def __init__(
+        self,
+        device_index: int | None = None,
+        frame_width: int | None = None,
+        frame_height: int | None = None,
+        rotation: str | None = None,
+    ):
+        settings = config.get_runtime_settings()
+        self._device_index = (
+            settings.camera_device_index if device_index is None else int(device_index)
+        )
+        self._frame_width = (
+            settings.camera_frame_width if frame_width is None else int(frame_width)
+        )
+        self._frame_height = (
+            settings.camera_frame_height if frame_height is None else int(frame_height)
+        )
+        self._rotation_setting = (
+            settings.camera_rotation if rotation is None else str(rotation)
+        )
         self._cap: cv2.VideoCapture | None = None
         self._frame: np.ndarray | None = None
         self._lock = threading.Lock()
@@ -102,8 +92,8 @@ class Camera:
         logger.info("Opening camera (device %d)...", self._device_index)
 
         self._cap = cv2.VideoCapture(self._device_index, _BACKEND)
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_FRAME_WIDTH)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_FRAME_HEIGHT)
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._frame_width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._frame_height)
         if not self._cap.isOpened():
             raise RuntimeError(
                 f"Cannot open camera at index {self._device_index}. "
@@ -114,12 +104,12 @@ class Camera:
         logger.info(
             "Camera opened (device %d) at %dx%d (requested %dx%d)",
             self._device_index, actual_w, actual_h,
-            CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT,
+            self._frame_width, self._frame_height,
         )
 
-        self._rotation = _resolve_rotation(CAMERA_ROTATION, actual_w, actual_h)
+        self._rotation = _resolve_rotation(self._rotation_setting, actual_w, actual_h)
         if self._rotation is not None:
-            logger.info("Camera rotation: %s", CAMERA_ROTATION)
+            logger.info("Camera rotation: %s", self._rotation_setting)
 
         self._running = True
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -185,3 +175,7 @@ class Camera:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def device_index(self) -> int:
+        return self._device_index

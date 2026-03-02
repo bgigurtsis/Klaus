@@ -78,6 +78,12 @@ class TestSaveApiKeys:
         assert "sk-ant-old" not in text
         assert 'anthropic = "sk-ant-new"' in text
 
+    def test_escapes_newlines_and_quotes(self, config_dir):
+        config.save_api_keys('sk-ant-a"b\nc', "sk-openai", "tvly-tavily")
+        with open(config_dir, "rb") as f:
+            parsed = tomllib.load(f)
+        assert parsed["api_keys"]["anthropic"] == 'sk-ant-a"b\nc'
+
 
 class TestSetTopLevelValue:
     def test_uncomments_commented_key(self, config_dir):
@@ -123,6 +129,32 @@ class TestSaveCameraIndex:
         assert parsed["camera_index"] == 3
 
 
+class TestSetDeviceIndexes:
+    def test_set_camera_index_updates_runtime_and_file(self, config_dir):
+        config.set_camera_index(7, persist=True)
+        assert config.CAMERA_DEVICE_INDEX == 7
+        with open(config_dir, "rb") as f:
+            parsed = tomllib.load(f)
+        assert parsed["camera_index"] == 7
+
+    def test_set_mic_index_updates_runtime_and_file(self, config_dir):
+        config.set_mic_index(4, persist=True)
+        assert config.MIC_DEVICE_INDEX == 4
+        with open(config_dir, "rb") as f:
+            parsed = tomllib.load(f)
+        assert parsed["mic_index"] == 4
+
+    def test_setters_runtime_only_with_persist_false(self, config_dir):
+        before = config_dir.read_text(encoding="utf-8")
+        config.set_camera_index(9, persist=False)
+        config.set_mic_index(5, persist=False)
+        after = config_dir.read_text(encoding="utf-8")
+
+        assert config.CAMERA_DEVICE_INDEX == 9
+        assert config.MIC_DEVICE_INDEX == 5
+        assert before == after
+
+
 class TestReload:
     def test_reloads_api_keys(self, config_dir, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -145,6 +177,17 @@ class TestReload:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
         config.reload()
         assert config.ANTHROPIC_API_KEY == "env-key"
+
+    def test_reload_invalid_toml_uses_defaults(self, tmp_path, monkeypatch):
+        bad = tmp_path / "bad.toml"
+        bad.write_text('hotkey = "F2"\napi_keys = "oops\n', encoding="utf-8")
+        monkeypatch.setattr(config, "CONFIG_PATH", bad)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+
+        config.reload()
+
+        assert config.ANTHROPIC_API_KEY == "env-key"
+        assert config.CAMERA_DEVICE_INDEX == 0
 
 
 class TestKeyValidationPatterns:

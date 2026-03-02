@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -20,25 +19,11 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QPixmap
 
 from klaus.ui import theme
+from klaus.ui.shared.relative_time import format_relative_time_with_tooltip
 
 logger = logging.getLogger(__name__)
 
 _SCROLL_THRESHOLD = 30
-
-
-def _relative_time(ts: float) -> tuple[str, str]:
-    """Return (display_str, tooltip_str) for a timestamp."""
-    full = time.strftime("%I:%M %p", time.localtime(ts))
-    delta = time.time() - ts
-    if delta < 60:
-        return "just now", full
-    if delta < 3600:
-        m = int(delta / 60)
-        return f"{m}m ago", full
-    if delta < 86400:
-        h = int(delta / 3600)
-        return f"{h}h ago", full
-    return full, full
 
 
 class MessageCard(QFrame):
@@ -80,7 +65,7 @@ class MessageCard(QFrame):
         header.addWidget(name)
 
         if timestamp:
-            display, tooltip = _relative_time(timestamp)
+            display, tooltip = format_relative_time_with_tooltip(timestamp)
             ts_label = QLabel(display)
             ts_label.setObjectName("card-timestamp")
             ts_label.setToolTip(tooltip)

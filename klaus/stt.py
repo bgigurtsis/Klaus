@@ -1,5 +1,6 @@
 import ctypes
 import io
+import inspect
 import logging
 import sys
 import time
@@ -8,10 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from klaus.config import (
-    STT_MOONSHINE_LANGUAGE,
-    STT_MOONSHINE_MODEL,
-)
+
+import klaus.config as config
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,12 @@ _preload_native_lib()
 class SpeechToText:
     """Transcribes audio using Moonshine Voice (local, on-device)."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: config.RuntimeSettings | None = None) -> None:
+        self._settings = settings or config.get_runtime_settings()
+        self._transcriber = self._load_moonshine()
+
+    def reload_settings(self, settings: config.RuntimeSettings | None = None) -> None:
+        self._settings = settings or config.get_runtime_settings()
         self._transcriber = self._load_moonshine()
 
     def transcribe(self, wav_bytes: bytes) -> str:
@@ -66,13 +70,29 @@ class SpeechToText:
 
         logger.info(
             "Loading Moonshine STT (model=%s, language=%s) ...",
-            STT_MOONSHINE_MODEL,
-            STT_MOONSHINE_LANGUAGE,
+            self._settings.stt_moonshine_model,
+            self._settings.stt_moonshine_language,
         )
         t0 = time.monotonic()
-        model_path, model_arch = get_model_for_language(
-            STT_MOONSHINE_LANGUAGE
-        )
+        kwargs: dict[str, object] = {}
+        try:
+            params = inspect.signature(get_model_for_language).parameters
+        except (TypeError, ValueError):
+            params = {}
+        if "model_size" in params:
+            kwargs["model_size"] = self._settings.stt_moonshine_model
+        elif "model" in params:
+            kwargs["model"] = self._settings.stt_moonshine_model
+
+        try:
+            model_path, model_arch = get_model_for_language(
+                self._settings.stt_moonshine_language, **kwargs
+            )
+        except TypeError:
+            # Older moonshine-voice versions may not expose model selection.
+            model_path, model_arch = get_model_for_language(
+                self._settings.stt_moonshine_language
+            )
         transcriber = Transcriber(
             model_path=model_path, model_arch=model_arch
         )
@@ -80,7 +100,7 @@ class SpeechToText:
         logger.info(
             "Moonshine STT ready in %.1fs (language=%s, path=%s)",
             elapsed,
-            STT_MOONSHINE_LANGUAGE,
+            self._settings.stt_moonshine_language,
             model_path,
         )
         return transcriber

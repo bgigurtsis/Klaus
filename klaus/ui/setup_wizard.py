@@ -8,11 +8,8 @@ is ``true`` in ``~/.klaus/config.toml``.
 from __future__ import annotations
 
 import logging
-import threading
 
 import cv2
-import numpy as np
-import sounddevice as sd
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt6.QtWidgets import (
@@ -33,25 +30,21 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import klaus.config as config
+from klaus.device_catalog import (
+    format_camera_label,
+    format_mic_label,
+    list_camera_devices,
+    list_input_devices,
+)
 from klaus.ui import theme
+from klaus.ui.shared.key_validation import KEY_PATTERNS, KEY_URLS, validate_api_key
+from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
 
 logger = logging.getLogger(__name__)
 
 STEP_TITLES = ["Welcome", "API Keys", "Camera", "Microphone", "Voice Model", "About You", "Done"]
 NUM_STEPS = len(STEP_TITLES)
-
-_KEY_PATTERNS: list[tuple[str, str, str, int]] = [
-    ("Anthropic", "anthropic", "sk-ant-", 40),
-    ("OpenAI", "openai", "sk-", 20),
-    ("Tavily", "tavily", "tvly-", 20),
-]
-
-_KEY_URLS = {
-    "anthropic": "https://console.anthropic.com/settings/keys",
-    "openai": "https://platform.openai.com/api-keys",
-    "tavily": "https://app.tavily.com/home",
-}
-
 
 # ---------------------------------------------------------------------------
 # Step indicator (row of dots)
@@ -213,6 +206,7 @@ class SetupWizard(QMainWindow):
             "openai": "",
             "tavily": "",
             "camera_index": -1,
+            "mic_index": -1,
             "user_background": "",
             "obsidian_vault_path": "",
         }
@@ -268,7 +262,7 @@ class SetupWizard(QMainWindow):
     def _update_next_enabled(self) -> None:
         if self._current_step == 1:
             all_valid = all(
-                self._key_valid.get(slug, False) for _, slug, _, _ in _KEY_PATTERNS
+                self._key_valid.get(slug, False) for _, slug, _, _ in KEY_PATTERNS
             )
             self._next_btn.setEnabled(all_valid)
         else:
@@ -286,26 +280,57 @@ class SetupWizard(QMainWindow):
     def _build_step_welcome(self) -> None:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(16)
+        layout.setContentsMargins(36, 22, 36, 20)
+        layout.setSpacing(12)
 
-        title = QLabel("Klaus")
+        title = QLabel("Welcome to Klaus")
+        title.setObjectName("wizard-welcome-title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(
-            f"font-size: 48px; font-weight: bold; color: {theme.TEXT_PRIMARY}; "
-            "background: transparent; border: none;"
-        )
         layout.addWidget(title)
 
-        subtitle = QLabel("Voice-powered research assistant\nfor physical books and papers")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet(
-            f"font-size: {theme.FONT_SIZE_BODY}px; color: {theme.TEXT_SECONDARY}; "
-            "background: transparent; border: none;"
+        subtitle = QLabel(
+            "Ask questions out loud while you read. Klaus captures the page context when you "
+            "finish speaking, uses Claude to answer your question, and speaks the answer back to you concisely."
         )
+        subtitle.setObjectName("wizard-welcome-subtitle")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        layout.addSpacing(24)
+        card_specs = [
+            (
+                "How It Works",
+                "Ask Klaus questions about what you're reading. It uses a local STT model "
+                "to parse what you're saying, combined with the picture of the page "
+                "to provide context to Claude.",
+            ),
+            (
+                "Getting Better Answers",
+                "By default Klaus is very concise and to the point. It is designed, "
+                "so you can ask follow up questions quikcly. If you want more detail "
+                "say so or reference the part you want explained.",
+            ),
+            (
+                "Tool use",
+                "Optionally connect your Obsidian vault and ask Klaus to save notes "
+                "directly to your vault while you browse. Klaus will also search "
+                "the web using Tavily verify its response. ",
+            ),
+        ]
+
+        cards_col = QVBoxLayout()
+        cards_col.setContentsMargins(0, 2, 0, 0)
+        cards_col.setSpacing(12)
+        for card_title, card_body in card_specs:
+            cards_col.addWidget(self._build_welcome_card(card_title, card_body))
+        layout.addLayout(cards_col)
+
+        footer = QLabel("You can change any setup choices later in Settings.")
+        footer.setObjectName("wizard-welcome-footer")
+        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(footer)
+
+        layout.addSpacing(6)
 
         btn = QPushButton("Get Started")
         btn.setObjectName("wizard-primary-btn")
@@ -313,8 +338,31 @@ class SetupWizard(QMainWindow):
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.clicked.connect(lambda: self._set_step(1))
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(1)
 
         self._stack.addWidget(page)
+
+    def _build_welcome_card(self, title: str, body: str) -> QWidget:
+        card = QWidget()
+        card.setObjectName("wizard-welcome-card")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(14, 12, 14, 12)
+        card_layout.setSpacing(6)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("wizard-welcome-card-title")
+        title_label.setWordWrap(True)
+        card_layout.addWidget(title_label)
+
+        body_label = QLabel(body)
+        body_label.setObjectName("wizard-welcome-card-body")
+        body_label.setWordWrap(True)
+        card_layout.addWidget(body_label)
+
+        card_layout.addStretch(1)
+        return card
 
     # -----------------------------------------------------------------------
     # Step 2 -- API Keys
@@ -339,7 +387,7 @@ class SetupWizard(QMainWindow):
         self._key_hints: dict[str, QLabel] = {}
         self._key_valid: dict[str, bool] = {}
 
-        for label, slug, prefix, min_len in _KEY_PATTERNS:
+        for label, slug, prefix, min_len in KEY_PATTERNS:
             row = QHBoxLayout()
             row.setSpacing(8)
 
@@ -370,7 +418,7 @@ class SetupWizard(QMainWindow):
             link.setObjectName("wizard-link-btn")
             link.setCursor(Qt.CursorShape.PointingHandCursor)
             link.setFixedWidth(80)
-            url = _KEY_URLS[slug]
+            url = KEY_URLS[slug]
             link.clicked.connect(
                 lambda _, u=url: QDesktopServices.openUrl(
                     __import__("PyQt6.QtCore", fromlist=["QUrl"]).QUrl(u)
@@ -417,37 +465,25 @@ class SetupWizard(QMainWindow):
             self._update_next_enabled()
             return
 
-        for _, s, prefix, min_len in _KEY_PATTERNS:
-            if s != slug:
-                continue
-            if not text.startswith(prefix):
-                indicator.setText("\u2717")
-                indicator.setStyleSheet(
-                    f"color: {theme.ERROR_COLOR}; font-size: 18px; "
-                    "background: transparent; border: none;"
-                )
-                hint.setText(f"Keys typically start with {prefix}")
-                hint.setVisible(True)
-                self._key_valid[slug] = False
-            elif len(text) < min_len:
-                indicator.setText("\u2717")
-                indicator.setStyleSheet(
-                    f"color: {theme.ERROR_COLOR}; font-size: 18px; "
-                    "background: transparent; border: none;"
-                )
-                hint.setText("Key seems too short")
-                hint.setVisible(True)
-                self._key_valid[slug] = False
-            else:
-                indicator.setText("\u2713")
-                indicator.setStyleSheet(
-                    f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
-                    "background: transparent; border: none;"
-                )
-                hint.setVisible(False)
-                self._key_valid[slug] = True
-                self._collected[slug] = text
-            break
+        is_valid, message = validate_api_key(slug, text)
+        if not is_valid:
+            indicator.setText("\u2717")
+            indicator.setStyleSheet(
+                f"color: {theme.ERROR_COLOR}; font-size: 18px; "
+                "background: transparent; border: none;"
+            )
+            hint.setText(message)
+            hint.setVisible(bool(message))
+            self._key_valid[slug] = False
+        else:
+            indicator.setText("\u2713")
+            indicator.setStyleSheet(
+                f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
+                "background: transparent; border: none;"
+            )
+            hint.setVisible(False)
+            self._key_valid[slug] = True
+            self._collected[slug] = text
 
         self._update_next_enabled()
 
@@ -490,16 +526,12 @@ class SetupWizard(QMainWindow):
         self._stack.addWidget(page)
 
     def _populate_cameras(self) -> None:
-        from klaus.camera import enumerate_cameras
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_combo.addItem("No camera (audio only)", -1)
-        cameras = enumerate_cameras()
+        cameras = list_camera_devices()
         for cam in cameras:
-            self._camera_combo.addItem(
-                f"{cam['name']}  ({cam['width']}x{cam['height']})",
-                cam["index"],
-            )
+            self._camera_combo.addItem(format_camera_label(cam), cam.index)
         if cameras:
             self._camera_combo.setCurrentIndex(1)
         self._camera_combo.blockSignals(False)
@@ -533,6 +565,7 @@ class SetupWizard(QMainWindow):
         layout.addWidget(heading)
 
         self._mic_combo = QComboBox()
+        self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
         layout.addWidget(self._mic_combo)
 
         meter_label = QLabel("Volume level")
@@ -560,63 +593,55 @@ class SetupWizard(QMainWindow):
         layout.addStretch()
         self._stack.addWidget(page)
 
-        self._mic_stream: sd.InputStream | None = None
-        self._mic_rms: float = 0.0
-        self._mic_lock = threading.Lock()
+        self._mic_monitor = MicLevelMonitor()
         self._mic_timer = QTimer(self)
         self._mic_timer.timeout.connect(self._update_mic_meter)
 
     def _populate_mics(self) -> None:
         self._mic_combo.blockSignals(True)
         self._mic_combo.clear()
-        devices = sd.query_devices()
-        default_input = sd.default.device[0] if isinstance(sd.default.device, tuple) else sd.default.device
+        self._mic_combo.addItem("System default microphone", -1)
+        for mic in list_input_devices():
+            self._mic_combo.addItem(format_mic_label(mic), mic.index)
+        selected_device = int(self._collected.get("mic_index", config.MIC_DEVICE_INDEX))
         selected = 0
-        idx = 0
-        for i, dev in enumerate(devices):
-            if dev["max_input_channels"] > 0:
-                label = dev["name"]
-                self._mic_combo.addItem(label, i)
-                if i == default_input:
-                    selected = idx
-                idx += 1
+        if selected_device >= 0:
+            for i in range(self._mic_combo.count()):
+                if self._mic_combo.itemData(i) == selected_device:
+                    selected = i
+                    break
         self._mic_combo.setCurrentIndex(selected)
         self._mic_combo.blockSignals(False)
+        self._collected["mic_index"] = self._mic_combo.currentData() or -1
+
+    def _selected_mic_device(self) -> int | None:
+        mic_idx = self._mic_combo.currentData()
+        if mic_idx is None:
+            return None
+        mic_idx = int(mic_idx)
+        if mic_idx < 0:
+            return None
+        return mic_idx
+
+    def _on_mic_changed(self) -> None:
+        mic_idx = self._mic_combo.currentData()
+        if mic_idx is None:
+            mic_idx = -1
+        self._collected["mic_index"] = int(mic_idx)
+        self._start_mic_meter()
 
     def _start_mic_meter(self) -> None:
         self._stop_mic_meter()
-        device_idx = self._mic_combo.currentData()
-
-        def callback(indata, frames, time_info, status):
-            rms = float(np.sqrt(np.mean(indata.astype(np.float32) ** 2)))
-            with self._mic_lock:
-                self._mic_rms = rms
-
-        try:
-            self._mic_stream = sd.InputStream(
-                samplerate=16000, channels=1, dtype="int16",
-                device=device_idx, callback=callback,
-            )
-            self._mic_stream.start()
+        device_idx = self._selected_mic_device()
+        if self._mic_monitor.start(device_idx):
             self._mic_timer.start(50)
-        except Exception as exc:
-            logger.warning("Failed to open mic stream: %s", exc)
 
     def _stop_mic_meter(self) -> None:
         self._mic_timer.stop()
-        if self._mic_stream is not None:
-            try:
-                self._mic_stream.stop()
-                self._mic_stream.close()
-            except Exception:
-                pass
-            self._mic_stream = None
+        self._mic_monitor.stop()
 
     def _update_mic_meter(self) -> None:
-        with self._mic_lock:
-            rms = self._mic_rms
-        level = min(int(rms / 32768 * 800), 100)
-        self._mic_meter.setValue(level)
+        self._mic_meter.setValue(self._mic_monitor.level_percent())
 
     # -----------------------------------------------------------------------
     # Step 5 -- Voice model download
@@ -758,13 +783,16 @@ class SetupWizard(QMainWindow):
         vault_header.addWidget(vault_label)
 
         help_btn = QPushButton("?")
-        help_btn.setFixedSize(22, 22)
+        help_btn.setFixedSize(18, 18)
         help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setToolTip(
+            "Set your vault root, then ask Klaus: "
+            "\"Save this to Folder/Note.md\" and it will create/append the note."
+        )
         help_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.SURFACE_OVERLAY}; "
-            f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER_DEFAULT}; "
-            "border-radius: 11px; font-weight: bold; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {theme.KLAUS_ACCENT}; color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; "
+            "border: none; padding: 0px; font-weight: bold; font-size: 14px; }}"
+            f"QPushButton:hover {{ color: {theme.KLAUS_ACCENT}; }}"
         )
         help_btn.clicked.connect(self._show_vault_help)
         vault_header.addWidget(help_btn)
@@ -808,16 +836,11 @@ class SetupWizard(QMainWindow):
         msg.setWindowTitle("Obsidian Notes")
         msg.setIcon(QMessageBox.Icon.Information)
         msg.setText(
-            "Obsidian is a free app for writing and organising markdown notes "
-            "locally on your computer.\n\n"
-            "If you use Obsidian, Klaus can save notes, quotes, and summaries "
-            "directly into your vault while you read.\n\n"
-            "To find your vault folder:\n"
-            "  \u2022  Open Obsidian\n"
-            "  \u2022  Go to Settings \u2192 About (at the bottom)\n"
-            "  \u2022  Look for the vault path listed there\n\n"
-            "This is entirely optional. If you don't use Obsidian or don't "
-            "want note-taking, just leave this blank."
+            "Set this to your Obsidian vault root folder.\n\n"
+            "Then ask Klaus to save to a file in a folder, for example:\n"
+            "  \"Save this to Research/Agent Notes.md\"\n\n"
+            "Klaus will create missing folders/files and append the note.\n\n"
+            "Leave this blank if you do not use Obsidian."
         )
         msg.exec()
 
@@ -872,6 +895,8 @@ class SetupWizard(QMainWindow):
         cam_idx = self._collected["camera_index"]
         if cam_idx >= 0:
             cfg.save_camera_index(cam_idx)
+        mic_idx = int(self._collected.get("mic_index", -1))
+        cfg.save_mic_index(mic_idx)
         bg = self._collected.get("user_background", "")
         if bg:
             cfg.save_user_background(bg)

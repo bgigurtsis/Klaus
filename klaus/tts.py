@@ -1,6 +1,7 @@
 import io
 import logging
 import re
+import sys
 import threading
 import queue
 import wave
@@ -9,26 +10,84 @@ import numpy as np
 import sounddevice as sd
 from openai import OpenAI
 
-import klaus.config as _config
-from klaus.config import OPENAI_API_KEY, TTS_MODEL, TTS_SPEED, TTS_VOICE, TTS_VOICE_INSTRUCTIONS
+import klaus.config as config
 
 logger = logging.getLogger(__name__)
 
 SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+')
 MAX_CHUNK_CHARS = 4000
 
+WRITE_BLOCK_FRAMES = 2048
+
 
 class TextToSpeech:
     """Converts text to speech using gpt-4o-mini-tts with sentence-level streaming playback."""
 
-    def __init__(self):
-        self._client = OpenAI(api_key=OPENAI_API_KEY)
+    def __init__(self, settings: config.RuntimeSettings | None = None):
+        self._settings = settings or config.get_runtime_settings()
+        self._client = OpenAI(api_key=self._settings.openai_api_key)
         self._stop_event = threading.Event()
         self._playback_thread: threading.Thread | None = None
+        self._stream: sd.OutputStream | None = None
+        self._stream_lock = threading.Lock()
 
-    def reload_client(self) -> None:
+    def reload_client(self, settings: config.RuntimeSettings | None = None) -> None:
         """Recreate the OpenAI client to pick up key changes from config.reload()."""
-        self._client = OpenAI(api_key=_config.OPENAI_API_KEY)
+        self._settings = settings or config.get_runtime_settings()
+        self._client = OpenAI(api_key=self._settings.openai_api_key)
+
+    @staticmethod
+    def _decode_wav(wav_data: bytes) -> tuple[int, int, np.ndarray]:
+        """Decode WAV bytes into (sample_rate, channels, int16 ndarray)."""
+        buf = io.BytesIO(wav_data)
+        with wave.open(buf, "rb") as wf:
+            rate = wf.getframerate()
+            channels = wf.getnchannels()
+            frames = wf.readframes(wf.getnframes())
+        audio = np.frombuffer(frames, dtype=np.int16)
+        if channels > 1:
+            audio = audio.reshape(-1, channels)
+        return rate, channels, audio
+
+    def _ensure_stream(self, rate: int, channels: int) -> sd.OutputStream:
+        """Return the current output stream, creating one if needed."""
+        with self._stream_lock:
+            if self._stream is not None and not self._stream.closed:
+                return self._stream
+            latency = "high" if sys.platform == "darwin" else "low"
+            self._stream = sd.OutputStream(
+                samplerate=rate,
+                channels=channels,
+                dtype="int16",
+                latency=latency,
+            )
+            self._stream.start()
+            logger.info(
+                "Opened TTS output stream (%d Hz, %d ch, latency=%s)",
+                rate, channels, latency,
+            )
+            return self._stream
+
+    def _close_stream(self) -> None:
+        """Close the persistent output stream if open."""
+        with self._stream_lock:
+            if self._stream is not None and not self._stream.closed:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                logger.info("Closed TTS output stream")
+            self._stream = None
+
+    def _write_audio(self, stream: sd.OutputStream, audio: np.ndarray) -> None:
+        """Write audio to the stream in small blocks so stop stays responsive."""
+        offset = 0
+        total = len(audio)
+        while offset < total and not self._stop_event.is_set():
+            end = min(offset + WRITE_BLOCK_FRAMES, total)
+            stream.write(audio[offset:end])
+            offset = end
 
     def speak(self, text: str, on_sentence_start: callable = None) -> None:
         """Synthesize and play text. Batches into sentences for low-latency start.
@@ -45,7 +104,7 @@ class TextToSpeech:
 
         logger.info(
             "TTS speaking (%d chars, %d chunks, voice=%s, model=%s)",
-            len(text), len(chunks), TTS_VOICE, TTS_MODEL,
+            len(text), len(chunks), self._settings.tts_voice, config.TTS_MODEL,
         )
 
         audio_queue: queue.Queue[bytes | None] = queue.Queue()
@@ -57,15 +116,20 @@ class TextToSpeech:
         )
         synth_thread.start()
 
-        for i, chunk_text in enumerate(chunks):
-            if self._stop_event.is_set():
-                break
-            wav_data = audio_queue.get()
-            if wav_data is None:
-                break
-            if on_sentence_start:
-                on_sentence_start(i, chunk_text)
-            self._play_wav(wav_data)
+        try:
+            for i, chunk_text in enumerate(chunks):
+                if self._stop_event.is_set():
+                    break
+                wav_data = audio_queue.get()
+                if wav_data is None:
+                    break
+                rate, channels, audio = self._decode_wav(wav_data)
+                stream = self._ensure_stream(rate, channels)
+                if on_sentence_start:
+                    on_sentence_start(i, chunk_text)
+                self._write_audio(stream, audio)
+        finally:
+            self._close_stream()
 
     def speak_streaming(self, sentence_queue: queue.Queue[str | None]) -> None:
         """Play sentences as they arrive from a queue.
@@ -83,11 +147,16 @@ class TextToSpeech:
         )
         synth_thread.start()
 
-        while not self._stop_event.is_set():
-            wav_data = audio_q.get()
-            if wav_data is None:
-                break
-            self._play_wav(wav_data)
+        try:
+            while not self._stop_event.is_set():
+                wav_data = audio_q.get()
+                if wav_data is None:
+                    break
+                rate, channels, audio = self._decode_wav(wav_data)
+                stream = self._ensure_stream(rate, channels)
+                self._write_audio(stream, audio)
+        finally:
+            self._close_stream()
 
         logger.info("TTS streaming playback finished")
 
@@ -106,12 +175,12 @@ class TextToSpeech:
                 idx += 1
                 logger.debug("Streaming synth chunk %d (%d chars)", idx, len(sentence))
                 response = self._client.audio.speech.create(
-                    model=TTS_MODEL,
-                    voice=TTS_VOICE,
+                    model=config.TTS_MODEL,
+                    voice=self._settings.tts_voice,
                     input=sentence,
-                    instructions=TTS_VOICE_INSTRUCTIONS,
+                    instructions=config.TTS_VOICE_INSTRUCTIONS,
                     response_format="wav",
-                    speed=TTS_SPEED,
+                    speed=self._settings.tts_speed,
                 )
                 audio_queue.put(response.content)
             except Exception as e:
@@ -122,12 +191,12 @@ class TextToSpeech:
     def synthesize_to_wav(self, text: str) -> bytes:
         """Synthesize text to a single WAV buffer without playing it."""
         response = self._client.audio.speech.create(
-            model=TTS_MODEL,
-            voice=TTS_VOICE,
+            model=config.TTS_MODEL,
+            voice=self._settings.tts_voice,
             input=text,
-            instructions=TTS_VOICE_INSTRUCTIONS,
+            instructions=config.TTS_VOICE_INSTRUCTIONS,
             response_format="wav",
-            speed=TTS_SPEED,
+            speed=self._settings.tts_speed,
         )
         return response.content
 
@@ -141,12 +210,12 @@ class TextToSpeech:
             try:
                 logger.debug("Synthesizing chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
                 response = self._client.audio.speech.create(
-                    model=TTS_MODEL,
-                    voice=TTS_VOICE,
+                    model=config.TTS_MODEL,
+                    voice=self._settings.tts_voice,
                     input=chunk,
-                    instructions=TTS_VOICE_INSTRUCTIONS,
+                    instructions=config.TTS_VOICE_INSTRUCTIONS,
                     response_format="wav",
-                    speed=TTS_SPEED,
+                    speed=self._settings.tts_speed,
                 )
                 audio_queue.put(response.content)
             except Exception as e:
@@ -155,27 +224,10 @@ class TextToSpeech:
                 return
         audio_queue.put(None)
 
-    def _play_wav(self, wav_data: bytes) -> None:
-        buf = io.BytesIO(wav_data)
-        with wave.open(buf, "rb") as wf:
-            rate = wf.getframerate()
-            channels = wf.getnchannels()
-            frames = wf.readframes(wf.getnframes())
-
-        audio = np.frombuffer(frames, dtype=np.int16)
-        if channels > 1:
-            audio = audio.reshape(-1, channels)
-
-        sd.play(audio, samplerate=rate)
-        while sd.get_stream().active and not self._stop_event.is_set():
-            sd.sleep(50)
-        if self._stop_event.is_set():
-            sd.stop()
-
     def stop(self) -> None:
         logger.info("TTS playback interrupted")
         self._stop_event.set()
-        sd.stop()
+        self._close_stream()
 
     @staticmethod
     def _split_into_chunks(text: str) -> list[str]:

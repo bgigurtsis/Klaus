@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from klaus.config import OBSIDIAN_VAULT_PATH
+import klaus.config as config
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,17 @@ SAVE_NOTE_TOOL = {
 class NotesManager:
     """Manages reading/writing notes to an Obsidian vault markdown file."""
 
-    def __init__(self, base_path: str = OBSIDIAN_VAULT_PATH):
+    def __init__(self, base_path: str | None = None):
+        if base_path is None:
+            base_path = config.OBSIDIAN_VAULT_PATH
         self._base = Path(base_path) if base_path else Path()
         self.current_file: str | None = None
         self._changed = False
         logger.info("NotesManager base path: %s", self._base)
+
+    @property
+    def base_path(self) -> str:
+        return str(self._base)
 
     @property
     def changed(self) -> bool:

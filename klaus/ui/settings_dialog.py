@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import logging
-import threading
 
-import numpy as np
-import sounddevice as sd
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -15,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -25,36 +23,57 @@ from PyQt6.QtWidgets import (
 )
 
 import klaus.config as config
+from klaus.device_catalog import (
+    format_camera_label,
+    format_mic_label,
+    list_camera_devices,
+    list_input_devices,
+)
 from klaus.ui import theme
+from klaus.ui.shared.key_validation import KEY_PATTERNS, validate_api_key
+from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
 
 logger = logging.getLogger(__name__)
-
-_KEY_PATTERNS: list[tuple[str, str, str, int]] = [
-    ("Anthropic", "anthropic", "sk-ant-", 40),
-    ("OpenAI", "openai", "sk-", 20),
-    ("Tavily", "tavily", "tvly-", 20),
-]
 
 
 class SettingsDialog(QDialog):
     """Tabbed settings dialog accessible from the main window gear button."""
 
-    def __init__(self, parent: QWidget | None = None):
+    camera_device_changed = pyqtSignal(int)
+    mic_device_changed = pyqtSignal(object)
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        active_camera_index: int | None = None,
+        active_mic_device: int | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumSize(520, 380)
-        self.resize(560, 420)
+        self.setMinimumSize(640, 380)
+        self.resize(700, 420)
         self.setStyleSheet(theme.application_stylesheet())
+        self._active_camera_index = active_camera_index
+        self._active_mic_device = active_mic_device
+
+        self._camera_index_by_device: dict[int, int] = {}
+        self._mic_index_by_device: dict[int, int] = {}
+        self._camera_populated = False
+        self._mic_populated = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_keys_tab(), "API Keys")
-        tabs.addTab(self._build_camera_tab(), "Camera")
-        tabs.addTab(self._build_mic_tab(), "Microphone")
-        tabs.addTab(self._build_profile_tab(), "Profile")
-        layout.addWidget(tabs)
+        self._tabs = QTabWidget()
+        self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        self._tabs.tabBar().setExpanding(False)
+        self._tabs.addTab(self._build_keys_tab(), "API Keys")
+        self._camera_tab_index = self._tabs.addTab(self._build_camera_tab(), "Camera")
+        self._mic_tab_index = self._tabs.addTab(self._build_mic_tab(), "Microphone")
+        self._tabs.addTab(self._build_profile_tab(), "Profile")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+        layout.addWidget(self._tabs)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -66,9 +85,7 @@ class SettingsDialog(QDialog):
         btn_row.addWidget(save_btn)
         layout.addLayout(btn_row)
 
-        self._mic_stream: sd.InputStream | None = None
-        self._mic_rms: float = 0.0
-        self._mic_lock = threading.Lock()
+        self._mic_monitor = MicLevelMonitor()
         self._mic_timer = QTimer(self)
         self._mic_timer.timeout.connect(self._update_mic_meter)
 
@@ -89,7 +106,7 @@ class SettingsDialog(QDialog):
             "tavily": config.TAVILY_API_KEY,
         }
 
-        for label, slug, prefix, min_len in _KEY_PATTERNS:
+        for label, slug, prefix, min_len in KEY_PATTERNS:
             row = QHBoxLayout()
             row.setSpacing(8)
 
@@ -131,22 +148,19 @@ class SettingsDialog(QDialog):
         if not text:
             indicator.setText("")
             return
-        for _, s, prefix, min_len in _KEY_PATTERNS:
-            if s != slug:
-                continue
-            if text.startswith(prefix) and len(text) >= min_len:
-                indicator.setText("\u2713")
-                indicator.setStyleSheet(
-                    f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
-                    "background: transparent; border: none;"
-                )
-            else:
-                indicator.setText("\u2717")
-                indicator.setStyleSheet(
-                    f"color: {theme.ERROR_COLOR}; font-size: 18px; "
-                    "background: transparent; border: none;"
-                )
-            break
+        is_valid, _ = validate_api_key(slug, text)
+        if is_valid:
+            indicator.setText("\u2713")
+            indicator.setStyleSheet(
+                f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
+                "background: transparent; border: none;"
+            )
+        else:
+            indicator.setText("\u2717")
+            indicator.setStyleSheet(
+                f"color: {theme.ERROR_COLOR}; font-size: 18px; "
+                "background: transparent; border: none;"
+            )
 
     # -- Camera tab --
 
@@ -159,28 +173,53 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel("Camera device"))
 
         self._camera_combo = QComboBox()
+        self._camera_combo.activated.connect(self._on_camera_changed)
+        self._enable_combo_popup_hover(self._camera_combo)
         layout.addWidget(self._camera_combo)
-
-        from klaus.camera import enumerate_cameras
-        self._camera_combo.addItem("No camera (audio only)", -1)
-        try:
-            cameras = enumerate_cameras()
-        except Exception as exc:
-            logger.warning("Failed to enumerate cameras: %s", exc)
-            cameras = []
-        selected = 0
-        for cam in cameras:
-            self._camera_combo.addItem(
-                f"{cam['name']}  ({cam['width']}x{cam['height']})",
-                cam["index"],
-            )
-            if cam["index"] == config.CAMERA_DEVICE_INDEX:
-                selected = self._camera_combo.count() - 1
-        if selected:
-            self._camera_combo.setCurrentIndex(selected)
 
         layout.addStretch()
         return page
+
+    def _populate_cameras(self) -> None:
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.clear()
+        self._camera_index_by_device = {-1: 0}
+        self._camera_combo.addItem("No camera (audio only)", -1)
+        try:
+            cameras = list_camera_devices()
+        except Exception as exc:
+            logger.warning("Failed to enumerate cameras: %s", exc)
+            cameras = []
+
+        for cam in cameras:
+            self._camera_combo.addItem(format_camera_label(cam), cam.index)
+            self._camera_index_by_device[cam.index] = self._camera_combo.count() - 1
+
+        if self._active_camera_index is not None:
+            selected_device = int(self._active_camera_index)
+        else:
+            selected_device = config.CAMERA_DEVICE_INDEX
+        selected_combo = self._camera_index_by_device.get(selected_device, 0)
+        self._camera_combo.setCurrentIndex(selected_combo)
+        self._camera_combo.blockSignals(False)
+
+    def set_camera_selection(self, device_index: int) -> None:
+        self._active_camera_index = int(device_index)
+        combo_index = self._camera_index_by_device.get(device_index)
+        if combo_index is None:
+            return
+        self._camera_combo.blockSignals(True)
+        self._camera_combo.setCurrentIndex(combo_index)
+        self._camera_combo.blockSignals(False)
+
+    def _on_camera_changed(self, _index: int | None = None) -> None:
+        cam_idx = self._camera_combo.currentData()
+        if cam_idx is None:
+            cam_idx = -1
+        cam_idx = int(cam_idx)
+        self._active_camera_index = cam_idx
+        config.set_camera_index(cam_idx, persist=True)
+        self.camera_device_changed.emit(cam_idx)
 
     # -- Profile tab --
 
@@ -227,13 +266,17 @@ class SettingsDialog(QDialog):
         vault_header.addWidget(vault_label)
 
         help_btn = QPushButton("?")
-        help_btn.setFixedSize(22, 22)
+        help_btn.setFixedSize(18, 18)
         help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setToolTip(
+            "Set your vault root, then ask Klaus: "
+            "\"Save this to Folder/Note.md\" and it will create/append the note."
+        )
         help_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.SURFACE_OVERLAY}; "
-            f"color: {theme.TEXT_SECONDARY}; border: 1px solid {theme.BORDER_DEFAULT}; "
-            "border-radius: 11px; font-weight: bold; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {theme.KLAUS_ACCENT}; color: {theme.TEXT_PRIMARY}; }}"
+            f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; "
+            "border: none; padding: 0px; font-weight: bold; font-size: 14px; }"
+            "\n"
+            f"QPushButton:hover {{ color: {theme.KLAUS_ACCENT}; }}"
         )
         help_btn.clicked.connect(self._show_vault_help)
         vault_header.addWidget(help_btn)
@@ -271,16 +314,11 @@ class SettingsDialog(QDialog):
         msg.setWindowTitle("Obsidian Notes")
         msg.setIcon(QMessageBox.Icon.Information)
         msg.setText(
-            "Obsidian is a free app for writing and organising markdown notes "
-            "locally on your computer.\n\n"
-            "If you use Obsidian, Klaus can save notes, quotes, and summaries "
-            "directly into your vault while you read.\n\n"
-            "To find your vault folder:\n"
-            "  \u2022  Open Obsidian\n"
-            "  \u2022  Go to Settings \u2192 About (at the bottom)\n"
-            "  \u2022  Look for the vault path listed there\n\n"
-            "This is entirely optional. If you don't use Obsidian or don't "
-            "want note-taking, just leave this blank."
+            "Set this to your Obsidian vault root folder.\n\n"
+            "Then ask Klaus to save to a file in a folder, for example:\n"
+            "  \"Save this to Research/Agent Notes.md\"\n\n"
+            "Klaus will create missing folders/files and append the note.\n\n"
+            "Leave this blank if you do not use Obsidian."
         )
         msg.exec()
 
@@ -295,20 +333,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel("Input device"))
 
         self._mic_combo = QComboBox()
+        self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
+        self._enable_combo_popup_hover(self._mic_combo)
         layout.addWidget(self._mic_combo)
-
-        try:
-            devices = sd.query_devices()
-            selected_mic = 0
-            for i, dev in enumerate(devices):
-                if dev["max_input_channels"] > 0:
-                    self._mic_combo.addItem(dev["name"], i)
-                    if i == config.MIC_DEVICE_INDEX:
-                        selected_mic = self._mic_combo.count() - 1
-            if selected_mic:
-                self._mic_combo.setCurrentIndex(selected_mic)
-        except Exception as exc:
-            logger.warning("Failed to enumerate audio devices: %s", exc)
 
         self._mic_meter = QProgressBar()
         self._mic_meter.setObjectName("wizard-mic-meter")
@@ -324,46 +351,90 @@ class SettingsDialog(QDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self._start_mic()
+        self._on_tab_changed(self._tabs.currentIndex())
 
     def closeEvent(self, event) -> None:
         self._stop_mic()
         super().closeEvent(event)
 
+    def _on_tab_changed(self, index: int) -> None:
+        if index == self._camera_tab_index and not self._camera_populated:
+            self._populate_cameras()
+            self._camera_populated = True
+
+        if index == self._mic_tab_index:
+            if not self._mic_populated:
+                self._populate_mics()
+                self._mic_populated = True
+            self._start_mic()
+        else:
+            self._stop_mic()
+
     def _start_mic(self) -> None:
         self._stop_mic()
-        device_idx = self._mic_combo.currentData()
-
-        def callback(indata, frames, time_info, status):
-            rms = float(np.sqrt(np.mean(indata.astype(np.float32) ** 2)))
-            with self._mic_lock:
-                self._mic_rms = rms
-
-        try:
-            self._mic_stream = sd.InputStream(
-                samplerate=16000, channels=1, dtype="int16",
-                device=device_idx, callback=callback,
-            )
-            self._mic_stream.start()
+        device_idx = self._selected_mic_device()
+        if self._mic_monitor.start(device_idx):
             self._mic_timer.start(50)
-        except Exception as exc:
-            logger.warning("Failed to open mic: %s", exc)
+
+    def _populate_mics(self) -> None:
+        self._mic_combo.blockSignals(True)
+        self._mic_combo.clear()
+        self._mic_index_by_device = {-1: 0}
+        self._mic_combo.addItem("System default microphone", -1)
+        for mic in list_input_devices():
+            self._mic_combo.addItem(format_mic_label(mic), mic.index)
+            self._mic_index_by_device[mic.index] = self._mic_combo.count() - 1
+
+        if self._active_mic_device is not None:
+            selected_device = int(self._active_mic_device)
+        else:
+            selected_device = config.MIC_DEVICE_INDEX
+        selected_combo = self._mic_index_by_device.get(selected_device, 0)
+        self._mic_combo.setCurrentIndex(selected_combo)
+        self._mic_combo.blockSignals(False)
+
+    def _selected_mic_device(self) -> int | None:
+        mic_idx = self._mic_combo.currentData()
+        if mic_idx is None:
+            return None
+        mic_idx = int(mic_idx)
+        if mic_idx < 0:
+            return None
+        return mic_idx
+
+    def set_mic_selection(self, device: int | None) -> None:
+        self._active_mic_device = None if device is None else int(device)
+        requested = -1 if device is None else int(device)
+        combo_index = self._mic_index_by_device.get(requested)
+        if combo_index is None:
+            return
+        self._mic_combo.blockSignals(True)
+        self._mic_combo.setCurrentIndex(combo_index)
+        self._mic_combo.blockSignals(False)
+        self._start_mic()
+
+    def _on_mic_changed(self) -> None:
+        mic_idx = self._mic_combo.currentData()
+        if mic_idx is None:
+            mic_idx = -1
+        mic_idx = int(mic_idx)
+        self._active_mic_device = None if mic_idx < 0 else mic_idx
+        config.set_mic_index(mic_idx, persist=True)
+        self._start_mic()
+        self.mic_device_changed.emit(None if mic_idx < 0 else mic_idx)
 
     def _stop_mic(self) -> None:
         self._mic_timer.stop()
-        if self._mic_stream is not None:
-            try:
-                self._mic_stream.stop()
-                self._mic_stream.close()
-            except Exception:
-                pass
-            self._mic_stream = None
+        self._mic_monitor.stop()
 
     def _update_mic_meter(self) -> None:
-        with self._mic_lock:
-            rms = self._mic_rms
-        level = min(int(rms / 32768 * 800), 100)
-        self._mic_meter.setValue(level)
+        self._mic_meter.setValue(self._mic_monitor.level_percent())
+
+    @staticmethod
+    def _enable_combo_popup_hover(combo: QComboBox) -> None:
+        view = QListView()
+        view.setMouseTracking(True)
+        combo.setView(view)
 
     # -- Save --
 
@@ -373,12 +444,6 @@ class SettingsDialog(QDialog):
             self._key_edits["openai"].text().strip(),
             self._key_edits["tavily"].text().strip(),
         )
-        cam_idx = self._camera_combo.currentData()
-        if cam_idx is not None and cam_idx >= 0:
-            config.save_camera_index(cam_idx)
-        mic_idx = self._mic_combo.currentData()
-        if mic_idx is not None:
-            config.save_mic_index(mic_idx)
         bg = self._background_edit.toPlainText().strip()
         config.save_user_background(bg)
         vault = self._vault_path_edit.text().strip()

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from klaus.audio import PushToTalkRecorder, AudioPlayer
+from klaus.audio import PushToTalkRecorder, AudioPlayer, to_wav_bytes
 
 
 class TestPushToTalkRecorder:
@@ -93,9 +93,8 @@ class TestPushToTalkRecorder:
         assert len(rec._chunks) == 0
 
     def test_to_wav_bytes_produces_valid_wav(self):
-        rec = PushToTalkRecorder(sample_rate=16000)
         audio = np.zeros((3200, 1), dtype=np.int16)
-        wav_bytes = rec._to_wav_bytes(audio)
+        wav_bytes = to_wav_bytes(audio, sample_rate=16000)
 
         buf = io.BytesIO(wav_bytes)
         with wave.open(buf, "rb") as wf:

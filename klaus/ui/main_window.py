@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -45,6 +46,30 @@ def resolve_qt_key(key_name: str) -> int:
     raise ValueError(f"Unknown hotkey for Qt: {key_name!r}")
 
 
+def hotkey_action_for_keypress(
+    *,
+    key: int,
+    shift_pressed: bool,
+    ptt_key: int,
+    toggle_key: int,
+    platform_name: str,
+) -> str | None:
+    """Return ``ptt_down``, ``toggle``, or ``None`` for a key press."""
+    if key != ptt_key and key != toggle_key:
+        return None
+
+    # On macOS, if the same physical key is used for PTT and toggle (default §),
+    # require Shift for toggle and treat plain press as push-to-talk.
+    if platform_name == "darwin" and ptt_key == toggle_key and key == ptt_key:
+        return "toggle" if shift_pressed else "ptt_down"
+
+    if key == toggle_key:
+        return "toggle"
+    if key == ptt_key:
+        return "ptt_down"
+    return None
+
+
 class MainWindow(QMainWindow):
     """Klaus main application window."""
 
@@ -65,6 +90,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._qt_ptt_key: int = Qt.Key.Key_F2
         self._qt_toggle_key: int = Qt.Key.Key_F3
+        self._ptt_key_armed = False
         self.setWindowTitle("Klaus")
         self.setMinimumSize(900, 600)
         self.resize(1100, 700)
@@ -171,7 +197,7 @@ class MainWindow(QMainWindow):
 
     def get_current_session_id(self) -> str | None:
         """Return the currently selected session id from the session panel."""
-        return self.session_panel._current_id
+        return self.session_panel.current_id
 
     # -- In-app keyboard shortcuts (no Accessibility permission needed) --
 
@@ -179,6 +205,11 @@ class MainWindow(QMainWindow):
         """Configure which keys trigger PTT and mode toggle via Qt events."""
         self._qt_ptt_key = resolve_qt_key(ptt_key)
         self._qt_toggle_key = resolve_qt_key(toggle_key)
+        self._ptt_key_armed = False
+        toggle_hint = toggle_key
+        if sys.platform == "darwin" and ptt_key == toggle_key and len(toggle_key) == 1:
+            toggle_hint = f"Shift+{toggle_key}"
+        self.status_widget.set_hotkeys(ptt_key, toggle_hint)
         logger.info(
             "Qt in-app hotkeys configured (ptt=%s, toggle=%s)", ptt_key, toggle_key,
         )
@@ -187,9 +218,20 @@ class MainWindow(QMainWindow):
         if event.isAutoRepeat():
             return
         key = event.key()
-        if key == self._qt_ptt_key:
+        action = hotkey_action_for_keypress(
+            key=key,
+            shift_pressed=bool(
+                event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+            ),
+            ptt_key=self._qt_ptt_key,
+            toggle_key=self._qt_toggle_key,
+            platform_name=sys.platform,
+        )
+        if action == "ptt_down":
+            self._ptt_key_armed = True
             self.ptt_key_pressed.emit()
-        elif key == self._qt_toggle_key:
+        elif action == "toggle":
+            self._ptt_key_armed = False
             self.toggle_key_pressed.emit()
         else:
             super().keyPressEvent(event)
@@ -198,7 +240,8 @@ class MainWindow(QMainWindow):
         if event.isAutoRepeat():
             return
         key = event.key()
-        if key == self._qt_ptt_key:
+        if key == self._qt_ptt_key and self._ptt_key_armed:
+            self._ptt_key_armed = False
             self.ptt_key_released.emit()
         else:
             super().keyReleaseEvent(event)

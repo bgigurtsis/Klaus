@@ -2,26 +2,14 @@
 
 import functools
 import logging
-import queue
+import os
+import platform
 import sys
-import time
 import threading
 
 from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
 
 import klaus.config as config
-from klaus.config import (
-    PUSH_TO_TALK_KEY,
-    TOGGLE_KEY,
-    INPUT_MODE,
-    VAD_SENSITIVITY,
-    VAD_SILENCE_TIMEOUT,
-    VAD_MIN_DURATION,
-    VAD_MIN_VOICED_RATIO,
-    VAD_MIN_VOICED_FRAMES,
-    VAD_MIN_RMS_DBFS,
-    VAD_MIN_VOICED_RUN_FRAMES,
-)
 
 
 def _resolve_pynput_key(key_name: str) -> Key | KeyCode:
@@ -35,10 +23,76 @@ def _resolve_pynput_key(key_name: str) -> Key | KeyCode:
 
 from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
+_SHIFT_KEYS = {Key.shift, Key.shift_l, Key.shift_r}
+
+
+def _should_disable_global_hotkeys() -> bool:
+    """Return True when starting pynput global hotkeys is known to crash.
+
+    macOS 26 + Python 3.14 has a crash path in pynput/Carbon keyboard APIs
+    (HIToolbox dispatch queue assertion). Keep the app alive by disabling
+    global hotkeys and relying on in-app Qt hotkeys.
+    """
+    if sys.platform != "darwin":
+        return False
+    if os.environ.get("KLAUS_FORCE_GLOBAL_HOTKEYS") == "1":
+        return False
+
+    mac_version = platform.mac_ver()[0]
+    try:
+        mac_major = int(mac_version.split(".", 1)[0])
+    except (TypeError, ValueError):
+        return False
+
+    return mac_major >= 26 and sys.version_info >= (3, 14)
+
+
+def _mark_key_pressed(pressed: set[object], key: object | None) -> bool:
+    """Track key presses and suppress repeated press events for held keys."""
+    if key is None:
+        return False
+    if key in pressed:
+        return False
+    pressed.add(key)
+    return True
+
+
+def _mark_key_released(pressed: set[object], key: object | None) -> None:
+    if key is None:
+        return
+    pressed.discard(key)
+
+
+def _is_shift_active(pressed: set[object]) -> bool:
+    return any(key in pressed for key in _SHIFT_KEYS)
+
+
+def _hotkey_action_for_press(
+    *,
+    platform_name: str,
+    key: Key | KeyCode | None,
+    ptt_key: Key | KeyCode,
+    toggle_key: Key | KeyCode,
+    shift_active: bool,
+) -> str | None:
+    """Classify a key press as ``ptt_down``, ``toggle``, or ``None``."""
+    if key is None:
+        return None
+    if key != ptt_key and key != toggle_key:
+        return None
+
+    if platform_name == "darwin" and ptt_key == toggle_key and key == ptt_key:
+        return "toggle" if shift_active else "ptt_down"
+
+    if key == toggle_key:
+        return "toggle"
+    if key == ptt_key:
+        return "ptt_down"
+    return None
 
 
 def _safe_slot(func):
@@ -65,6 +119,12 @@ from klaus.tts import TextToSpeech
 from klaus.brain import Brain
 from klaus.memory import Memory
 from klaus.notes import NotesManager
+from klaus.services import (
+    DeviceSwitchService,
+    PipelineContext,
+    PipelineHooks,
+    QuestionPipeline,
+)
 from klaus.ui.main_window import MainWindow
 
 
@@ -74,6 +134,13 @@ def _new_guard_stats() -> dict[str, int]:
         "vad_discarded": 0,
         "quality_gate_discarded": 0,
     }
+
+
+def _configured_mic_device() -> int | None:
+    """Return configured mic device index, or None for system default."""
+    if config.MIC_DEVICE_INDEX < 0:
+        return None
+    return config.MIC_DEVICE_INDEX
 
 
 class Signals(QObject):
@@ -94,15 +161,36 @@ class KlausApp:
 
     def __init__(self):
         self._signals = Signals()
+        self._runtime_settings = config.get_runtime_settings()
         self._current_session_id: str | None = None
         self._processing = False
         self._speaking = False
-        self._input_mode: str = INPUT_MODE
+        self._input_mode: str = self._runtime_settings.input_mode
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
         self._hotkey_listener: KeyboardListener | None = None
-        self._ptt_pynput_key = _resolve_pynput_key(PUSH_TO_TALK_KEY)
-        self._toggle_pynput_key = _resolve_pynput_key(TOGGLE_KEY)
+        self._ptt_key_name = self._runtime_settings.push_to_talk_key
+        self._toggle_key_name = self._runtime_settings.toggle_key
+        self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
+        self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+        self._active_camera_index: int = config.CAMERA_DEVICE_INDEX
+        self._active_mic_device: int | None = _configured_mic_device()
+
+    def _build_vad_recorder(self, device: int | None) -> VoiceActivatedRecorder:
+        settings = config.get_runtime_settings()
+        return VoiceActivatedRecorder(
+            on_speech_start=self._on_vad_speech_start,
+            on_speech_end=self._on_vad_speech_end,
+            on_speech_discard=self._on_vad_discard,
+            sensitivity=settings.vad_sensitivity,
+            silence_timeout=settings.vad_silence_timeout,
+            min_duration=settings.vad_min_duration,
+            min_voiced_ratio=settings.vad_min_voiced_ratio,
+            min_voiced_frames=settings.vad_min_voiced_frames,
+            min_rms_dbfs=settings.vad_min_rms_dbfs,
+            min_voiced_run_frames=settings.vad_min_voiced_run_frames,
+            device=device,
+        )
 
     def _init_components(self) -> None:
         """Create all API-dependent components.
@@ -110,25 +198,52 @@ class KlausApp:
         Called after the setup wizard has finished (if needed) so that API keys
         and device selections are available.
         """
-        self._camera = Camera()
-        self._ptt_recorder = PushToTalkRecorder()
-        self._vad_recorder = VoiceActivatedRecorder(
-            on_speech_start=self._on_vad_speech_start,
-            on_speech_end=self._on_vad_speech_end,
-            on_speech_discard=self._on_vad_discard,
-            sensitivity=VAD_SENSITIVITY,
-            silence_timeout=VAD_SILENCE_TIMEOUT,
-            min_duration=VAD_MIN_DURATION,
-            min_voiced_ratio=VAD_MIN_VOICED_RATIO,
-            min_voiced_frames=VAD_MIN_VOICED_FRAMES,
-            min_rms_dbfs=VAD_MIN_RMS_DBFS,
-            min_voiced_run_frames=VAD_MIN_VOICED_RUN_FRAMES,
+        self._runtime_settings = config.get_runtime_settings()
+        settings = self._runtime_settings
+        self._camera = Camera(
+            settings.camera_device_index,
+            frame_width=settings.camera_frame_width,
+            frame_height=settings.camera_frame_height,
+            rotation=settings.camera_rotation,
         )
-        self._stt = SpeechToText()
-        self._tts = TextToSpeech()
-        self._notes = NotesManager()
+        self._active_camera_index = settings.camera_device_index
+        self._active_mic_device = _configured_mic_device()
+        self._ptt_recorder = PushToTalkRecorder()
+        self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
+        self._stt = SpeechToText(settings=settings)
+        self._tts = TextToSpeech(settings=settings)
+        self._notes = NotesManager(base_path=settings.obsidian_vault_path)
         self._brain = Brain(notes=self._notes)
         self._memory = Memory()
+        self._rebuild_question_pipeline()
+        self._ensure_device_switch_service()
+
+    def _rebuild_question_pipeline(self) -> None:
+        required = ("_stt", "_camera", "_brain", "_memory", "_notes", "_tts")
+        if not all(hasattr(self, attr) for attr in required):
+            return
+        self._question_pipeline = QuestionPipeline(
+            stt=self._stt,
+            camera=self._camera,
+            brain=self._brain,
+            memory=self._memory,
+            notes=self._notes,
+            tts=self._tts,
+        )
+
+    def _ensure_device_switch_service(self) -> None:
+        if hasattr(self, "_device_switch_service"):
+            return
+        self._device_switch_service = DeviceSwitchService(
+            camera_factory=Camera,
+            vad_builder=self._build_vad_recorder,
+            persist_camera_index=lambda index: config.set_camera_index(index, persist=True),
+            persist_mic_index=lambda device: config.set_mic_index(
+                -1 if device is None else device,
+                persist=True,
+            ),
+            show_error=self._show_device_switch_error,
+        )
 
     def run(self) -> None:
         logger.info("Klaus starting")
@@ -148,6 +263,12 @@ class KlausApp:
                 logger.info("Setup wizard closed without completing, exiting")
                 sys.exit(0)
             config.reload()
+            self._runtime_settings = config.get_runtime_settings()
+            self._input_mode = self._runtime_settings.input_mode
+            self._ptt_key_name = self._runtime_settings.push_to_talk_key
+            self._toggle_key_name = self._runtime_settings.toggle_key
+            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
+            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
 
         self._init_components()
 
@@ -156,11 +277,13 @@ class KlausApp:
 
         try:
             self._camera.start()
+            self._active_camera_index = self._camera.device_index
         except RuntimeError as e:
             logger.warning("Camera unavailable: %s", e)
+            self._active_camera_index = -1
 
         self._window.camera_widget.set_camera(self._camera)
-        self._window.set_hotkeys(PUSH_TO_TALK_KEY, TOGGLE_KEY)
+        self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
 
         self._load_sessions()
 
@@ -252,17 +375,53 @@ class KlausApp:
         a warning but carry on -- the Qt in-app key events (keyPressEvent on
         MainWindow) still work when the window is focused.
         """
+        if _should_disable_global_hotkeys():
+            logger.warning(
+                "Global hotkeys disabled on macOS %s with Python %s due a known "
+                "pynput crash. In-app hotkeys still work when the Klaus window "
+                "is focused. Use Python 3.13 for stable global hotkeys, or set "
+                "KLAUS_FORCE_GLOBAL_HOTKEYS=1 to force-enable (may crash).",
+                platform.mac_ver()[0] or "unknown",
+                platform.python_version(),
+            )
+            if sys.platform == "darwin":
+                logger.info(
+                    "macOS: F-keys trigger system actions by default "
+                    "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
+                    "keys as standard function keys' in System Settings > Keyboard, "
+                    "or set a different key in ~/.klaus/config.toml (toggle_key)."
+                )
+            return
+
         ptt_key = self._ptt_pynput_key
         toggle_key = self._toggle_pynput_key
+        pressed_keys: set[Key | KeyCode] = set()
+        ptt_key_armed = False
 
         def on_press(key: Key | KeyCode | None) -> None:
-            if key == toggle_key:
+            nonlocal ptt_key_armed
+            if not _mark_key_pressed(pressed_keys, key):
+                return
+
+            action = _hotkey_action_for_press(
+                platform_name=sys.platform,
+                key=key,
+                ptt_key=ptt_key,
+                toggle_key=toggle_key,
+                shift_active=_is_shift_active(pressed_keys),
+            )
+            if action == "toggle":
                 self._toggle_input_mode()
-            elif key == ptt_key:
+                return
+            if action == "ptt_down" and not ptt_key_armed:
+                ptt_key_armed = True
                 self._on_key_down()
 
         def on_release(key: Key | KeyCode | None) -> None:
-            if key == ptt_key:
+            nonlocal ptt_key_armed
+            _mark_key_released(pressed_keys, key)
+            if key == ptt_key and ptt_key_armed:
+                ptt_key_armed = False
                 self._on_key_up()
 
         try:
@@ -273,7 +432,8 @@ class KlausApp:
             self._hotkey_listener.start()
             logger.info(
                 "Global hotkey listener started (ptt=%s, toggle=%s)",
-                PUSH_TO_TALK_KEY, TOGGLE_KEY,
+                self._ptt_key_name,
+                self._toggle_key_name,
             )
         except Exception as exc:
             logger.warning(
@@ -295,7 +455,7 @@ class KlausApp:
         if self._input_mode == "push_to_talk":
             if self._vad_recorder.is_running:
                 self._vad_recorder.stop()
-            logger.info("Input mode: push-to-talk (hotkey: %s)", PUSH_TO_TALK_KEY)
+            logger.info("Input mode: push-to-talk (hotkey: %s)", self._ptt_key_name)
         else:
             self._vad_recorder.start()
             logger.info("Input mode: voice activation")
@@ -534,93 +694,24 @@ class KlausApp:
 
     def _process_question(self, wav_bytes: bytes) -> None:
         try:
-            logger.info("Transcribing audio...")
-            transcript = self._stt.transcribe(wav_bytes)
-            if not transcript:
-                logger.info("Empty transcript, returning to idle")
-                self._signals.state_changed.emit("idle")
-                return
-
-            self._signals.state_changed.emit("thinking")
-
-            logger.info("Capturing page image from camera...")
-            image_b64 = self._camera.capture_base64_jpeg()
-            thumbnail = self._camera.capture_thumbnail_bytes()
-            logger.info("Page image: %s", "captured" if image_b64 else "unavailable")
-
-            now = time.time()
-            self._signals.transcription_ready.emit(
-                transcript, now, thumbnail or b""
+            context = PipelineContext(
+                input_mode=self._input_mode,
+                current_session_id=self._current_session_id,
+                suspend_input_stream=self._vad_recorder.suspend_stream,
             )
-
-            memory_context = self._memory.get_knowledge_summary()
-
-            if self._notes.current_file:
-                notes_context = f"Current notes file: {self._notes.current_file}"
-            else:
-                notes_context = "No notes file set for this session."
-
-            sentence_queue: queue.Queue[str | None] = queue.Queue()
-            first_sentence = threading.Event()
-
-            def on_sentence(text: str) -> None:
-                sentence_queue.put(text)
-                if not first_sentence.is_set():
-                    first_sentence.set()
-                    self._speaking = True
-                    self._signals.state_changed.emit("speaking")
-
-            tts_thread = threading.Thread(
-                target=self._tts.speak_streaming,
-                args=(sentence_queue,),
-                daemon=True,
+            hooks = PipelineHooks(
+                on_state=self._signals.state_changed.emit,
+                on_transcription=self._signals.transcription_ready.emit,
+                on_response=self._signals.response_ready.emit,
+                on_sessions_changed=self._signals.sessions_changed.emit,
+                on_exchange_count_updated=self._update_exchange_count,
+                on_speaking_started=self._on_pipeline_speaking_started,
             )
-            tts_thread.start()
-
-            logger.info(
-                "Sending to Claude (image=%s, memory=%s, notes=%s)",
-                "yes" if image_b64 else "no",
-                "yes" if memory_context else "no",
-                self._notes.current_file or "none",
+            self._question_pipeline.run(
+                wav_bytes,
+                context=context,
+                hooks=hooks,
             )
-            exchange = self._brain.ask(
-                question=transcript,
-                image_base64=image_b64,
-                memory_context=memory_context if memory_context else None,
-                notes_context=notes_context,
-                on_sentence=on_sentence,
-            )
-            sentence_queue.put(None)
-
-            if exchange.notes_file_changed and self._current_session_id:
-                self._memory.set_session_notes_file(
-                    self._current_session_id, self._notes.current_file
-                )
-
-            logger.info("Claude responded (%d chars), saving exchange", len(exchange.assistant_text))
-
-            if self._current_session_id:
-                record = self._memory.save_exchange(
-                    session_id=self._current_session_id,
-                    user_text=exchange.user_text,
-                    assistant_text=exchange.assistant_text,
-                    image_base64=exchange.image_base64,
-                    searches=exchange.searches,
-                )
-                exchange_id = record.id
-            else:
-                exchange_id = ""
-
-            self._signals.response_ready.emit(
-                exchange.assistant_text, time.time(), exchange_id
-            )
-
-            self._update_exchange_count()
-            self._signals.sessions_changed.emit()
-
-            tts_thread.join()
-            logger.info("Playback complete, idle")
-            self._signals.state_changed.emit("idle")
 
         except Exception as e:
             logger.error("Processing failed: %s", e, exc_info=True)
@@ -630,7 +721,12 @@ class KlausApp:
             self._speaking = False
             self._processing = False
             if self._input_mode == "voice_activation":
+                self._vad_recorder.resume_stream()
                 self._vad_recorder.resume()
+
+    def _on_pipeline_speaking_started(self) -> None:
+        self._speaking = True
+        self._signals.state_changed.emit("speaking")
 
     # -- UI callbacks --
 
@@ -674,51 +770,83 @@ class KlausApp:
             logger.info("Stop requested via UI")
             self._tts.stop()
 
+    def _show_device_switch_error(self, title: str, message: str) -> None:
+        QMessageBox.warning(self._window, title, message)
+
+    def _apply_camera_device_live(self, new_index: int) -> tuple[bool, int]:
+        """Switch the active camera immediately, with automatic rollback."""
+        self._ensure_device_switch_service()
+        result = self._device_switch_service.switch_camera(
+            current_camera=self._camera,
+            previous_index=self._active_camera_index,
+            target_index=int(new_index),
+            apply_camera=self._window.camera_widget.set_camera,
+        )
+        self._camera = result.camera
+        self._active_camera_index = result.active_index
+        self._rebuild_question_pipeline()
+        return result.success, result.active_index
+
+    def _apply_mic_device_live(self, new_device: int | None) -> tuple[bool, int | None]:
+        """Switch the active microphone immediately, with automatic rollback."""
+        self._ensure_device_switch_service()
+        result = self._device_switch_service.switch_mic(
+            current_vad=self._vad_recorder,
+            previous_device=self._active_mic_device,
+            target_device=new_device,
+            input_mode=self._input_mode,
+        )
+        self._vad_recorder = result.vad_recorder
+        self._active_mic_device = result.active_device
+        return result.success, result.active_device
+
     @_safe_slot
     def _on_settings_requested(self) -> None:
-        """Open the settings dialog, then apply any changed settings live."""
+        """Open settings and apply non-device settings when the dialog closes."""
         from klaus.ui.settings_dialog import SettingsDialog
-        dlg = SettingsDialog(self._window)
+        dlg = SettingsDialog(
+            self._window,
+            active_camera_index=self._active_camera_index,
+            active_mic_device=self._active_mic_device,
+        )
         from klaus.ui import theme
         theme.apply_dark_titlebar(dlg)
+
+        def on_camera_device_changed(new_index: int) -> None:
+            _, effective_index = self._apply_camera_device_live(new_index)
+            dlg.set_camera_selection(effective_index)
+
+        def on_mic_device_changed(new_device: object) -> None:
+            parsed_device = new_device if new_device is None else int(new_device)
+            _, effective_device = self._apply_mic_device_live(parsed_device)
+            dlg.set_mic_selection(effective_device)
+
+        dlg.camera_device_changed.connect(on_camera_device_changed)
+        dlg.mic_device_changed.connect(on_mic_device_changed)
         dlg.exec()
 
-        if self._camera._device_index != config.CAMERA_DEVICE_INDEX:
-            self._camera.stop()
-            self._camera = Camera(config.CAMERA_DEVICE_INDEX)
-            try:
-                self._camera.start()
-            except RuntimeError as e:
-                logger.warning("Camera unavailable after settings change: %s", e)
-            self._window.camera_widget.set_camera(self._camera)
-
-        new_mic = config.MIC_DEVICE_INDEX if config.MIC_DEVICE_INDEX >= 0 else None
-        if new_mic != self._vad_recorder._device:
-            self._vad_recorder.stop()
-            self._vad_recorder = VoiceActivatedRecorder(
-                on_speech_start=self._on_vad_speech_start,
-                on_speech_end=self._on_vad_speech_end,
-                on_speech_discard=self._on_vad_discard,
-                sensitivity=VAD_SENSITIVITY,
-                silence_timeout=VAD_SILENCE_TIMEOUT,
-                min_duration=VAD_MIN_DURATION,
-                min_voiced_ratio=VAD_MIN_VOICED_RATIO,
-                min_voiced_frames=VAD_MIN_VOICED_FRAMES,
-                min_rms_dbfs=VAD_MIN_RMS_DBFS,
-                min_voiced_run_frames=VAD_MIN_VOICED_RUN_FRAMES,
-                device=new_mic,
-            )
-            if self._input_mode == "voice_activation":
-                self._vad_recorder.start()
+        # Settings dialog saves + reloads config on accept.
+        self._runtime_settings = config.get_runtime_settings()
+        self._ptt_key_name = self._runtime_settings.push_to_talk_key
+        self._toggle_key_name = self._runtime_settings.toggle_key
+        self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
+        self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+        self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
+        if self._hotkey_listener:
+            self._hotkey_listener.stop()
+            self._hotkey_listener = None
+            self._start_hotkey_listener()
 
         vault = config.OBSIDIAN_VAULT_PATH or ""
-        current_base = str(self._notes._base) if self._notes._base.parts else ""
+        current_base = self._notes.base_path
         if vault != current_base:
-            self._notes = NotesManager(config.OBSIDIAN_VAULT_PATH)
-            self._brain._notes = self._notes
+            self._notes = NotesManager(vault)
+            self._brain.set_notes_manager(self._notes)
+            self._rebuild_question_pipeline()
 
         self._brain.reload_clients()
-        self._tts.reload_client()
+        self._tts.reload_client(settings=self._runtime_settings)
+        self._stt.reload_settings(settings=self._runtime_settings)
 
     @_safe_slot
     def _on_error(self, message: str) -> None:

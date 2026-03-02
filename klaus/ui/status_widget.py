@@ -122,3 +122,12 @@ class StatusWidget(QWidget):
     def set_exchange_count(self, count: int) -> None:
         """Update the session exchange count display."""
         self._stats_label.setText(f"{count} Q&A this session")
+
+    def set_hotkeys(self, hotkey: str, toggle_key: str) -> None:
+        """Update hotkey labels shown in the status bar."""
+        self._hotkey = hotkey
+        self._toggle_key = toggle_key
+        hint = self._HOTKEY_HINTS.get(self._mode, "").format(
+            hotkey=self._hotkey, toggle=self._toggle_key,
+        )
+        self._hotkey_label.setText(hint)

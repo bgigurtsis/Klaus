@@ -3,6 +3,8 @@ import os
 import re
 import sys
 import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -21,7 +23,7 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Set to true after the setup wizard completes.
 # setup_complete = false
 
-# Push-to-talk hotkey (default: F2)
+# Push-to-talk hotkey (default: § on macOS, F2 elsewhere)
 # hotkey = "F2"
 
 # Toggle input mode hotkey (default: § on macOS, F3 on Windows)
@@ -42,9 +44,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Fixed angles: "90", "180", "270"
 # camera_rotation = "auto"
 
-# TTS voice (default: marin)
+# TTS voice (default: cedar)
 # Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin
-# voice = "marin"
+# voice = "cedar"
 
 # TTS playback speed 0.25-4.0 (default: 1.0)
 # tts_speed = 1.0
@@ -63,14 +65,14 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Helps reject fan/hum/background-noise false triggers.
 # Minimum utterance duration in seconds (default: 0.5)
 # vad_min_duration = 0.5
-# Minimum voiced-frame ratio across an utterance (default: 0.35)
-# vad_min_voiced_ratio = 0.35
+# Minimum voiced-frame ratio across an utterance (default: 0.28)
+# vad_min_voiced_ratio = 0.28
 # Minimum voiced 30ms frames in an utterance (default: 8)
 # vad_min_voiced_frames = 8
 #
 # Secondary local quality gate (runs after WebRTC VAD checks).
-# Minimum RMS loudness in dBFS (default: -37.0, higher = stricter)
-# vad_min_rms_dbfs = -37.0
+# Minimum RMS loudness in dBFS (default: -45.0, higher = stricter)
+# vad_min_rms_dbfs = -45.0
 # Minimum strongest contiguous voiced run of 30ms frames (default: 6)
 # vad_min_voiced_run_frames = 6
 #
@@ -83,6 +85,27 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Optional: describe your background so Klaus can tailor explanations.
 # user_background = ""
 
+# Enable intelligent query routing (default: true)
+# enable_query_router = true
+#
+# Router model for ambiguous intent classification
+# router_model = "claude-haiku-4-5"
+#
+# Router timeout in milliseconds (default: 350)
+# router_timeout_ms = 350
+#
+# Router max output tokens (default: 80)
+# router_max_tokens = 80
+#
+# Local router confidence threshold (default: 0.78)
+# router_local_confidence_threshold = 0.78
+#
+# Local router score margin threshold (default: 0.18)
+# router_local_margin_threshold = 0.18
+#
+# LLM router confidence threshold (default: 0.60)
+# router_llm_confidence_threshold = 0.60
+#
 # Optional: path to your Obsidian vault folder for the notes feature.
 # obsidian_vault_path = ""
 
@@ -102,12 +125,20 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-_user_config: dict = {}
-if CONFIG_PATH.exists():
-    with open(CONFIG_PATH, "rb") as _f:
-        _user_config = tomllib.load(_f)
-else:
-    CONFIG_PATH.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+
+def _load_user_config() -> tuple[dict, Exception | None]:
+    if not CONFIG_PATH.exists():
+        CONFIG_PATH.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+        return {}, None
+
+    try:
+        with open(CONFIG_PATH, "rb") as _f:
+            return tomllib.load(_f), None
+    except tomllib.TOMLDecodeError as exc:
+        return {}, exc
+
+
+_user_config, _config_load_error = _load_user_config()
 
 # ---------------------------------------------------------------------------
 # Logging (after TOML so log_level takes effect)
@@ -129,66 +160,23 @@ if _user_config:
     _log.info("Loaded config from %s", CONFIG_PATH)
 else:
     _log.info("Using default config (created template at %s)", CONFIG_PATH)
+if _config_load_error is not None:
+    _log.warning(
+        "Config file is invalid TOML; using defaults. path=%s error=%s",
+        CONFIG_PATH,
+        _config_load_error,
+    )
 
 # ---------------------------------------------------------------------------
-# API keys -- TOML [api_keys] section first, .env fallback
+# Runtime settings
 # ---------------------------------------------------------------------------
 
 load_dotenv()
 
-_api_keys: dict = _user_config.get("api_keys", {})
-
-ANTHROPIC_API_KEY: str = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
-OPENAI_API_KEY: str = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
-TAVILY_API_KEY: str = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
-OBSIDIAN_VAULT_PATH: str = _user_config.get("obsidian_vault_path", "") or os.getenv("OBSIDIAN_VAULT_PATH", "")
-
-_log.info(
-    "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
-    "set" if ANTHROPIC_API_KEY else "missing",
-    "set" if OPENAI_API_KEY else "missing",
-    "set" if TAVILY_API_KEY else "missing",
-)
-if OBSIDIAN_VAULT_PATH:
-    _log.info("Obsidian vault path: %s", OBSIDIAN_VAULT_PATH)
-else:
-    _log.warning("OBSIDIAN_VAULT_PATH not set -- notes feature disabled")
-
-# ---------------------------------------------------------------------------
-# Models (not user-configurable)
-# ---------------------------------------------------------------------------
-
 CLAUDE_MODEL = "claude-sonnet-4-6"
 TTS_MODEL = "gpt-4o-mini-tts"
-
-# ---------------------------------------------------------------------------
-# User-configurable settings (overridable via config.toml)
-# ---------------------------------------------------------------------------
-
-PUSH_TO_TALK_KEY: str = _user_config.get("hotkey", "F2")
+_DEFAULT_PTT_KEY = "§" if sys.platform == "darwin" else "F2"
 _DEFAULT_TOGGLE_KEY = "§" if sys.platform == "darwin" else "F3"
-TOGGLE_KEY: str = _user_config.get("toggle_key", _DEFAULT_TOGGLE_KEY)
-CAMERA_DEVICE_INDEX: int = _user_config.get("camera_index", 0)
-CAMERA_FRAME_WIDTH: int = _user_config.get("camera_width", 1920)
-CAMERA_FRAME_HEIGHT: int = _user_config.get("camera_height", 1080)
-CAMERA_ROTATION: str = str(_user_config.get("camera_rotation", "auto"))
-MIC_DEVICE_INDEX: int = int(_user_config.get("mic_index", -1))
-TTS_VOICE: str = _user_config.get("voice", "cedar")
-TTS_SPEED: float = float(_user_config.get("tts_speed", 1.0))
-
-INPUT_MODE: str = _user_config.get("input_mode", "voice_activation")
-VAD_SENSITIVITY: int = int(_user_config.get("vad_sensitivity", 3))
-VAD_SILENCE_TIMEOUT: float = float(_user_config.get("vad_silence_timeout", 1.5))
-VAD_MIN_DURATION: float = float(_user_config.get("vad_min_duration", 0.5))
-VAD_MIN_VOICED_RATIO: float = float(_user_config.get("vad_min_voiced_ratio", 0.28))
-VAD_MIN_VOICED_FRAMES: int = int(_user_config.get("vad_min_voiced_frames", 8))
-VAD_MIN_RMS_DBFS: float = float(_user_config.get("vad_min_rms_dbfs", -37.0))
-VAD_MIN_VOICED_RUN_FRAMES: int = int(_user_config.get("vad_min_voiced_run_frames", 6))
-
-STT_MOONSHINE_MODEL: str = str(_user_config.get("stt_moonshine_model", "medium"))
-STT_MOONSHINE_LANGUAGE: str = str(_user_config.get("stt_moonshine_language", "en"))
-
-USER_BACKGROUND: str = str(_user_config.get("user_background", ""))
 
 TTS_VOICE_INSTRUCTIONS = (
     "Speak at a natural conversational pace, not slow or deliberate. "
@@ -196,47 +184,147 @@ TTS_VOICE_INSTRUCTIONS = (
     "Be direct and matter-of-fact, not performative. No vocal fry, no uptalk."
 )
 
-_log.info(
-    "Settings: hotkey=%s | camera=%d (%dx%d) | voice=%s (speed=%.2f) | input_mode=%s | log_level=%s",
-    PUSH_TO_TALK_KEY, CAMERA_DEVICE_INDEX,
-    CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT,
-    TTS_VOICE, TTS_SPEED, INPUT_MODE, _log_level_name,
-)
-_log.info(
-    (
-        "VAD: sensitivity=%d | silence_timeout=%.1fs | min_duration=%.1fs | "
-        "min_voiced_ratio=%.2f | min_voiced_frames=%d | "
-        "min_rms_dbfs=%.1f | min_voiced_run_frames=%d"
+
+@dataclass(frozen=True)
+class RuntimeSettings:
+    anthropic_api_key: str
+    openai_api_key: str
+    tavily_api_key: str
+    obsidian_vault_path: str
+    push_to_talk_key: str
+    toggle_key: str
+    camera_device_index: int
+    camera_frame_width: int
+    camera_frame_height: int
+    camera_rotation: str
+    mic_device_index: int
+    tts_voice: str
+    tts_speed: float
+    input_mode: str
+    vad_sensitivity: int
+    vad_silence_timeout: float
+    vad_min_duration: float
+    vad_min_voiced_ratio: float
+    vad_min_voiced_frames: int
+    vad_min_rms_dbfs: float
+    vad_min_voiced_run_frames: int
+    stt_moonshine_model: str
+    stt_moonshine_language: str
+    user_background: str
+    enable_query_router: bool
+    router_model: str
+    router_timeout_ms: int
+    router_max_tokens: int
+    router_local_confidence_threshold: float
+    router_local_margin_threshold: float
+    router_llm_confidence_threshold: float
+    system_prompt: str
+
+
+@dataclass(frozen=True)
+class _SettingSpec:
+    runtime_field: str
+    config_key: str
+    default: object
+    coerce: Callable[[object, object], object]
+    env_var: str | None = None
+
+
+def _as_int(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_str(value: object, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def _as_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+_RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
+    _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
+    _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
+    _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
+    _SettingSpec("camera_device_index", "camera_index", 0, _as_int),
+    _SettingSpec("camera_frame_width", "camera_width", 1920, _as_int),
+    _SettingSpec("camera_frame_height", "camera_height", 1080, _as_int),
+    _SettingSpec("camera_rotation", "camera_rotation", "auto", _as_str),
+    _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
+    _SettingSpec("tts_voice", "voice", "cedar", _as_str),
+    _SettingSpec("tts_speed", "tts_speed", 1.0, _as_float),
+    _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
+    _SettingSpec("vad_sensitivity", "vad_sensitivity", 3, _as_int),
+    _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.5, _as_float),
+    _SettingSpec("vad_min_duration", "vad_min_duration", 0.5, _as_float),
+    _SettingSpec("vad_min_voiced_ratio", "vad_min_voiced_ratio", 0.28, _as_float),
+    _SettingSpec("vad_min_voiced_frames", "vad_min_voiced_frames", 8, _as_int),
+    _SettingSpec("vad_min_rms_dbfs", "vad_min_rms_dbfs", -45.0, _as_float),
+    _SettingSpec("vad_min_voiced_run_frames", "vad_min_voiced_run_frames", 6, _as_int),
+    _SettingSpec("stt_moonshine_model", "stt_moonshine_model", "medium", _as_str),
+    _SettingSpec("stt_moonshine_language", "stt_moonshine_language", "en", _as_str),
+    _SettingSpec("enable_query_router", "enable_query_router", True, _as_bool),
+    _SettingSpec("router_model", "router_model", "claude-haiku-4-5", _as_str),
+    _SettingSpec("router_timeout_ms", "router_timeout_ms", 350, _as_int),
+    _SettingSpec("router_max_tokens", "router_max_tokens", 80, _as_int),
+    _SettingSpec(
+        "router_local_confidence_threshold",
+        "router_local_confidence_threshold",
+        0.78,
+        _as_float,
     ),
-    VAD_SENSITIVITY,
-    VAD_SILENCE_TIMEOUT,
-    VAD_MIN_DURATION,
-    VAD_MIN_VOICED_RATIO,
-    VAD_MIN_VOICED_FRAMES,
-    VAD_MIN_RMS_DBFS,
-    VAD_MIN_VOICED_RUN_FRAMES,
-)
-_log.info(
-    "STT: moonshine_model=%s | moonshine_language=%s",
-    STT_MOONSHINE_MODEL, STT_MOONSHINE_LANGUAGE,
+    _SettingSpec(
+        "router_local_margin_threshold",
+        "router_local_margin_threshold",
+        0.18,
+        _as_float,
+    ),
+    _SettingSpec(
+        "router_llm_confidence_threshold",
+        "router_llm_confidence_threshold",
+        0.60,
+        _as_float,
+    ),
 )
 
-def _build_system_prompt() -> str:
+
+def _build_system_prompt(user_background: str) -> str:
     """Assemble the system prompt, injecting user background when available."""
     intro = (
-        "You are Klaus, a knowledgeable and articulate research companion. "
+        "You are Klaus, a concise, knowledgeable and articulate research companion. You value brevity."
         "The user is reading a physical paper or book, which you can see "
         "via their document camera."
     )
-    if USER_BACKGROUND:
-        intro += " " + USER_BACKGROUND.strip()
+    if user_background:
+        intro += " " + user_background.strip()
     return intro + "\n\n" + _SYSTEM_PROMPT_BODY
 
 
 _SYSTEM_PROMPT_BODY = """\
 Brevity rule: three sentences is not a minimum. It is a ceiling. Give \
 the shortest accurate answer, then stop. Do not add a second paragraph, \
-do not connect it back to the page, do not offer additional context. \
+do not connect it back to the page, do not offer additional context unless explicitly asked. \
 The user will ask a follow-up question if they want more. Only give a \
 longer answer when the user explicitly says "elaborate", "in depth", "go deeper", \
 "walk me through it", "tell me more", "go in depth", or "break it down".
@@ -256,6 +344,28 @@ makes it invisible."
 accessible states, so time averages equal ensemble averages. In a \
 non-ergodic system it doesn't, so history and initial conditions \
 permanently matter."
+  Q: "Explain what a virus is."
+  A: "An agent that has evolved to achieve replication in host cells. \
+Everything about it follows from that single function."
+  Q: "What does this section mean?"
+  A: "Selection doesn't require intent. Any mechanism that copies \
+with variation and filters by fitness produces adaptation."
+  Q: "Why does the author say causation breaks down here?"
+  A: "Because the components interact nonlinearly. You can't isolate \
+one variable's effect when its influence depends on the state of \
+every other variable."
+
+Never frame answers as narration of the page. Do not say "The page \
+defines", "The author describes", "It's described as", "According to \
+the text", or similar. Just state the answer directly.
+
+Routing precedence rule:
+
+- If the user asks for a definition or concept explanation without asking \
+for page grounding, give a direct standalone definition in no more than \
+two sentences.
+- If the user explicitly or inferably asks about a location on the page \
+(for example "the definition on the far right"), use the page context.
 
 Your job:
 
@@ -276,7 +386,7 @@ specific parts of the document so they can follow along.
 bridge rather than a full primer.
 - When a paper makes a claim, help the user evaluate it critically: \
 what's the evidence, what are the assumptions, where might it be weak.
-- If you are unsure about something, say so. Do not confabulate. Use \
+- If you are unsure about something, say so. Do not be sycophantic or biased. Use \
 web search to verify claims, look up referenced papers or authors, \
 check definitions, or find additional context when your own knowledge \
 is insufficient or uncertain. It is always better to search and give \
@@ -321,7 +431,175 @@ direct quotes, and include page or section references when visible on \
 the page.\
 """
 
-SYSTEM_PROMPT: str = _build_system_prompt()
+_api_keys: dict = {}
+_runtime_settings: RuntimeSettings
+
+# Set by _apply_runtime_settings.
+ANTHROPIC_API_KEY: str
+OPENAI_API_KEY: str
+TAVILY_API_KEY: str
+OBSIDIAN_VAULT_PATH: str
+PUSH_TO_TALK_KEY: str
+TOGGLE_KEY: str
+CAMERA_DEVICE_INDEX: int
+CAMERA_FRAME_WIDTH: int
+CAMERA_FRAME_HEIGHT: int
+CAMERA_ROTATION: str
+MIC_DEVICE_INDEX: int
+TTS_VOICE: str
+TTS_SPEED: float
+INPUT_MODE: str
+VAD_SENSITIVITY: int
+VAD_SILENCE_TIMEOUT: float
+VAD_MIN_DURATION: float
+VAD_MIN_VOICED_RATIO: float
+VAD_MIN_VOICED_FRAMES: int
+VAD_MIN_RMS_DBFS: float
+VAD_MIN_VOICED_RUN_FRAMES: int
+STT_MOONSHINE_MODEL: str
+STT_MOONSHINE_LANGUAGE: str
+USER_BACKGROUND: str
+ENABLE_QUERY_ROUTER: bool
+ROUTER_MODEL: str
+ROUTER_TIMEOUT_MS: int
+ROUTER_MAX_TOKENS: int
+ROUTER_LOCAL_CONFIDENCE_THRESHOLD: float
+ROUTER_LOCAL_MARGIN_THRESHOLD: float
+ROUTER_LLM_CONFIDENCE_THRESHOLD: float
+SYSTEM_PROMPT: str
+
+
+_RUNTIME_EXPORTS: dict[str, str] = {
+    "ANTHROPIC_API_KEY": "anthropic_api_key",
+    "OPENAI_API_KEY": "openai_api_key",
+    "TAVILY_API_KEY": "tavily_api_key",
+    "OBSIDIAN_VAULT_PATH": "obsidian_vault_path",
+    "PUSH_TO_TALK_KEY": "push_to_talk_key",
+    "TOGGLE_KEY": "toggle_key",
+    "CAMERA_DEVICE_INDEX": "camera_device_index",
+    "CAMERA_FRAME_WIDTH": "camera_frame_width",
+    "CAMERA_FRAME_HEIGHT": "camera_frame_height",
+    "CAMERA_ROTATION": "camera_rotation",
+    "MIC_DEVICE_INDEX": "mic_device_index",
+    "TTS_VOICE": "tts_voice",
+    "TTS_SPEED": "tts_speed",
+    "INPUT_MODE": "input_mode",
+    "VAD_SENSITIVITY": "vad_sensitivity",
+    "VAD_SILENCE_TIMEOUT": "vad_silence_timeout",
+    "VAD_MIN_DURATION": "vad_min_duration",
+    "VAD_MIN_VOICED_RATIO": "vad_min_voiced_ratio",
+    "VAD_MIN_VOICED_FRAMES": "vad_min_voiced_frames",
+    "VAD_MIN_RMS_DBFS": "vad_min_rms_dbfs",
+    "VAD_MIN_VOICED_RUN_FRAMES": "vad_min_voiced_run_frames",
+    "STT_MOONSHINE_MODEL": "stt_moonshine_model",
+    "STT_MOONSHINE_LANGUAGE": "stt_moonshine_language",
+    "USER_BACKGROUND": "user_background",
+    "ENABLE_QUERY_ROUTER": "enable_query_router",
+    "ROUTER_MODEL": "router_model",
+    "ROUTER_TIMEOUT_MS": "router_timeout_ms",
+    "ROUTER_MAX_TOKENS": "router_max_tokens",
+    "ROUTER_LOCAL_CONFIDENCE_THRESHOLD": "router_local_confidence_threshold",
+    "ROUTER_LOCAL_MARGIN_THRESHOLD": "router_local_margin_threshold",
+    "ROUTER_LLM_CONFIDENCE_THRESHOLD": "router_llm_confidence_threshold",
+    "SYSTEM_PROMPT": "system_prompt",
+}
+
+
+def _settings_from_config(user_config: dict) -> RuntimeSettings:
+    api_keys = user_config.get("api_keys", {})
+    user_background = _as_str(user_config.get("user_background", ""), "")
+    values: dict[str, object] = {}
+    for spec in _RUNTIME_SETTING_SPECS:
+        raw = user_config.get(spec.config_key, spec.default)
+        if spec.env_var and not raw:
+            raw = os.getenv(spec.env_var, "")
+        values[spec.runtime_field] = spec.coerce(raw, spec.default)
+
+    values["anthropic_api_key"] = _as_str(
+        api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", ""),
+        "",
+    )
+    values["openai_api_key"] = _as_str(
+        api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", ""),
+        "",
+    )
+    values["tavily_api_key"] = _as_str(
+        api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", ""),
+        "",
+    )
+    values["user_background"] = user_background
+    values["system_prompt"] = _build_system_prompt(user_background)
+    return RuntimeSettings(**values)
+
+
+def _apply_runtime_settings(settings: RuntimeSettings) -> None:
+    global _api_keys
+
+    _api_keys = {
+        "anthropic": settings.anthropic_api_key,
+        "openai": settings.openai_api_key,
+        "tavily": settings.tavily_api_key,
+    }
+    module_globals = globals()
+    for export_name, field_name in _RUNTIME_EXPORTS.items():
+        module_globals[export_name] = getattr(settings, field_name)
+
+
+def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> None:
+    _log.info(
+        "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
+        "set" if settings.anthropic_api_key else "missing",
+        "set" if settings.openai_api_key else "missing",
+        "set" if settings.tavily_api_key else "missing",
+    )
+    if settings.obsidian_vault_path:
+        _log.info("Obsidian vault path: %s", settings.obsidian_vault_path)
+    else:
+        _log.warning("OBSIDIAN_VAULT_PATH not set -- notes feature disabled")
+
+    _log.info(
+        (
+            "%s settings: hotkey=%s | camera=%d (%dx%d) | voice=%s "
+            "(speed=%.2f) | input_mode=%s | log_level=%s"
+        ),
+        prefix,
+        settings.push_to_talk_key,
+        settings.camera_device_index,
+        settings.camera_frame_width,
+        settings.camera_frame_height,
+        settings.tts_voice,
+        settings.tts_speed,
+        settings.input_mode,
+        _log_level_name,
+    )
+    _log.info(
+        (
+            "VAD: sensitivity=%d | silence_timeout=%.1fs | min_duration=%.1fs | "
+            "min_voiced_ratio=%.2f | min_voiced_frames=%d | "
+            "min_rms_dbfs=%.1f | min_voiced_run_frames=%d"
+        ),
+        settings.vad_sensitivity,
+        settings.vad_silence_timeout,
+        settings.vad_min_duration,
+        settings.vad_min_voiced_ratio,
+        settings.vad_min_voiced_frames,
+        settings.vad_min_rms_dbfs,
+        settings.vad_min_voiced_run_frames,
+    )
+    _log.info(
+        "STT: moonshine_model=%s | moonshine_language=%s",
+        settings.stt_moonshine_model,
+        settings.stt_moonshine_language,
+    )
+
+
+def get_runtime_settings() -> RuntimeSettings:
+    return _runtime_settings
+
+
+_runtime_settings = _settings_from_config(_user_config)
+_apply_runtime_settings(_runtime_settings)
+_log_runtime_settings(_runtime_settings)
 
 
 # ---------------------------------------------------------------------------
@@ -345,20 +623,32 @@ def is_setup_complete() -> bool:
     return bool(_user_config.get("setup_complete", False))
 
 
+def _escape_toml_basic_string(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", "")
+        .replace("\n", "\\n")
+    )
+
+
 def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
     """Write API keys to the [api_keys] section of config.toml."""
+    safe_anthropic = _escape_toml_basic_string(anthropic.strip())
+    safe_openai = _escape_toml_basic_string(openai.strip())
+    safe_tavily = _escape_toml_basic_string(tavily.strip())
     text = _read_config_text()
     new_section = (
         "[api_keys]\n"
-        f'anthropic = "{anthropic}"\n'
-        f'openai = "{openai}"\n'
-        f'tavily = "{tavily}"\n'
+        f'anthropic = "{safe_anthropic}"\n'
+        f'openai = "{safe_openai}"\n'
+        f'tavily = "{safe_tavily}"\n'
     )
     section_re = re.compile(
         r"\[api_keys\].*?(?=\n\[|\Z)", re.DOTALL,
     )
     if section_re.search(text):
-        text = section_re.sub(new_section.rstrip(), text)
+        text = section_re.sub(lambda _m: new_section.rstrip(), text)
     else:
         text = text.rstrip() + "\n\n" + new_section
     _write_config_text(text)
@@ -372,9 +662,9 @@ def _set_top_level_value(key: str, value: str) -> None:
     line = f"{key} = {value}"
 
     if uncommented.search(text):
-        text = uncommented.sub(line, text)
+        text = uncommented.sub(lambda _m: line, text)
     elif commented.search(text):
-        text = commented.sub(line, text)
+        text = commented.sub(lambda _m: line, text)
     else:
         first_newline = text.index("\n") if "\n" in text else len(text)
         text = text[:first_newline] + "\n" + line + text[first_newline:]
@@ -386,25 +676,41 @@ def mark_setup_complete() -> None:
     _set_top_level_value("setup_complete", "true")
 
 
+def set_camera_index(index: int, persist: bool = True) -> None:
+    """Update the active camera index and optionally persist it."""
+    global CAMERA_DEVICE_INDEX
+    CAMERA_DEVICE_INDEX = int(index)
+    if persist:
+        _set_top_level_value("camera_index", str(CAMERA_DEVICE_INDEX))
+
+
 def save_camera_index(index: int) -> None:
     """Persist the chosen camera index to config.toml."""
-    _set_top_level_value("camera_index", str(index))
+    set_camera_index(index, persist=True)
+
+
+def set_mic_index(index: int, persist: bool = True) -> None:
+    """Update the active microphone index and optionally persist it."""
+    global MIC_DEVICE_INDEX
+    MIC_DEVICE_INDEX = int(index)
+    if persist:
+        _set_top_level_value("mic_index", str(MIC_DEVICE_INDEX))
 
 
 def save_mic_index(index: int) -> None:
     """Persist the chosen microphone device index to config.toml."""
-    _set_top_level_value("mic_index", str(index))
+    set_mic_index(index, persist=True)
 
 
 def save_user_background(text: str) -> None:
     """Persist the user background description to config.toml."""
-    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    escaped = _escape_toml_basic_string(text)
     _set_top_level_value("user_background", f'"{escaped}"')
 
 
 def save_obsidian_vault_path(path: str) -> None:
     """Persist the Obsidian vault path to config.toml."""
-    escaped = path.replace("\\", "/")
+    escaped = _escape_toml_basic_string(path.replace("\\", "/"))
     _set_top_level_value("obsidian_vault_path", f'"{escaped}"')
 
 
@@ -414,41 +720,17 @@ def reload() -> None:
     Call after the setup wizard writes new values so that components created
     afterward pick up the fresh configuration.
     """
-    global _user_config, _api_keys
-    global ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY, OBSIDIAN_VAULT_PATH
-    global PUSH_TO_TALK_KEY, TOGGLE_KEY
-    global CAMERA_DEVICE_INDEX, CAMERA_FRAME_WIDTH, CAMERA_FRAME_HEIGHT, CAMERA_ROTATION
-    global MIC_DEVICE_INDEX
-    global USER_BACKGROUND, SYSTEM_PROMPT
+    global _user_config, _runtime_settings
 
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "rb") as f:
-            _user_config = tomllib.load(f)
-    else:
-        _user_config = {}
+    _user_config, load_error = _load_user_config()
+    if load_error is not None:
+        _log.warning(
+            "Config reload found invalid TOML; using defaults. path=%s error=%s",
+            CONFIG_PATH,
+            load_error,
+        )
 
-    _api_keys = _user_config.get("api_keys", {})
-    ANTHROPIC_API_KEY = _api_keys.get("anthropic", "") or os.getenv("ANTHROPIC_API_KEY", "")
-    OPENAI_API_KEY = _api_keys.get("openai", "") or os.getenv("OPENAI_API_KEY", "")
-    TAVILY_API_KEY = _api_keys.get("tavily", "") or os.getenv("TAVILY_API_KEY", "")
-    OBSIDIAN_VAULT_PATH = _user_config.get("obsidian_vault_path", "") or os.getenv("OBSIDIAN_VAULT_PATH", "")
-
-    PUSH_TO_TALK_KEY = _user_config.get("hotkey", "F2")
-    TOGGLE_KEY = _user_config.get("toggle_key", _DEFAULT_TOGGLE_KEY)
-
-    CAMERA_DEVICE_INDEX = _user_config.get("camera_index", 0)
-    CAMERA_FRAME_WIDTH = _user_config.get("camera_width", 1920)
-    CAMERA_FRAME_HEIGHT = _user_config.get("camera_height", 1080)
-    CAMERA_ROTATION = str(_user_config.get("camera_rotation", "auto"))
-    MIC_DEVICE_INDEX = int(_user_config.get("mic_index", -1))
-
-    USER_BACKGROUND = str(_user_config.get("user_background", ""))
-    SYSTEM_PROMPT = _build_system_prompt()
-
+    _runtime_settings = _settings_from_config(_user_config)
+    _apply_runtime_settings(_runtime_settings)
     _log.info("Config reloaded from %s", CONFIG_PATH)
-    _log.info(
-        "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
-        "set" if ANTHROPIC_API_KEY else "missing",
-        "set" if OPENAI_API_KEY else "missing",
-        "set" if TAVILY_API_KEY else "missing",
-    )
+    _log_runtime_settings(_runtime_settings, prefix="Reloaded")

@@ -1,8 +1,14 @@
 # Klaus
 
-A voice-based research assistant for reading physical papers and books. Place a paper under a document camera (or phone on a tripod), speak a question, and Klaus sees the page and answers aloud in a natural voice.
+Klaus is a desktop voice assistant built for reading physical papers and books. You place a page under a document camera (or phone on a tripod), ask a question out loud, and Klaus answers in natural speech while keeping the page context and conversation visible in the UI. 
 
-**Stack:** Claude Sonnet 4 (vision + tool use) | Moonshine Medium local STT | OpenAI gpt-4o-mini-tts | Tavily web search | PyQt6 desktop UI | SQLite memory
+The experience is tuned for fast study loops: read, ask, clarify, and continue without switching between typing and separate search tools.
+
+Klaus also searches the web when necessary to answer your query, and has the ability to write notes directly to your obsidian vault when asked.
+
+Under the hood, WebRTC voice activation detection or push to talk feeds Moonshine Medium (local speech to text model), then a hybrid router (local heuristics with `claude-haiku-4-5` fallback) decides whether to include camera image, history, memory, and notes context. 
+
+Main reasoning loop runs on `claude-sonnet-4-6`. Tools include Tavily for search and optional Obsidian note actions. Output is streamed sentence by sentence to OpenAI `gpt-4o-mini-tts`. End to end latency is around 2-4 seconds.
 
 **Platforms:** Windows and macOS
 
@@ -28,6 +34,10 @@ brew tap bgigurtsis/klaus
 brew install klaus
 klaus
 ```
+
+> **macOS input monitoring:** When launching Klaus from a terminal, macOS may prompt you to grant that terminal app Accessibility (input monitoring) permission. This is required for global hotkeys — specifically, the push-to-talk and voice-activation toggle keys — to work while Klaus is not in focus. If you'd prefer not to grant this permission, simply deny the prompt; you can still switch input modes using the buttons in the Klaus UI.
+
+> **macOS + Python 3.14:** `pynput` global hotkeys can crash on macOS 26. Klaus now disables global hotkeys on this combo and keeps in-app hotkeys active; use Python 3.13 for stable global hotkeys.
 
 On first launch, a setup wizard walks you through API keys, camera, mic, and voice model setup.
 
@@ -57,7 +67,7 @@ Klaus auto-detects portrait orientation and rotates the image. Override with `ca
 
 ## Other install options
 
-**Prerequisites:** Python 3.11+, camera, mic, speakers. On Windows, install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Desktop development with C++) so `webrtcvad` can compile. On macOS without Homebrew: `brew install python@3.13 portaudio`.
+**Prerequisites:** Python 3.11-3.13, camera, mic, speakers. On Windows, install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Desktop development with C++) so `webrtcvad` can compile. On macOS without Homebrew: `brew install python@3.13 portaudio`.
 
 **From source (development):**
 
@@ -93,14 +103,18 @@ Settings live in `~/.klaus/config.toml` (created on first run). Edit any line to
 | Setting | Default | Notes |
 |---------|---------|-------|
 | `hotkey` | `F2` | Push-to-talk key, works without app focus |
+| `toggle_key` | `§` (macOS) / `F3` (Windows) | Toggle between `voice_activation` and `push_to_talk` |
 | `input_mode` | `voice_activation` | Or `push_to_talk` |
 | `voice` | `cedar` | Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin |
 | `tts_speed` | `1.0` | 0.25 to 4.0 |
 | `camera_index` | `0` | Change if you have multiple cameras |
+| `mic_index` | `-1` | `-1` uses system default microphone |
 | `camera_rotation` | `auto` | `auto`, `none`, `90`, `180`, `270` |
 | `camera_width` / `camera_height` | `1920` / `1080` | Camera resolution |
 | `vad_sensitivity` | `3` | 0-3, higher = more aggressive noise filtering |
 | `vad_silence_timeout` | `1.5` | Seconds of silence before voice activation finalizes |
+| `stt_moonshine_model` | `medium` | Options: `tiny`, `small`, `medium` |
+| `stt_moonshine_language` | `en` | Moonshine language code |
 | `log_level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
 
 ## Architecture

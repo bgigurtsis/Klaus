@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -20,23 +18,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 
 from klaus.ui import theme
-
-
-def _relative_time(ts: float) -> str:
-    """Format a unix timestamp as a short relative string."""
-    delta = time.time() - ts
-    if delta < 60:
-        return "just now"
-    if delta < 3600:
-        m = int(delta / 60)
-        return f"{m}m ago"
-    if delta < 86400:
-        h = int(delta / 3600)
-        return f"{h}h ago"
-    d = int(delta / 86400)
-    if d == 1:
-        return "yesterday"
-    return f"{d}d ago"
+from klaus.ui.shared.relative_time import format_relative_time
 
 
 def _dark_input_dialog(
@@ -82,6 +64,10 @@ class SessionPanel(QWidget):
         self._sessions: list[dict] = []
         self._current_id: str | None = None
         self._init_ui()
+
+    @property
+    def current_id(self) -> str | None:
+        return self._current_id
 
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -134,7 +120,7 @@ class SessionPanel(QWidget):
             if "exchange_count" in s:
                 meta_parts.append(f"{s['exchange_count']} Q&A")
             if "updated_at" in s:
-                meta_parts.append(_relative_time(s["updated_at"]))
+                meta_parts.append(format_relative_time(s["updated_at"]))
             meta = " \u00b7 ".join(meta_parts)
 
             label = QLabel()

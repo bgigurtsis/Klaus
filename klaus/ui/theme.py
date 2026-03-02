@@ -137,6 +137,22 @@ QComboBox QAbstractItemView {{
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
     selection-background-color: {SURFACE_OVERLAY};
+    selection-color: {TEXT_PRIMARY};
+}}
+QComboBox QAbstractItemView::item {{
+    padding: 6px 8px;
+}}
+QComboBox QAbstractItemView::item:hover {{
+    background-color: {BORDER_EMPHASIS};
+    color: {TEXT_PRIMARY};
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background-color: {USER_BG};
+    color: {TEXT_PRIMARY};
+}}
+QComboBox QAbstractItemView::item:selected:hover {{
+    background-color: {USER_ACCENT};
+    color: #ffffff;
 }}
 
 /* ===== Default button ===== */
@@ -404,7 +420,7 @@ QTabBar::tab {{
     color: {TEXT_SECONDARY};
     border: 1px solid {BORDER_DEFAULT};
     border-bottom: none;
-    padding: 8px 18px;
+    padding: 8px 10px;
     font-size: {FONT_SIZE_SMALL}px;
     font-weight: 600;
     margin-right: 2px;
@@ -454,6 +470,44 @@ QInputDialog QLabel {{
 }}
 
 /* ===== Setup wizard ===== */
+#wizard-welcome-title {{
+    color: {TEXT_PRIMARY};
+    font-size: {FONT_SIZE_HEADING + 10}px;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}}
+#wizard-welcome-subtitle {{
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_BODY}px;
+    background: transparent;
+    border: none;
+    padding: 0 24px;
+}}
+#wizard-welcome-card {{
+    background-color: {SURFACE_RAISED};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: {RADIUS_MD}px;
+}}
+#wizard-welcome-card-title {{
+    color: {TEXT_PRIMARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}}
+#wizard-welcome-card-body {{
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_SMALL}px;
+    background: transparent;
+    border: none;
+}}
+#wizard-welcome-footer {{
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_CAPTION}px;
+    background: transparent;
+    border: none;
+}}
 #wizard-primary-btn {{
     background-color: {USER_ACCENT};
     color: #fff;

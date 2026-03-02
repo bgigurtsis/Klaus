@@ -84,14 +84,15 @@ class TestSpeakWithMock:
         mock_client.audio.speech.create.return_value = mock_response
 
         mock_stream = MagicMock()
-        mock_stream.active = False
-        mock_sd.get_stream.return_value = mock_stream
+        mock_stream.closed = False
+        mock_sd.OutputStream.return_value = mock_stream
 
         tts = TextToSpeech()
         tts.speak("Hello world.")
 
         mock_client.audio.speech.create.assert_called()
-        mock_sd.play.assert_called()
+        mock_sd.OutputStream.assert_called_once()
+        assert mock_stream.write.call_count >= 1
 
     @patch("klaus.tts.sd")
     @patch("klaus.tts.OpenAI")
@@ -103,7 +104,7 @@ class TestSpeakWithMock:
         tts.speak("")
 
         mock_client.audio.speech.create.assert_not_called()
-        mock_sd.play.assert_not_called()
+        mock_sd.OutputStream.assert_not_called()
 
     @patch("klaus.tts.sd")
     @patch("klaus.tts.OpenAI")
@@ -117,8 +118,8 @@ class TestSpeakWithMock:
         mock_client.audio.speech.create.return_value = mock_response
 
         mock_stream = MagicMock()
-        mock_stream.active = False
-        mock_sd.get_stream.return_value = mock_stream
+        mock_stream.closed = False
+        mock_sd.OutputStream.return_value = mock_stream
 
         tts = TextToSpeech()
         callback = MagicMock()
