@@ -41,7 +41,7 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 
 | Component | Details |
 |-----------|---------|
-| Camera | Document camera (recommended) or phone on a gooseneck mount pointed at your reading surface |
+| Camera | Document camera AKA Visualiser (recommended) or phone on a gooseneck mount pointed at your reading surface |
 | Microphone | Built-in or external; selected during setup |
 | Audio Outputs | Built-in or external; used for TTS playback |
 
@@ -129,7 +129,7 @@ A camera is required for Klaus to see what you're reading.
 
 A USB document camera (also called a visualiser) is recommended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface works well. Either gives Klaus a clear, stable view of the full page.
 
-I personally use this model: 
+I personally quite like this model as it has a light too:
 
 https://www.amazon.com/PAKOTOO-Document-Teachers-Classroom-Distance (Amazon US)
 
