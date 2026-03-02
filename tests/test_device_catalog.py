@@ -84,7 +84,7 @@ class TestMicCatalog:
             {"name": "BlackHole"},
         ]
         mock_query_devices.return_value = [
-            {"name": "Speakers", "max_input_channels": 0, "hostapi": 0},
+            {"name": "Audio Outputs", "max_input_channels": 0, "hostapi": 0},
             {"name": "Microphone", "max_input_channels": 1, "hostapi": 0},
             {"name": "Microphone", "max_input_channels": 1, "hostapi": 1},
             {"name": "Studio Mic", "max_input_channels": 2, "hostapi": 0},
@@ -112,6 +112,6 @@ class TestMicCatalog:
         _mock_default_input,
     ):
         mock_query_devices.return_value = [
-            {"name": "Speakers", "max_input_channels": 0, "hostapi": 0},
+            {"name": "Audio Outputs", "max_input_channels": 0, "hostapi": 0},
         ]
         assert list_input_devices() == []
