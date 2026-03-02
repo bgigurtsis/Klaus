@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "klaus-assistant"
-version = "0.3.1"
+version = "0.3.2"
 description = "Voice-powered research assistant for physical books and papers"
 readme = "README.md"
 license = "MIT"
