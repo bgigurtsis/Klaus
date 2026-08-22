@@ -1,8 +1,9 @@
-"""Settings dialog for changing API keys, camera, and microphone after setup."""
+"""Settings dialog for API keys, reading source, microphone, and profile."""
 
 from __future__ import annotations
 
 import logging
+import sys
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -31,7 +32,11 @@ from klaus.device_catalog import (
     list_input_devices,
 )
 from klaus.ui import theme
-from klaus.ui.shared.key_validation import KEY_PATTERNS, validate_api_key
+from klaus.ui.shared.key_validation import (
+    KEY_PATTERNS,
+    REQUIRED_API_KEY_SLUGS,
+    validate_api_key,
+)
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
 
 logger = logging.getLogger(__name__)
@@ -69,8 +74,9 @@ class SettingsDialog(QDialog):
         self._tabs = QTabWidget()
         self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
         self._tabs.tabBar().setExpanding(False)
-        self._tabs.addTab(self._build_keys_tab(), "API Keys")
-        self._camera_tab_index = self._tabs.addTab(self._build_camera_tab(), "Camera")
+        self._tabs.addTab(self._build_voice_tab(), "Voice")
+        self._keys_tab_index = self._tabs.addTab(self._build_keys_tab(), "API Keys")
+        self._camera_tab_index = self._tabs.addTab(self._build_camera_tab(), "Reading")
         self._mic_tab_index = self._tabs.addTab(self._build_mic_tab(), "Microphone")
         self._tabs.addTab(self._build_profile_tab(), "Profile")
         self._tabs.currentChanged.connect(self._on_tab_changed)
@@ -92,6 +98,50 @@ class SettingsDialog(QDialog):
 
     # -- API Keys tab --
 
+    def _build_voice_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        model_label = QLabel("Conversation model")
+        model_label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(model_label)
+        model_value = QLabel("GPT Realtime 2.1  \u00b7  live speech-to-speech")
+        model_value.setObjectName("klaus-model-pill")
+        model_value.setToolTip(config.REALTIME_MODEL)
+        layout.addWidget(model_value, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("Voice"))
+        self._voice_combo = QComboBox()
+        for voice in (
+            "cedar", "marin", "coral", "nova", "alloy", "ash", "ballad",
+            "echo", "fable", "onyx", "sage", "shimmer", "verse",
+        ):
+            self._voice_combo.addItem(voice.capitalize(), voice)
+        current_voice = self._voice_combo.findData(config.TTS_VOICE)
+        self._voice_combo.setCurrentIndex(max(0, current_voice))
+        layout.addWidget(self._voice_combo)
+
+        self._barge_in_check = QCheckBox("Let me interrupt by speaking")
+        self._barge_in_check.setChecked(config.BARGE_IN_ENABLED)
+        layout.addWidget(self._barge_in_check)
+        hint = QLabel(
+            "Klaus stops playback and trims unheard audio from the conversation."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+            "background: transparent; border: none; padding-left: 22px;"
+        )
+        layout.addWidget(hint)
+        layout.addStretch()
+        return page
+
     def _build_keys_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -107,8 +157,9 @@ class SettingsDialog(QDialog):
             row = QHBoxLayout()
             row.setSpacing(8)
 
-            name = QLabel(label)
-            name.setFixedWidth(90)
+            suffix = "" if slug in REQUIRED_API_KEY_SLUGS else "  optional"
+            name = QLabel(label + suffix)
+            name.setFixedWidth(135)
             name.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
                 "background: transparent; border: none;"
@@ -219,12 +270,22 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        layout.addWidget(QLabel("Camera device"))
+        layout.addWidget(QLabel("Reading source"))
 
         self._camera_combo = QComboBox()
         self._camera_combo.activated.connect(self._on_camera_changed)
         self._enable_combo_popup_hover(self._camera_combo)
         layout.addWidget(self._camera_combo)
+
+        hint = QLabel(
+            "Use Desk View for paper. Keep your PDF app frontmost for the active window."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(hint)
 
         layout.addStretch()
         return page
@@ -233,9 +294,9 @@ class SettingsDialog(QDialog):
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_index_by_device = {-1: 0}
-        self._camera_combo.addItem("No camera (audio only)", -1)
+        self._camera_combo.addItem("No reading source (audio only)", -1)
         try:
-            cameras = list_camera_devices()
+            cameras = list_camera_devices(include_physical=sys.platform != "darwin")
         except Exception as exc:
             logger.warning("Failed to enumerate cameras: %s", exc)
             cameras = []
@@ -335,7 +396,7 @@ class SettingsDialog(QDialog):
         vault_row = QHBoxLayout()
         self._vault_path_edit = QLineEdit()
         self._vault_path_edit.setReadOnly(True)
-        self._vault_path_edit.setPlaceholderText("Not set — click Browse to select")
+        self._vault_path_edit.setPlaceholderText("Not set. Click Browse to select")
         if config.OBSIDIAN_VAULT_PATH:
             self._vault_path_edit.setText(config.OBSIDIAN_VAULT_PATH)
         vault_row.addWidget(self._vault_path_edit)
@@ -499,7 +560,7 @@ class SettingsDialog(QDialog):
 
             is_valid, message = validate_api_key(slug, text)
             if not is_valid:
-                self._tabs.setCurrentIndex(0)
+                self._tabs.setCurrentIndex(self._keys_tab_index)
                 QMessageBox.warning(self, "Invalid API key", f"{label}: {message}")
                 return
             config.set_api_key(slug, text)
@@ -508,6 +569,9 @@ class SettingsDialog(QDialog):
         config.save_user_background(bg)
         vault = self._vault_path_edit.text().strip()
         config.save_obsidian_vault_path(vault)
+        voice = self._voice_combo.currentData()
+        config.save_tts_voice(str(voice))
+        config.save_barge_in_enabled(self._barge_in_check.isChecked())
         config.reload()
         logger.info("Settings saved")
         self._stop_mic()

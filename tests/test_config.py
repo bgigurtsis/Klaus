@@ -9,6 +9,12 @@ import pytest
 import klaus.config as config
 
 
+def test_resolve_data_dir_prefers_environment_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("KLAUS_DATA_DIR", str(tmp_path))
+
+    assert config._resolve_data_dir() == tmp_path
+
+
 @pytest.fixture
 def config_dir(tmp_path, monkeypatch):
     """Redirect config to a temporary directory."""
@@ -127,6 +133,29 @@ class TestSaveCameraIndex:
         with open(config_dir, "rb") as f:
             parsed = tomllib.load(f)
         assert parsed["camera_index"] == 3
+
+
+class TestSaveVoiceSettings:
+    def test_persists_realtime_voice_controls(self, config_dir):
+        config.save_tts_voice("marin")
+        config.save_barge_in_enabled(False)
+        config.save_input_mode("push_to_talk")
+
+        with open(config_dir, "rb") as f:
+            parsed = tomllib.load(f)
+
+        assert parsed["voice"] == "marin"
+        assert parsed["barge_in_enabled"] is False
+        assert parsed["input_mode"] == "push_to_talk"
+
+    def test_rejects_unknown_input_mode(self, config_dir):
+        with pytest.raises(ValueError, match="Unknown input mode"):
+            config.save_input_mode("always_recording")
+
+
+def test_voice_engine_parser_keeps_realtime_as_safe_default():
+    assert config._as_voice_engine("REALTIME", "legacy") == "realtime"
+    assert config._as_voice_engine("unknown", "realtime") == "realtime"
 
 
 class TestSetDeviceIndexes:

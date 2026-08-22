@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from klaus.main import KlausApp
 
@@ -16,10 +17,47 @@ def _make_app(service: MagicMock) -> KlausApp:
     app._active_camera_index = 0
     app._active_mic_device = 1
     app._input_mode = "voice_activation"
-    app._window = SimpleNamespace(camera_widget=SimpleNamespace(set_camera=MagicMock()))
+    app._window = SimpleNamespace(
+        camera_widget=SimpleNamespace(
+            set_camera=MagicMock(),
+            set_source_selection=MagicMock(),
+        )
+    )
     app._ensure_device_switch_service = MagicMock()
     app._rebuild_question_pipeline = MagicMock()
     return app
+
+
+def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
+    app = KlausApp.__new__(KlausApp)
+    app._input_mode = "push_to_talk"
+    app._processing = True
+    app._cancel_event = threading.Event()
+    app._question_pipeline = MagicMock()
+    app._ptt_recorder = MagicMock(is_recording=False)
+    app._signals = MagicMock()
+
+    KlausApp._on_key_down(app)
+
+    assert app._cancel_event.is_set()
+    app._question_pipeline.cancel_active.assert_called_once()
+    app._ptt_recorder.start_recording.assert_called_once()
+    app._signals.state_changed.emit.assert_called_once_with("listening")
+
+
+def test_ptt_release_queues_question_until_cancelled_turn_finishes() -> None:
+    app = KlausApp.__new__(KlausApp)
+    app._input_mode = "push_to_talk"
+    app._processing = True
+    app._queued_ptt_wav = None
+    app._ptt_recorder = MagicMock(is_recording=True)
+    app._ptt_recorder.stop_recording.return_value = b"next-question"
+    app._signals = MagicMock()
+
+    KlausApp._on_key_up(app)
+
+    assert app._queued_ptt_wav == b"next-question"
+    app._signals.state_changed.emit.assert_called_once_with("thinking")
 
 
 def test_apply_camera_device_live_delegates_to_service_and_refreshes_pipeline():
@@ -71,3 +109,19 @@ def test_apply_mic_device_live_delegates_to_service_and_updates_active_device():
     assert effective_device == 4
     assert app._vad_recorder == "new-vad"
     assert app._active_mic_device == 4
+
+
+@patch("klaus.main.config.set_camera_index")
+def test_main_reading_selector_switches_and_persists(mock_set_camera_index):
+    service = MagicMock()
+    service.switch_camera.return_value = SimpleNamespace(
+        success=True,
+        camera="desk-view-camera",
+        active_index=-2,
+    )
+    app = _make_app(service)
+
+    KlausApp._on_reading_source_changed(app, -2)
+
+    mock_set_camera_index.assert_called_once_with(-2, persist=True)
+    app._window.camera_widget.set_source_selection.assert_called_with(-2)

@@ -1,8 +1,12 @@
 """Tests for klaus.brain routing and streaming behavior."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
-from klaus.brain import Brain
+import pytest
+
+import klaus.config as config
+from klaus.brain import AskCancelled, Brain, _split_first_clause
 from klaus.query_router import RouteDecision, RouteMode
 
 
@@ -50,6 +54,143 @@ def _general_route() -> RouteDecision:
     return _route(RouteMode.GENERAL_CONTEXTUAL)
 
 
+class TestFirstClauseSplit:
+    def test_no_split_before_minimum_length(self):
+        assert _split_first_clause("Short clause, more") is None
+
+    def test_splits_at_first_boundary_past_minimum(self):
+        buf = (
+            "This is a fairly long opening clause that keeps going and going, "
+            "then continues"
+        )
+        clause, remainder = _split_first_clause(buf)
+        assert clause.endswith(",")
+        assert remainder == "then continues"
+
+    def test_no_boundary_returns_none(self):
+        assert _split_first_clause("A" * 200) is None
+
+
+class TestCancellation:
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_preset_cancel_aborts_before_request(
+        self, mock_anthropic_cls, mock_search_cls
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+
+        brain = Brain()
+        cancel = threading.Event()
+        cancel.set()
+
+        with pytest.raises(AskCancelled):
+            brain.ask("Question", route_decision=_general_route(), cancel_event=cancel)
+
+        mock_client.messages.stream.assert_not_called()
+        assert brain._history == []
+
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_mid_stream_cancel_leaves_history_untouched(
+        self, mock_anthropic_cls, mock_search_cls, anthropic_stream_tools
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.stream.return_value = anthropic_stream_tools.stream(
+            anthropic_stream_tools.response("One. Two."),
+            [
+                anthropic_stream_tools.delta("One. "),
+                anthropic_stream_tools.delta("Two. "),
+            ],
+        )
+
+        brain = Brain()
+        cancel = threading.Event()
+
+        def on_sentence(_text: str) -> None:
+            cancel.set()
+
+        with pytest.raises(AskCancelled):
+            brain.ask(
+                "Question",
+                on_sentence=on_sentence,
+                route_decision=_general_route(),
+                cancel_event=cancel,
+            )
+
+        assert brain._history == []
+
+
+class TestModelSelection:
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_standalone_definition_uses_definition_model(
+        self, mock_anthropic_cls, mock_search_cls, anthropic_stream_tools
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.stream.return_value = anthropic_stream_tools.stream(
+            anthropic_stream_tools.response("A definition."),
+            [anthropic_stream_tools.delta("A definition.")],
+        )
+
+        brain = Brain()
+        brain.ask("Define entropy", route_decision=_standalone_route())
+
+        call = mock_client.messages.stream.call_args
+        assert call.kwargs["model"] == config.DEFINITION_MODEL
+
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_general_route_uses_main_model(
+        self, mock_anthropic_cls, mock_search_cls, anthropic_stream_tools
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.stream.return_value = anthropic_stream_tools.stream(
+            anthropic_stream_tools.response("Answer."),
+            [anthropic_stream_tools.delta("Answer.")],
+        )
+
+        brain = Brain()
+        brain.ask("What does this mean?", route_decision=_general_route())
+
+        call = mock_client.messages.stream.call_args
+        assert call.kwargs["model"] == config.CLAUDE_MODEL
+
+
+class TestFirstClauseStreaming:
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_first_clause_emitted_before_sentence_end(
+        self, mock_anthropic_cls, mock_search_cls, anthropic_stream_tools
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        text = (
+            "This is a fairly long opening clause that keeps going and going, "
+            "then it finishes the sentence."
+        )
+        mock_client.messages.stream.return_value = anthropic_stream_tools.stream(
+            anthropic_stream_tools.response(text),
+            [anthropic_stream_tools.delta(text)],
+        )
+
+        spoken: list[str] = []
+        brain = Brain()
+        brain.ask(
+            "Question",
+            on_sentence=spoken.append,
+            route_decision=_general_route(),
+        )
+
+        assert spoken[0] == (
+            "This is a fairly long opening clause that keeps going and going,"
+        )
+        assert spoken[-1] == "then it finishes the sentence."
+
+
 class TestSentenceLimit:
     def test_limit_sentences_caps_text(self):
         assert Brain.limit_sentences("A one. B two. C three.", 2) == "A one. B two."
@@ -59,6 +200,32 @@ class TestSentenceLimit:
 
 
 class TestRoutingBehavior:
+    @patch("klaus.brain.WebSearch")
+    @patch("klaus.brain.anthropic.Anthropic")
+    def test_selected_reading_text_replaces_image_context(
+        self, mock_anthropic_cls, mock_search_cls, anthropic_stream_tools
+    ):
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+        mock_client.messages.stream.return_value = anthropic_stream_tools.stream(
+            anthropic_stream_tools.response("Answer."),
+            [anthropic_stream_tools.delta("Answer.")],
+        )
+        brain = Brain()
+
+        exchange = brain.ask(
+            "Explain this",
+            image_base64="fallback-image",
+            reading_text="Exact selected PDF text",
+            route_decision=_general_route(),
+        )
+
+        content = mock_client.messages.stream.call_args.kwargs["messages"][-1]["content"]
+        assert exchange.image_base64 is None
+        assert not any(block["type"] == "image" for block in content)
+        assert "Exact selected PDF text" in content[0]["text"]
+        assert content[-1]["text"] == "Explain this"
+
     @patch("klaus.brain.WebSearch")
     @patch("klaus.brain.anthropic.Anthropic")
     def test_standalone_route_suppresses_context_and_caps_output(

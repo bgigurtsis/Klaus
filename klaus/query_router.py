@@ -115,6 +115,22 @@ def default_route_decision() -> RouteDecision:
     )
 
 
+def local_route_decision(question: str) -> RouteDecision:
+    """Route without an extra model call for the Realtime voice path."""
+    q = question.strip()
+    if not q:
+        return default_route_decision()
+    local = QueryRouter._route_local(q)
+    if local.confidence < 0.55:
+        return default_route_decision()
+    return _decision_from_mode(
+        local.mode,
+        local.confidence,
+        local.reason,
+        "local",
+    )
+
+
 class QueryRouter:
     """Hybrid local+LLM router for question-context policy decisions."""
 
@@ -188,7 +204,8 @@ class QueryRouter:
             and local.margin >= config.ROUTER_LOCAL_MARGIN_THRESHOLD
         )
 
-    def _route_local(self, question: str) -> _LocalDecision:
+    @staticmethod
+    def _route_local(question: str) -> _LocalDecision:
         q = question.lower().strip()
         signals = _signal_map(q)
 

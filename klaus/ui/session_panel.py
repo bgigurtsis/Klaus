@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -77,7 +79,7 @@ class SessionPanel(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(4, 0, 4, 0)
 
-        title = QLabel("SESSIONS")
+        title = QLabel("READING SESSIONS")
         title.setObjectName("session-panel-title")
         header.addWidget(title)
         header.addStretch()
@@ -85,7 +87,7 @@ class SessionPanel(QWidget):
         new_btn = QPushButton("+ New")
         new_btn.setObjectName("session-new-btn")
         new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        new_btn.setFixedHeight(24)
+        new_btn.setFixedHeight(32)
         new_btn.clicked.connect(self._on_new_session)
         header.addWidget(new_btn)
 
@@ -114,7 +116,7 @@ class SessionPanel(QWidget):
         for s in sessions:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, s["id"])
-            item.setSizeHint(QSize(0, 48))
+            item.setSizeHint(QSize(0, 56))
 
             meta_parts = []
             if "exchange_count" in s:
@@ -123,21 +125,40 @@ class SessionPanel(QWidget):
                 meta_parts.append(format_relative_time(s["updated_at"]))
             meta = " \u00b7 ".join(meta_parts)
 
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(4, 2, 2, 2)
+            row_layout.setSpacing(4)
+
             label = QLabel()
             label.setObjectName("session-item-label")
             label.setTextFormat(Qt.TextFormat.RichText)
             label.setText(
                 f'<div style="color:{theme.TEXT_PRIMARY};'
                 f'font-size:{theme.FONT_SIZE_SMALL}px;font-weight:600;">'
-                f'{s["title"]}</div>'
+                f'{html.escape(str(s["title"]))}</div>'
                 f'<div style="color:{theme.TEXT_MUTED};'
                 f'font-size:{theme.FONT_SIZE_CAPTION}px;margin-top:2px;">'
-                f'{meta}</div>'
+                f'{html.escape(meta)}</div>'
             )
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            row_layout.addWidget(label, stretch=1)
+
+            more_btn = QPushButton("\u22ef")
+            more_btn.setObjectName("session-more-btn")
+            more_btn.setFixedSize(28, 28)
+            more_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            more_btn.setToolTip("Session actions")
+            more_btn.clicked.connect(
+                lambda _checked=False, session=s, button=more_btn: self._open_session_menu(
+                    session,
+                    button.mapToGlobal(button.rect().bottomRight()),
+                )
+            )
+            row_layout.addWidget(more_btn)
 
             self._list.addItem(item)
-            self._list.setItemWidget(item, label)
+            self._list.setItemWidget(item, row)
 
             if current_id and s["id"] == current_id:
                 self._list.setCurrentItem(item)
@@ -179,6 +200,10 @@ class SessionPanel(QWidget):
         if row < 0 or row >= len(self._sessions):
             return
         session = self._sessions[row]
+        self._open_session_menu(session, self._list.mapToGlobal(pos))
+
+    def _open_session_menu(self, session: dict, global_pos) -> None:
+        """Show discoverable rename and delete actions for one session."""
 
         menu = QMenu(self)
 
@@ -186,7 +211,7 @@ class SessionPanel(QWidget):
         delete_action = menu.addAction("Delete")
         delete_action.setData("delete")
 
-        action = menu.exec(self._list.mapToGlobal(pos))
+        action = menu.exec(global_pos)
         if action is None:
             return
 

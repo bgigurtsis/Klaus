@@ -51,14 +51,14 @@ class DeviceSwitchService:
 
         current_camera.stop()
         candidate = self._camera_factory(target)
-        if target >= 0:
+        if target != -1:
             try:
                 candidate.start()
             except RuntimeError as exc:
                 logger.warning("Camera switch failed for index %d: %s", target, exc)
                 rollback_index = previous_index
                 rollback_camera = self._camera_factory(rollback_index)
-                if rollback_index >= 0:
+                if rollback_index != -1:
                     try:
                         rollback_camera.start()
                     except RuntimeError as rollback_exc:
@@ -72,8 +72,8 @@ class DeviceSwitchService:
                 apply_camera(rollback_camera)
                 self._persist_camera_index(rollback_index)
                 self._show_error(
-                    "Camera Unavailable",
-                    "Could not switch to that camera. Reverted to the previous device.",
+                    "Reading Source Unavailable",
+                    "Could not switch to that source. Reverted to the previous source.",
                 )
                 return CameraSwitchResult(False, rollback_camera, rollback_index)
 

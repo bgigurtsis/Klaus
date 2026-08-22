@@ -6,6 +6,10 @@ KEY_PATTERNS: list[tuple[str, str, str, int]] = [
     ("Tavily", "tavily", "tvly-", 20),
 ]
 
+# GPT Realtime powers the core experience. The other keys enable optional tools
+# or the legacy voice engine.
+REQUIRED_API_KEY_SLUGS: frozenset[str] = frozenset({"openai"})
+
 KEY_URLS = {
     "anthropic": "https://console.anthropic.com/settings/keys",
     "openai": "https://platform.openai.com/api-keys",

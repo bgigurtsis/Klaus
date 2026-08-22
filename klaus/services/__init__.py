@@ -10,6 +10,7 @@ from klaus.services.question_pipeline import (
     PipelineHooks,
     QuestionPipeline,
 )
+from klaus.services.speculative_stt import SpeculativeTranscriber
 
 __all__ = [
     "CameraSwitchResult",
@@ -18,4 +19,5 @@ __all__ = [
     "PipelineContext",
     "PipelineHooks",
     "QuestionPipeline",
+    "SpeculativeTranscriber",
 ]

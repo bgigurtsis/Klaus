@@ -7,6 +7,7 @@ from klaus.query_router import (
     RouteMode,
     _LlmDecision,
     _LocalDecision,
+    local_route_decision,
 )
 
 
@@ -25,6 +26,29 @@ def _low_conf_local(mode: RouteMode = RouteMode.GENERAL_CONTEXTUAL) -> _LocalDec
 
 
 class TestQueryRouter:
+    def test_realtime_local_route_does_not_need_an_llm_client(self):
+        decision = local_route_decision("Define entropy very concisely.")
+
+        assert decision.mode == RouteMode.STANDALONE_DEFINITION
+        assert decision.source == "local"
+        assert decision.max_sentences == 2
+
+    def test_realtime_low_confidence_route_uses_safe_contextual_default(self):
+        low_confidence = _LocalDecision(
+            mode=RouteMode.STANDALONE_DEFINITION,
+            confidence=0.54,
+            margin=0.01,
+            reason="ambiguous",
+            scores={},
+        )
+
+        with patch.object(QueryRouter, "_route_local", return_value=low_confidence):
+            decision = local_route_decision("Could you clarify?")
+
+        assert decision.mode == RouteMode.GENERAL_CONTEXTUAL
+        assert decision.source == "default"
+        assert decision.use_image is True
+
     def test_local_high_confidence_standalone(self):
         mock_client = MagicMock()
         mock_client.messages.create.side_effect = AssertionError(

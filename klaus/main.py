@@ -143,10 +143,12 @@ def _safe_slot(func):
     return wrapper
 
 
+from klaus import earcons
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
 from klaus.tts import TextToSpeech
 from klaus.brain import Brain
+from klaus.realtime import RealtimeBrain
 from klaus.memory import Memory
 from klaus.notes import NotesManager
 from klaus.services import (
@@ -154,6 +156,7 @@ from klaus.services import (
     PipelineContext,
     PipelineHooks,
     QuestionPipeline,
+    SpeculativeTranscriber,
 )
 from klaus.ui.main_window import MainWindow
 
@@ -180,6 +183,8 @@ class Signals(QObject):
     mode_changed = pyqtSignal(str)
     transcription_ready = pyqtSignal(str, float, bytes)  # text, timestamp, thumbnail_bytes
     response_ready = pyqtSignal(str, float, str)  # text, timestamp, exchange_id
+    assistant_sentence = pyqtSignal(str)  # streamed sentence for live chat display
+    turn_cancelled = pyqtSignal()
     error = pyqtSignal(str)
     exchange_count_updated = pyqtSignal(int)
     sessions_changed = pyqtSignal()
@@ -195,7 +200,11 @@ class KlausApp:
         self._current_session_id: str | None = None
         self._processing = False
         self._speaking = False
+        self._cancel_event = threading.Event()
+        self._barge_in_seed = None
+        self._queued_ptt_wav: bytes | None = None
         self._input_mode: str = self._runtime_settings.input_mode
+        self._last_ui_state = "idle"
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
         self._hotkey_listener = None
@@ -216,13 +225,19 @@ class KlausApp:
             on_speech_start=self._on_vad_speech_start,
             on_speech_end=self._on_vad_speech_end,
             on_speech_discard=self._on_vad_discard,
+            on_speech_maybe_end=self._on_vad_speech_maybe_end,
+            on_barge_in=self._on_barge_in,
             sensitivity=settings.vad_sensitivity,
             silence_timeout=settings.vad_silence_timeout,
+            early_silence_timeout=settings.vad_early_stt_timeout,
             min_duration=settings.vad_min_duration,
             min_voiced_ratio=settings.vad_min_voiced_ratio,
             min_voiced_frames=settings.vad_min_voiced_frames,
             min_rms_dbfs=settings.vad_min_rms_dbfs,
             min_voiced_run_frames=settings.vad_min_voiced_run_frames,
+            start_trigger_ms=settings.vad_start_trigger_ms,
+            barge_in_min_voiced_ms=settings.barge_in_min_voiced_ms,
+            barge_in_rms_margin_dbfs=settings.barge_in_rms_margin_dbfs,
             device=device,
         )
 
@@ -245,9 +260,17 @@ class KlausApp:
         self._ptt_recorder = PushToTalkRecorder()
         self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
         self._stt = SpeechToText(settings=settings)
+        self._speculative_stt = SpeculativeTranscriber(self._stt.transcribe)
         self._tts = TextToSpeech(settings=settings)
         self._notes = NotesManager(base_path=settings.obsidian_vault_path)
-        self._brain = Brain(notes=self._notes)
+        if settings.voice_engine == "realtime":
+            self._brain = RealtimeBrain(
+                notes=self._notes,
+                tts=self._tts,
+                settings=settings,
+            )
+        else:
+            self._brain = Brain(notes=self._notes)
         self._memory = Memory()
         self._rebuild_question_pipeline()
         self._ensure_device_switch_service()
@@ -318,17 +341,21 @@ class KlausApp:
 
         from klaus.ui import theme
         theme.load_fonts()
+        from PyQt6.QtGui import QFont
+        app_font = QFont("Inter")
+        app_font.setPixelSize(theme.FONT_SIZE_BODY)
+        app.setFont(app_font)
 
-        if not config.is_setup_complete():
+        if not config.is_setup_complete() or not config.OPENAI_API_KEY:
             from klaus.ui.setup_wizard import SetupWizard
             wizard = SetupWizard()
             theme.apply_dark_titlebar(wizard)
             wizard.show()
             app.exec()
-            if not config.is_setup_complete():
+            config.reload()
+            if not config.is_setup_complete() or not config.OPENAI_API_KEY:
                 logger.info("Setup wizard closed without completing, exiting")
                 sys.exit(0)
-            config.reload()
             self._runtime_settings = config.get_runtime_settings()
             self._input_mode = self._runtime_settings.input_mode
             self._ptt_key_name = self._runtime_settings.push_to_talk_key
@@ -345,7 +372,7 @@ class KlausApp:
             self._camera.start()
             self._active_camera_index = self._camera.device_index
         except RuntimeError as e:
-            logger.warning("Camera unavailable: %s", e)
+            logger.warning("Reading source unavailable: %s", e)
             self._active_camera_index = -1
 
         self._window.camera_widget.set_camera(self._camera)
@@ -355,6 +382,7 @@ class KlausApp:
 
         self._start_hotkey_listener()
         self._setup_input_mode()
+        config.save_input_mode(self._input_mode)
         self._signals.mode_changed.emit(self._input_mode)
 
         self._window.show()
@@ -371,6 +399,8 @@ class KlausApp:
         sig.state_changed.connect(self._on_state_changed)
         sig.transcription_ready.connect(self._on_transcription_ready)
         sig.response_ready.connect(self._on_response_ready)
+        sig.assistant_sentence.connect(self._on_assistant_sentence)
+        sig.turn_cancelled.connect(self._on_turn_cancelled_ui)
         sig.error.connect(self._on_error)
         sig.exchange_count_updated.connect(self._window.status_widget.set_exchange_count)
         sig.status_message.connect(self._window.chat_widget.add_status_message)
@@ -386,6 +416,9 @@ class KlausApp:
         self._window.mode_toggle_requested.connect(self._toggle_input_mode)
         self._window.stop_requested.connect(self._on_stop_requested)
         self._window.settings_requested.connect(self._on_settings_requested)
+        self._window.camera_widget.source_changed.connect(
+            self._on_reading_source_changed
+        )
 
         self._window.ptt_key_pressed.connect(self._on_key_down)
         self._window.ptt_key_released.connect(self._on_key_up)
@@ -396,7 +429,25 @@ class KlausApp:
     @_safe_slot
     def _on_state_changed(self, state: str) -> None:
         """Route state changes to the status widget."""
+        if (
+            state == "idle"
+            and self._input_mode == "push_to_talk"
+            and (self._ptt_recorder.is_recording or self._queued_ptt_wav is not None)
+        ):
+            state = "listening" if self._ptt_recorder.is_recording else "thinking"
+        previous_state = self._last_ui_state
+        self._last_ui_state = state
         self._window.status_widget.set_state(state)
+        if state == "thinking" and previous_state != "thinking":
+            self._play_earcon(earcons.accept_tone)
+
+    def _play_earcon(self, tone_factory) -> None:
+        """Play a short audio cue without blocking the calling thread."""
+        if not config.EARCONS_ENABLED:
+            return
+        threading.Thread(
+            target=self._tts.play_pcm, args=(tone_factory(),), daemon=True,
+        ).start()
 
     def _session_tag(self) -> str:
         if self._current_session_id:
@@ -565,11 +616,18 @@ class KlausApp:
             return
         self._signals.state_changed.emit("listening")
 
+    def _on_vad_speech_maybe_end(self, wav_bytes: bytes) -> None:
+        """Called from VAD thread on early silence: start speculative STT."""
+        if self._input_mode != "voice_activation" or self._processing:
+            return
+        self._speculative_stt.start(wav_bytes)
+
     def _on_vad_speech_end(self, wav_bytes: bytes) -> None:
         """Called from VAD thread when speech ends with silence timeout."""
         if self._input_mode != "voice_activation":
             return
         if not wav_bytes:
+            self._speculative_stt.clear()
             self._signals.state_changed.emit("idle")
             return
         if self._processing and not self._speaking:
@@ -580,6 +638,24 @@ class KlausApp:
             target=self._process_question, args=(wav_bytes,), daemon=True,
         )
         thread.start()
+
+    def _on_barge_in(self, seed) -> None:
+        """Called from the audio thread when the user talks over Klaus.
+
+        Cancels the in-flight turn and stops playback. The seed audio (the
+        user's first words, captured while Klaus was speaking) is replayed
+        into the recorder once the pipeline winds down.
+        """
+        if not self._speaking:
+            return
+        logger.info("Barge-in: interrupting playback")
+        self._barge_in_seed = seed
+        self._cancel_event.set()
+        # Cancellation closes the output stream, so keep it off the audio callback.
+        threading.Thread(
+            target=self._question_pipeline.cancel_active,
+            daemon=True,
+        ).start()
 
     def _on_vad_discard(self, reason: str) -> None:
         """Track why a VAD candidate was dropped before STT."""
@@ -734,9 +810,10 @@ class KlausApp:
     def _on_key_down(self) -> None:
         if self._input_mode != "push_to_talk":
             return
-        if self._speaking:
-            self._tts.stop()
-        if self._processing and not self._speaking:
+        if self._processing:
+            self._cancel_event.set()
+            self._question_pipeline.cancel_active()
+        if self._ptt_recorder.is_recording:
             return
         self._ptt_recorder.start_recording()
         self._signals.state_changed.emit("listening")
@@ -752,18 +829,53 @@ class KlausApp:
             self._signals.state_changed.emit("idle")
             return
 
+        if self._processing:
+            self._queued_ptt_wav = wav_bytes
+            self._signals.state_changed.emit("thinking")
+            return
+        self._start_question_thread(wav_bytes)
+
+    def _start_question_thread(self, wav_bytes: bytes) -> None:
         self._processing = True
-        thread = threading.Thread(
-            target=self._process_question, args=(wav_bytes,), daemon=True
-        )
-        thread.start()
+        threading.Thread(
+            target=self._process_question,
+            args=(wav_bytes,),
+            daemon=True,
+        ).start()
+
+    def _voice_transcriber(self):
+        """Build a transcriber that prefers a valid speculative transcript."""
+        gap = self._vad_recorder.speculative_gap_bytes
+        speculative = self._speculative_stt
+
+        def transcribe(wav: bytes) -> str:
+            result = speculative.collect(wav, gap)
+            if result is not None:
+                return result
+            return self._stt.transcribe(wav)
+
+        return transcribe
 
     def _process_question(self, wav_bytes: bytes) -> None:
+        self._cancel_event = threading.Event()
+        barge_in_active = (
+            self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED
+        )
         try:
             context = PipelineContext(
                 input_mode=self._input_mode,
                 current_session_id=self._current_session_id,
-                suspend_input_stream=self._vad_recorder.suspend_stream,
+                # With barge-in the mic stays open (gated) during playback;
+                # otherwise suspend it to free the audio device.
+                suspend_input_stream=(
+                    None if barge_in_active else self._vad_recorder.suspend_stream
+                ),
+                cancel_event=self._cancel_event,
+                transcriber=(
+                    self._voice_transcriber()
+                    if self._input_mode == "voice_activation"
+                    else None
+                ),
             )
             hooks = PipelineHooks(
                 on_state=self._signals.state_changed.emit,
@@ -772,6 +884,8 @@ class KlausApp:
                 on_sessions_changed=self._signals.sessions_changed.emit,
                 on_exchange_count_updated=self._update_exchange_count,
                 on_speaking_started=self._on_pipeline_speaking_started,
+                on_assistant_sentence=self._signals.assistant_sentence.emit,
+                on_cancelled=self._on_pipeline_cancelled,
             )
             self._question_pipeline.run(
                 wav_bytes,
@@ -787,12 +901,27 @@ class KlausApp:
             self._speaking = False
             self._processing = False
             if self._input_mode == "voice_activation":
+                self._vad_recorder.exit_gated_mode()
                 self._vad_recorder.resume_stream()
                 self._vad_recorder.resume()
+                seed = self._barge_in_seed
+                self._barge_in_seed = None
+                if seed is not None:
+                    self._vad_recorder.prime_with_seed(seed)
+            queued_wav = self._queued_ptt_wav
+            self._queued_ptt_wav = None
+            if queued_wav is not None and self._input_mode == "push_to_talk":
+                self._start_question_thread(queued_wav)
 
     def _on_pipeline_speaking_started(self) -> None:
         self._speaking = True
+        if self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED:
+            self._vad_recorder.enter_gated_mode()
         self._signals.state_changed.emit("speaking")
+
+    def _on_pipeline_cancelled(self) -> None:
+        """Called from the pipeline thread when a turn is cancelled."""
+        self._signals.turn_cancelled.emit()
 
     # -- UI callbacks --
 
@@ -806,7 +935,21 @@ class KlausApp:
         )
 
     @_safe_slot
+    def _on_assistant_sentence(self, text: str) -> None:
+        """Append a streamed sentence to the live assistant card."""
+        self._window.chat_widget.append_assistant_stream(text)
+
+    @_safe_slot
+    def _on_turn_cancelled_ui(self) -> None:
+        self._window.chat_widget.abort_assistant_stream()
+        self._window.chat_widget.add_status_message(
+            "Answer interrupted. Ask your next question whenever you are ready."
+        )
+
+    @_safe_slot
     def _on_response_ready(self, text: str, timestamp: float, exchange_id: str) -> None:
+        if self._window.chat_widget.finalize_assistant_stream(text, exchange_id):
+            return
         self._window.chat_widget.add_message(
             role="assistant",
             text=text,
@@ -825,22 +968,40 @@ class KlausApp:
                 return
 
     def _replay_audio(self, text: str) -> None:
+        self._speaking = True
+        if self._input_mode == "voice_activation":
+            self._vad_recorder.pause()
         self._signals.state_changed.emit("speaking")
-        self._tts.speak(text)
-        self._signals.state_changed.emit("idle")
+        try:
+            self._tts.speak(text)
+        finally:
+            self._speaking = False
+            if self._input_mode == "voice_activation":
+                self._vad_recorder.resume()
+            self._signals.state_changed.emit("idle")
 
     @_safe_slot
     def _on_stop_requested(self) -> None:
-        """Handle stop button click from the UI."""
-        if self._speaking:
+        """Handle stop button click from the UI (thinking or speaking)."""
+        if self._speaking or self._processing:
             logger.info("Stop requested via UI")
-            self._tts.stop()
+            self._cancel_event.set()
+        if self._speaking or self._processing:
+            self._question_pipeline.cancel_active()
 
     def _show_device_switch_error(self, title: str, message: str) -> None:
         QMessageBox.warning(self._window, title, message)
 
+    @_safe_slot
+    def _on_reading_source_changed(self, new_index: int) -> None:
+        """Apply a Desk View/PDF switch from the main preview selector."""
+        success, effective_index = self._apply_camera_device_live(new_index)
+        if success:
+            config.set_camera_index(effective_index, persist=True)
+        self._window.camera_widget.set_source_selection(effective_index)
+
     def _apply_camera_device_live(self, new_index: int) -> tuple[bool, int]:
-        """Switch the active camera immediately, with automatic rollback."""
+        """Switch the active reading source immediately, with rollback."""
         self._ensure_device_switch_service()
         result = self._device_switch_service.switch_camera(
             current_camera=self._camera,
@@ -927,6 +1088,9 @@ class KlausApp:
             self._hotkey_listener.stop()
         self._vad_recorder.stop()
         self._tts.stop()
+        close_brain = getattr(self._brain, "close", None)
+        if callable(close_brain):
+            close_brain()
         self._camera.stop()
         self._memory.close()
         logger.info("Shutdown complete")

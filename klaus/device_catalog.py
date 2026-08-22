@@ -25,6 +25,34 @@ _GENERIC_MIC_NAMES = {
 }
 
 
+def _macos_reading_sources() -> list[CameraDevice]:
+    if sys.platform != "darwin":
+        return []
+    from klaus.macos_reading_source import (
+        ACTIVE_READING_WINDOW_SOURCE_INDEX,
+        DESK_VIEW_SOURCE_INDEX,
+    )
+
+    return [
+        CameraDevice(
+            index=DESK_VIEW_SOURCE_INDEX,
+            display_name="Desk View (physical papers)",
+            width=0,
+            height=0,
+            backend="CoreGraphics",
+            source="desk_view",
+        ),
+        CameraDevice(
+            index=ACTIVE_READING_WINDOW_SOURCE_INDEX,
+            display_name="Active macOS window (PDFs)",
+            width=0,
+            height=0,
+            backend="CoreGraphics + Accessibility",
+            source="active_reading_window",
+        ),
+    ]
+
+
 @dataclass(frozen=True)
 class CameraDevice:
     index: int
@@ -46,13 +74,13 @@ class MicDevice:
 
 def _avfoundation_device_name_at(index: int) -> str | None:
     """Get the name of the AVFoundation video device at *index* using a fresh
-    DiscoverySession — the same approach OpenCV 4.x uses internally on each
+    DiscoverySession, which matches the approach OpenCV 4.x uses on each
     ``cv2.VideoCapture(index)`` call.
 
     A fresh session is created per call so that the device ordering always
     reflects the current system state and matches what OpenCV sees.  Virtual
     cameras (OBS, Iriun, etc.) register dynamically, so the ordering can
-    shift between calls — querying right before OpenCV opens the device
+    shift between calls. Querying right before OpenCV opens the device
     keeps the two in sync.
     """
     if sys.platform != "darwin":
@@ -117,8 +145,16 @@ def _macos_avfoundation_camera_count() -> int:
         return 0
 
 
-def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
-    """Probe camera indices and return display-friendly camera metadata."""
+def list_camera_devices(
+    max_index: int = 10,
+    *,
+    include_physical: bool = True,
+) -> list[CameraDevice]:
+    """Return macOS reading sources and available camera devices."""
+    reading_sources = _macos_reading_sources()
+    if not include_physical:
+        return reading_sources
+
     cameras: list[dict] = []
     av_count = _macos_avfoundation_camera_count()
     probe_limit = max_index
@@ -178,7 +214,7 @@ def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
         if devnull is not None:
             devnull.close()
 
-    return [
+    physical_cameras = [
         CameraDevice(
             index=cam["index"],
             display_name=cam["display_name"],
@@ -189,9 +225,12 @@ def list_camera_devices(max_index: int = 10) -> list[CameraDevice]:
         )
         for cam in cameras
     ]
+    return reading_sources + physical_cameras
 
 
 def format_camera_label(device: CameraDevice) -> str:
+    if device.index < -1:
+        return device.display_name
     primary = f"Camera {device.index}"
     display_name = (device.display_name or "").strip()
     label = primary

@@ -23,9 +23,33 @@ def _mock_capture(opened: bool, width: int = 0, height: int = 0, backend: str = 
 
 
 class TestCameraCatalog:
-    @patch("klaus.device_catalog._macos_avfoundation_camera_names", return_value=[])
+    @patch("klaus.device_catalog._macos_reading_sources")
     @patch("klaus.device_catalog.cv2.VideoCapture")
-    def test_uses_fallback_names_without_avfoundation(self, mock_vc, _mock_av):
+    def test_can_list_reading_sources_without_probing_cameras(
+        self, mock_vc, mock_sources
+    ):
+        source = device_catalog.CameraDevice(
+            index=-2,
+            display_name="Desk View (physical papers)",
+            width=0,
+            height=0,
+            backend="CoreGraphics",
+            source="desk_view",
+        )
+        mock_sources.return_value = [source]
+
+        cameras = list_camera_devices(include_physical=False)
+
+        assert cameras == [source]
+        mock_vc.assert_not_called()
+
+    @patch("klaus.device_catalog._macos_reading_sources", return_value=[])
+    @patch("klaus.device_catalog._macos_avfoundation_camera_count", return_value=0)
+    @patch("klaus.device_catalog._avfoundation_device_name_at", return_value=None)
+    @patch("klaus.device_catalog.cv2.VideoCapture")
+    def test_uses_fallback_names_without_avfoundation(
+        self, mock_vc, _mock_name, _mock_count, _mock_sources
+    ):
         mock_vc.side_effect = [
             _mock_capture(True, width=1280, height=720, backend="MSMF"),
             _mock_capture(False),
@@ -41,12 +65,16 @@ class TestCameraCatalog:
         assert cameras[0].source == "opencv"
         assert format_camera_label(cameras[0]) == "Camera 0 (MSMF) (1280x720)"
 
+    @patch("klaus.device_catalog._macos_reading_sources", return_value=[])
+    @patch("klaus.device_catalog._macos_avfoundation_camera_count", return_value=2)
     @patch(
-        "klaus.device_catalog._macos_avfoundation_camera_names",
-        return_value=["FaceTime HD Camera", "iPhone Camera"],
+        "klaus.device_catalog._avfoundation_device_name_at",
+        side_effect=["FaceTime HD Camera", "iPhone Camera"],
     )
     @patch("klaus.device_catalog.cv2.VideoCapture")
-    def test_prefers_avfoundation_names_when_available(self, mock_vc, _mock_av):
+    def test_prefers_avfoundation_names_when_available(
+        self, mock_vc, _mock_name, _mock_count, _mock_sources
+    ):
         mock_vc.side_effect = [
             _mock_capture(True, width=1920, height=1080, backend="AVFOUNDATION"),
             _mock_capture(True, width=1280, height=720, backend="AVFOUNDATION"),
@@ -67,6 +95,18 @@ class TestCameraCatalog:
             format_camera_label(cameras[1])
             == "Camera 1 · iPhone Camera (1280x720)"
         )
+
+    def test_formats_window_reading_source_without_camera_prefix(self):
+        source = device_catalog.CameraDevice(
+            index=-2,
+            display_name="Desk View (physical papers)",
+            width=0,
+            height=0,
+            backend="CoreGraphics",
+            source="desk_view",
+        )
+
+        assert format_camera_label(source) == "Desk View (physical papers)"
 
 
 class TestMicCatalog:

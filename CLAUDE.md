@@ -1,15 +1,16 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-03-02 (app icon + dock name).
+Last updated: 2026-08-23 (Desk View and active-PDF workflows, selected-text
+context, confirmed voice onset).
 
 ## Project Summary
 
-Klaus is a voice-based research assistant for reading physical papers and books.
-The user places a document under a camera, speaks a question (push-to-talk or
-voice-activated), and Klaus sees the page via Claude's vision API, reasons about
-the question, and responds aloud through text-to-speech. It runs as a PyQt6
-desktop app on Windows and macOS.
+Klaus is a voice-based research assistant for physical paper and PDFs. On macOS,
+it captures physical pages from Apple's Desk View or reads the active PDF window.
+It prefers selected PDF text when Accessibility exposes it and falls back to a
+window image. The user asks through push-to-talk or voice activation, and Klaus
+responds aloud through text-to-speech.
 
 ## Tech Stack
 
@@ -17,11 +18,15 @@ desktop app on Windows and macOS.
 - **PyQt6** -- desktop GUI with dark theme
 - **OpenCV** -- background camera thread
 - **AVFoundation (pyobjc, macOS-only)** -- native camera display names
+- **Quartz + ApplicationServices (pyobjc, macOS-only)** -- reading-window
+  capture and selected-text access
 - **sounddevice + webrtcvad** -- audio capture, PTT and voice-activated recording
 - **Moonshine Voice** -- local on-device STT (replaced OpenAI STT)
-- **OpenAI gpt-4o-mini-tts** -- text-to-speech with sentence-level streaming
-- **Anthropic Claude** (`claude-sonnet-4-6`) -- vision + tool use
-- **Tavily** -- web search exposed as a Claude tool
+- **OpenAI gpt-realtime-2.1** -- default speech-to-speech engine over WebSocket
+- **OpenAI gpt-4o-mini-tts** -- streamed text-to-speech for the legacy engine
+- **Anthropic Claude** (`claude-sonnet-5`; `claude-haiku-4-5` for routing and
+  standalone definitions) -- optional legacy vision + tool-use engine
+- **Tavily** -- optional web search tool for Realtime or the legacy engine
 - **SQLite** -- persistent memory at `~/.klaus/klaus.db`
 - **pynput** -- global hotkeys (cross-platform, replaces `keyboard`)
 - **Config** -- `~/.klaus/config.toml` (user settings + API keys) with `.env` fallback
@@ -32,18 +37,23 @@ desktop app on Windows and macOS.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `config.py` | 527 | Config via TOML + .env, models, voice settings, dynamic system prompt with user background, query-router thresholds/feature flags, save/reload helpers, immediate runtime setters for camera/mic |
-| `main.py` | 941 | Entry point; wires all components, hotkeys (conditional pynput + Qt), setup wizard gate, Qt signal bridge, `_safe_slot` decorator, live device-switch handlers with rollback, post-settings client reload, app icon + dock name setup (skipped on macOS 26 + Py 3.14), shifted-key variant mapping for macOS ISO keyboards; routes questions before full context capture |
-| `audio.py` | 486 | PushToTalkRecorder, VoiceActivatedRecorder (with device selection, suspend/resume stream), AudioPlayer |
-| `brain.py` | 440 | Claude vision + tool-use loop, route-aware context assembly, sentence-cap enforcement, conversation history, streaming, `reload_clients()` |
+| `config.py` | ~970 | Config via TOML + .env, models (incl. `definition_model`), reading source indices, voice/latency settings (`tts_streaming`, `vad_early_stt_timeout`, `vad_start_trigger_ms`, `barge_in_*`, `earcons_enabled`), dynamic system prompt, query-router thresholds/flags, save/reload helpers |
+| `main.py` | ~1050 | Entry point; wires all components, hotkeys, setup wizard gate, Qt signal bridge, `_safe_slot`, live device-switch with rollback, per-turn cancel event, barge-in dispatch + seed priming, speculative-STT wiring, earcon triggers, live chat streaming signals |
+| `audio.py` | ~640 | PushToTalkRecorder, VoiceActivatedRecorder (confirmed voice onset, suspend/resume stream, early maybe-end callback for speculative STT, gated barge-in mode with bleed calibration, `prime_with_seed`), AudioPlayer |
+| `brain.py` | ~520 | Optional legacy Claude vision + tool-use loop, route-aware context + model selection, first-clause emission, `AskCancelled` cancellation, sentence caps, history (auto-trimmed), streaming, `reload_clients()` |
+| `realtime.py` | ~440 | Persistent GPT Realtime WebSocket conversation, full-audio and reading-context turns, streamed PCM and transcript events, local tool calls, cancellation, and unplayed-audio truncation |
 | `memory.py` | 254 | SQLite persistence (sessions, exchanges, knowledge_profile) |
-| `tts.py` | 248 | OpenAI gpt-4o-mini-tts with persistent OutputStream, sentence-level batching, `reload_client()` |
-| `camera.py` | 164 | OpenCV background thread, frame capture, auto-rotation, base64/thumbnail export, camera enumeration |
-| `device_catalog.py` | 221 | Shared camera/mic enumeration and labeling (AVFoundation names on macOS, disambiguated mic labels, default markers) |
+| `tts.py` | ~330 | Shared PCM playback plus legacy OpenAI gpt-4o-mini-tts streaming, WAV fallback, earcon playback, and client reload |
+| `earcons.py` | 55 | Numpy-synthesized state-cue tones; the active flow uses the accepted-question tone |
+| `camera.py` | ~230 | Shared camera/macOS-window background capture, auto-rotation, selected-text access, base64/thumbnail export |
+| `macos_reading_source.py` | ~270 | Desk View and active-window selection, CoreGraphics window capture, Accessibility selected-text access |
+| `device_catalog.py` | ~330 | Reading source and camera/mic enumeration and labeling; macOS UI skips physical camera probes |
 | `stt.py` | 103 | Moonshine Voice local transcription |
 | `notes.py` | 100 | Obsidian vault note-taking (set_notes_file, save_note tools) |
 | `search.py` | 50 | Tavily web search tool definition + execution |
-| `query_router.py` | 458 | Hybrid local + LLM route classifier with timeout/fallback; maps question intent to context policy |
+| `query_router.py` | ~480 | Local Realtime route policy plus the optional legacy LLM fallback; maps question intent to context policy |
+| `services/question_pipeline.py` | ~245 | One turn: transcribe (speculative-aware) -> route (concurrent with reading context) -> prefer selected text or capture image -> streamed answer -> persist; timing log and cancellation |
+| `services/speculative_stt.py` | 100 | `SpeculativeTranscriber`: STT during the VAD silence window, validated by exact PCM gap at finalize |
 
 ### `klaus/ui/`
 
@@ -51,12 +61,12 @@ desktop app on Windows and macOS.
 |--------|------:|---------|
 | `theme.py` | 586 | Palette tokens, dimensions, single `application_stylesheet()` QSS, `apply_dark_titlebar()`, `load_fonts()` |
 | `chat_widget.py` | 260 | Scrollable chat feed with message cards, thumbnails, replay |
-| `session_panel.py` | 190 | Session list sidebar with context menu |
+| `session_panel.py` | 190 | Session list sidebar with visible action menus |
 | `main_window.py` | 204 | Top-level window layout, splitter, header, settings button, Qt key events for in-app hotkeys |
-| `setup_wizard.py` | 904 | First-run 7-step setup wizard (API keys, camera, mic, model download, user background, Obsidian vault) with shared device labels and persisted mic selection |
-| `settings_dialog.py` | 443 | Tabbed settings dialog (API keys, camera, mic, profile + Obsidian vault) with immediate camera/mic apply + persistence signals |
-| `status_widget.py` | 120 | Status bar (Idle/Listening/Thinking/Speaking), mode toggle, stop |
-| `camera_widget.py` | 71 | Live camera preview (~30 fps) |
+| `setup_wizard.py` | ~920 | First-run 7-step setup wizard (API keys, reading source, mic, model download, user background, Obsidian vault) with live source preview |
+| `settings_dialog.py` | ~525 | Tabbed settings dialog for voice, API keys, reading source, mic, profile, and Obsidian |
+| `status_widget.py` | 120 | Voice dock with turn state, input mode, hotkey help, and a large Interrupt action |
+| `camera_widget.py` | ~100 | Main Desk View/PDF selector and live preview with source-specific waiting messages |
 | `icon.png` | -- | Application icon (owl logo); used for window, taskbar, and macOS dock |
 
 ## Key Architecture Decisions
@@ -80,26 +90,74 @@ desktop app on Windows and macOS.
   `sys.platform` checks: `cv2.CAP_DSHOW` (Windows camera backend),
   `moonshine.dll` preload (Windows DLL conflict workaround), DWM dark title
   bar (Windows only, no-op elsewhere).
-- **TTS sentence batching**: Claude's response is split into sentences; a
-  synthesis worker generates audio per chunk; playback starts on the first chunk
-  for low perceived latency. Max 4000 chars per API call. A single persistent
-  `sd.OutputStream` is reused across all chunks in a session (avoids macOS
-  CoreAudio crackling from rapid stream create/destroy). On macOS, uses
-  `latency='high'`. The VAD mic stream is suspended (`suspend_stream`) before
-  TTS playback and reopened (`resume_stream`) after, freeing the CoreAudio
-  device during output. `suspend_stream`/`resume_stream` must be called from
-  non-callback threads (never from the audio callback itself).
+- **Two macOS reading sources**: source index `-2` captures the Desk View window.
+  Source index `-3` captures the frontmost non-Klaus window. The latter prefers
+  exact Accessibility selected text for a grounded turn and uses a CoreGraphics
+  window image when no selection exists. The macOS setup and settings pickers
+  avoid opening physical cameras, which prevents contention with Desk View.
+- **Confirmed voice onset**: voice activation requires `vad_start_trigger_ms`
+  of consecutive WebRTC-positive frames above the RMS floor before it emits the
+  listening state. The 300ms pre-buffer preserves the start of the question.
+- **Default Realtime engine**: `voice_engine = "realtime"` sends each finalized
+  WAV question plus selected text or a reading-window image to
+  `gpt-realtime-2.1`. The app keeps one WebSocket conversation per reading
+  session, streams 24 kHz PCM output into the shared TTS player, receives the
+  answer transcript for chat and persistence, executes local search and notes
+  tools, and truncates audio that a cancellation stopped before playback.
+  `voice_engine = "legacy"` keeps the Claude plus OpenAI TTS path.
+- **Realtime local routing**: the Realtime engine uses `local_route_decision()`
+  without another model call. A low-confidence local result gets the safe
+  contextual default. The legacy engine retains the hybrid Claude router.
+- **Legacy TTS streaming**: Claude's response streams token-by-token; the first chunk
+  is emitted at the first clause boundary past ~50 chars (`tts_first_clause_split`),
+  then full sentences. Each chunk is synthesized via OpenAI's streaming API
+  (`with_streaming_response`, `response_format="pcm"`, 24 kHz int16 mono) and
+  PCM blocks are written to the persistent `sd.OutputStream` as they arrive,
+  so audio starts before synthesis completes. `tts_streaming = false` restores
+  the WAV-per-sentence fallback. Max 4000 chars per API call. On macOS the
+  stream uses `latency='high'` (avoids CoreAudio crackling).
+  `suspend_stream`/`resume_stream` must be called from non-callback threads.
+- **Barge-in**: with `barge_in_enabled` (default), the VAD mic stream stays
+  open during playback in a *gated* mode: frames must pass max-aggressiveness
+  webrtcvad AND an RMS floor calibrated from the first ~300ms of playback
+  bleed AND a sustained voiced run (`barge_in_min_voiced_ms`). On trigger the
+  turn's cancel event is set, TTS stops (dispatched off the audio callback
+  thread), and the buffered barge-in audio is primed into the recorder
+  (`prime_with_seed`) so the user's first words aren't clipped. When disabled,
+  the old suspend-mic-during-playback behavior applies (use on open-speaker
+  setups with heavy bleed).
+- **Cancellable turns**: each turn gets a fresh `threading.Event`; the Interrupt
+  button, PTT keypress, and voice barge-in can set it. Realtime sends
+  `response.cancel`, stops PCM playback, and truncates unheard server audio.
+  Legacy `Brain.ask` checks the event while streaming. Klaus does not persist a
+  cancelled turn, and the chat keeps its partial answer marked Interrupted.
+- **Speculative STT**: the VAD fires `on_speech_maybe_end` at
+  `vad_early_stt_timeout` (default 0.6s) of silence; Moonshine starts on that
+  snapshot while the final `vad_silence_timeout` (default 1.0s) elapses. At
+  finalize the speculative transcript is used only if the finalized audio is
+  exactly `speculative_gap_bytes` longer than the snapshot (i.e. only silence
+  was appended). See `services/speculative_stt.py`.
+- **Earcons**: `earcons.py` creates tones with numpy, so the app needs no audio
+  assets. The active flow plays only the accepted-question tone. Listening and
+  interruption stay silent because a tone could leak into the next recording.
+  Disable the tone with `earcons_enabled = false`.
+- **Turn latency instrumentation**: `TurnTimings` in
+  `services/question_pipeline.py` logs per-turn marks (transcript, route,
+  first sentence, first audio, done) as one INFO line per turn.
+- **Legacy route-aware model**: `standalone_definition` turns use `definition_model`
+  (default `claude-haiku-4-5`); all other routes use `CLAUDE_MODEL`
+  (`claude-sonnet-5`). The router LLM fallback runs concurrently with the
+  eager page-image capture in the pipeline.
 - **Local STT**: Moonshine Voice runs on-device (no API call). Model and
   language are configurable in `config.toml`.
-- **Persistent memory**: SQLite at `~/.klaus/klaus.db` with tables for sessions,
-  exchanges, and knowledge_profile. Knowledge summary is injected into Claude's
-  system prompt.
+- **Persistent memory**: SQLite at `~/.klaus/klaus.db` stores sessions,
+  exchanges, and the dormant knowledge_profile table. GPT Realtime keeps live
+  conversational context on its WebSocket session.
 - **Query routing policy**: `query_router.py` classifies each transcript before
-  answer generation. Local semantic scoring handles most turns with negligible
-  latency. Uncertain turns can invoke a short LLM router call with strict timeout
-  (`router_timeout_ms`, default 350ms). Low-confidence/failed routing falls back
-  to `standalone_definition`. Route policy controls whether image/history/memory/
-  notes context is sent and applies per-turn sentence caps.
+  answer generation. Realtime uses local semantic scoring and a safe contextual
+  default for low-confidence results. Legacy mode can invoke a short Claude
+  router call with a strict timeout. Route policy controls reading and notes
+  context and can apply per-turn sentence caps.
 - **Definition behavior**: standalone definition turns are constrained to max
   two sentences and suppress page/history/memory/notes context; page-grounded
   definition turns keep image context and a short history window (2 turns).
@@ -182,16 +240,19 @@ Other conventions:
 
 ## Current Status and Known Gaps
 
-- **knowledge_profile unused**: `memory.py` defines `update_knowledge()` but it
-  is never called; the knowledge_profile table stays empty.
+- **knowledge_profile dormant**: `memory.py` keeps the knowledge_profile table
+  and `update_knowledge()`/`get_knowledge_summary()`, but the pipeline no
+  longer injects it (it was always empty). Wire or remove fully if revisited.
 - **Stale cursor rules**: `klaus-knowledge.mdc` references `gpt-4o-mini-transcribe`
   for STT (now Moonshine), voice `coral` (now `cedar`), and model
-  `claude-sonnet-4-20250514` (now `claude-sonnet-4-6`).
-- **Remaining test failures**: full suite still has two legacy failures:
-  `tests/test_audio.py::TestPushToTalkRecorder::test_to_wav_bytes_produces_valid_wav`
-  references removed `_to_wav_bytes`, and
-  `tests/test_tts.py::TestSpeakWithMock::test_speak_calls_api_and_plays`
-  expects `sd.play` while playback now uses a persistent `sd.OutputStream`.
+  `claude-sonnet-4-20250514` (now `claude-sonnet-5`).
+- **Barge-in on open speakers**: the RMS-calibrated gate may false-trigger on
+  loud playback bleed; `barge_in_enabled = false` restores the suspend-mic
+  behavior. No acoustic echo cancellation.
+- **No voice cancel during thinking**: barge-in only arms once speaking starts;
+  while thinking, cancel is Stop button or PTT keypress only.
+- **Window capture API**: macOS window capture currently uses the deprecated
+  `CGWindowListCreateImage`; migrate to ScreenCaptureKit if Apple removes it.
 - **Router cost/latency tuning**: ambiguous turns may incur an extra lightweight
   routing call; tune `router_*` thresholds/timeouts in `config.toml` if latency
   or fallback behavior needs adjustment.

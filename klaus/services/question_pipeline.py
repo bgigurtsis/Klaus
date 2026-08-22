@@ -5,9 +5,38 @@ import queue
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from klaus.brain import AskCancelled
+from klaus.query_router import default_route_decision
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TurnTimings:
+    """Per-turn latency marks (perf_counter seconds), logged at turn end."""
+
+    start: float = field(default_factory=time.perf_counter)
+    transcript_ready: float | None = None
+    route_ready: float | None = None
+    first_sentence: float | None = None
+    first_audio: float | None = None
+    turn_done: float | None = None
+
+    def _delta_ms(self, mark: float | None) -> str:
+        if mark is None:
+            return "-"
+        return f"{(mark - self.start) * 1000:.0f}"
+
+    def summary(self) -> str:
+        return (
+            f"transcript={self._delta_ms(self.transcript_ready)}ms "
+            f"route={self._delta_ms(self.route_ready)}ms "
+            f"first_sentence={self._delta_ms(self.first_sentence)}ms "
+            f"first_audio={self._delta_ms(self.first_audio)}ms "
+            f"done={self._delta_ms(self.turn_done)}ms"
+        )
 
 
 @dataclass(frozen=True)
@@ -15,6 +44,8 @@ class PipelineContext:
     input_mode: str
     current_session_id: str | None
     suspend_input_stream: Callable[[], None] | None = None
+    cancel_event: threading.Event | None = None
+    transcriber: Callable[[bytes], str] | None = None
 
 
 @dataclass(frozen=True)
@@ -25,6 +56,8 @@ class PipelineHooks:
     on_sessions_changed: Callable[[], None]
     on_exchange_count_updated: Callable[[], None]
     on_speaking_started: Callable[[], None]
+    on_assistant_sentence: Callable[[str], None] | None = None
+    on_cancelled: Callable[[], None] | None = None
 
 
 class QuestionPipeline:
@@ -39,17 +72,43 @@ class QuestionPipeline:
         self._tts = tts
 
     def run(self, wav_bytes: bytes, *, context: PipelineContext, hooks: PipelineHooks) -> None:
+        timings = TurnTimings()
+        cancel_event = context.cancel_event
+
         logger.info("Transcribing audio...")
-        transcript = self._stt.transcribe(wav_bytes)
+        transcribe = context.transcriber or self._stt.transcribe
+        transcript = transcribe(wav_bytes)
+        timings.transcript_ready = time.perf_counter()
         if not transcript:
             logger.info("Empty transcript, returning to idle")
             hooks.on_state("idle")
             return
+        if cancel_event is not None and cancel_event.is_set():
+            self._finish_cancelled(hooks, timings)
+            return
 
         hooks.on_state("thinking")
 
+        # Decide the route while capturing the lightweight reading context.
+        route_holder: dict[str, object] = {}
+
+        def _decide_route() -> None:
+            try:
+                route_holder["route"] = self._brain.decide_route(transcript)
+            except Exception:
+                logger.exception("Route decision failed, using default route")
+                route_holder["route"] = default_route_decision()
+
+        route_thread = threading.Thread(target=_decide_route, daemon=True)
+        route_thread.start()
         thumbnail = self._camera.capture_thumbnail_bytes()
-        route_decision = self._brain.decide_route(transcript)
+        capture_text = getattr(self._camera, "capture_text_context", None)
+        eager_text = capture_text() if callable(capture_text) else None
+        if not isinstance(eager_text, str) or not eager_text.strip():
+            eager_text = None
+        route_thread.join()
+        route_decision = route_holder["route"]
+        timings.route_ready = time.perf_counter()
         logger.info(
             (
                 "Query route decision: mode=%s source=%s conf=%.2f "
@@ -65,20 +124,34 @@ class QuestionPipeline:
             route_decision.reason,
         )
 
+        reading_text = eager_text if route_decision.use_image else None
         image_b64 = None
-        if route_decision.use_image:
-            logger.info("Capturing page image from camera...")
+        if route_decision.use_image and not reading_text:
             image_b64 = self._camera.capture_base64_jpeg()
-            logger.info("Page image: %s", "captured" if image_b64 else "unavailable")
-        else:
+        if route_decision.use_image:
             logger.info(
-                "Skipping full page image capture for route mode=%s",
-                route_decision.mode.value,
+                "Reading context: %s",
+                "selected text"
+                if reading_text
+                else ("window image" if image_b64 else "unavailable"),
             )
 
         hooks.on_transcription(transcript, time.time(), thumbnail or b"")
-        memory_context = self._memory.get_knowledge_summary() if route_decision.use_memory_context else None
         notes_context = self._build_notes_context(route_decision.use_notes_context)
+
+        if getattr(self._brain, "handles_audio", False) is True:
+            self._run_realtime_turn(
+                wav_bytes=wav_bytes,
+                transcript=transcript,
+                image_b64=image_b64,
+                reading_text=reading_text,
+                notes_context=notes_context,
+                route_decision=route_decision,
+                context=context,
+                hooks=hooks,
+                timings=timings,
+            )
+            return
 
         sentence_queue: queue.Queue[str | None] = queue.Queue()
         first_sentence = threading.Event()
@@ -86,11 +159,18 @@ class QuestionPipeline:
 
         def on_sentence(text: str) -> None:
             sentence_queue.put(text)
+            if hooks.on_assistant_sentence:
+                hooks.on_assistant_sentence(text)
             if first_sentence.is_set():
                 return
             first_sentence.set()
+            timings.first_sentence = time.perf_counter()
             hooks.on_speaking_started()
 
+        def on_first_audio() -> None:
+            timings.first_audio = time.perf_counter()
+
+        cancelled = False
         try:
             if context.input_mode == "voice_activation" and context.suspend_input_stream:
                 context.suspend_input_stream()
@@ -98,27 +178,39 @@ class QuestionPipeline:
             tts_thread = threading.Thread(
                 target=self._tts.speak_streaming,
                 args=(sentence_queue,),
+                kwargs={"on_first_audio": on_first_audio},
                 daemon=True,
             )
             tts_thread.start()
 
             logger.info(
-                "Sending to Claude (route=%s, image=%s, memory=%s, notes=%s)",
+                "Sending to Claude (route=%s, image=%s, selected_text=%s, notes=%s)",
                 route_decision.mode.value,
                 "yes" if image_b64 else "no",
-                "yes" if memory_context else "no",
+                "yes" if reading_text else "no",
                 "yes" if notes_context else "no",
             )
             exchange = self._brain.ask(
                 question=transcript,
                 image_base64=image_b64,
-                memory_context=memory_context,
+                reading_text=reading_text,
+                memory_context=None,
                 notes_context=notes_context,
                 on_sentence=on_sentence,
                 route_decision=route_decision,
+                cancel_event=cancel_event,
             )
+        except AskCancelled:
+            cancelled = True
         finally:
             sentence_queue.put(None)
+
+        if cancelled:
+            self._tts.stop()
+            if tts_thread is not None:
+                tts_thread.join()
+            self._finish_cancelled(hooks, timings)
+            return
 
         if exchange.notes_file_changed and context.current_session_id:
             self._memory.set_session_notes_file(
@@ -146,7 +238,98 @@ class QuestionPipeline:
         if tts_thread is not None:
             tts_thread.join()
 
+        timings.turn_done = time.perf_counter()
+        logger.info("Turn timings: %s", timings.summary())
         logger.info("Playback complete, idle")
+        hooks.on_state("idle")
+
+    def cancel_active(self) -> None:
+        """Cancel both local playback and any active server response."""
+        cancel = getattr(self._brain, "cancel_current", None)
+        if callable(cancel):
+            cancel()
+        else:
+            self._tts.stop()
+
+    def _run_realtime_turn(
+        self,
+        *,
+        wav_bytes: bytes,
+        transcript: str,
+        image_b64: str | None,
+        reading_text: str | None,
+        notes_context: str | None,
+        route_decision,
+        context: PipelineContext,
+        hooks: PipelineHooks,
+        timings: TurnTimings,
+    ) -> None:
+        """Run one native speech-to-speech Realtime turn."""
+        first_sentence = False
+
+        def on_sentence(text: str) -> None:
+            nonlocal first_sentence
+            if not first_sentence:
+                first_sentence = True
+                timings.first_sentence = time.perf_counter()
+            if hooks.on_assistant_sentence:
+                hooks.on_assistant_sentence(text)
+
+        def on_first_audio() -> None:
+            timings.first_audio = time.perf_counter()
+
+        try:
+            logger.info(
+                "Sending speech turn to GPT Realtime (route=%s, image=%s, selected_text=%s)",
+                route_decision.mode.value,
+                "yes" if image_b64 else "no",
+                "yes" if reading_text else "no",
+            )
+            exchange = self._brain.ask_audio(
+                wav_bytes=wav_bytes,
+                question=transcript,
+                image_base64=image_b64,
+                reading_text=reading_text,
+                notes_context=notes_context,
+                on_sentence=on_sentence,
+                on_speaking_started=hooks.on_speaking_started,
+                on_first_audio=on_first_audio,
+                route_decision=route_decision,
+                cancel_event=context.cancel_event,
+            )
+        except AskCancelled:
+            self._finish_cancelled(hooks, timings)
+            return
+
+        if exchange.notes_file_changed and context.current_session_id:
+            self._memory.set_session_notes_file(
+                context.current_session_id,
+                self._notes.current_file,
+            )
+
+        exchange_id = ""
+        if context.current_session_id:
+            record = self._memory.save_exchange(
+                session_id=context.current_session_id,
+                user_text=exchange.user_text,
+                assistant_text=exchange.assistant_text,
+                image_base64=exchange.image_base64,
+                searches=exchange.searches,
+            )
+            exchange_id = record.id
+
+        hooks.on_response(exchange.assistant_text, time.time(), exchange_id)
+        hooks.on_exchange_count_updated()
+        hooks.on_sessions_changed()
+        timings.turn_done = time.perf_counter()
+        logger.info("Realtime turn timings: %s", timings.summary())
+        hooks.on_state("idle")
+
+    def _finish_cancelled(self, hooks: PipelineHooks, timings: TurnTimings) -> None:
+        timings.turn_done = time.perf_counter()
+        logger.info("Turn cancelled. Timings: %s", timings.summary())
+        if hooks.on_cancelled:
+            hooks.on_cancelled()
         hooks.on_state("idle")
 
     def _build_notes_context(self, include_notes_context: bool) -> str | None:

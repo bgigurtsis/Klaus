@@ -15,7 +15,15 @@ from klaus import secrets_store
 # Paths
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path.home() / ".klaus"
+def _resolve_data_dir() -> Path:
+    """Return Klaus's data directory, with an override for tests and packaging."""
+    configured = os.environ.get("KLAUS_DATA_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".klaus"
+
+
+DATA_DIR = _resolve_data_dir()
 DB_PATH = DATA_DIR / "klaus.db"
 CONFIG_PATH = DATA_DIR / "config.toml"
 
@@ -32,7 +40,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Toggle input mode hotkey (default: § on macOS, F3 on Windows)
 # toggle_key = "§"
 
-# Camera device index (default: 0)
+# Reading source index (default: 0)
+# macOS: -2 uses Desk View; -3 uses the active reading window; -1 disables capture.
+# Non-negative values use physical camera devices.
 # camera_index = 0
 
 # Microphone device index (default: -1, uses system default)
@@ -51,6 +61,11 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin
 # voice = "cedar"
 
+# Voice engine (default: realtime)
+# "realtime" uses one GPT Realtime speech-to-speech session for each reading session.
+# "legacy" keeps the Claude -> OpenAI TTS pipeline as a fallback.
+# voice_engine = "realtime"
+
 # TTS playback speed 0.25-4.0 (default: 1.0)
 # tts_speed = 1.0
 
@@ -61,8 +76,12 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Voice activation sensitivity 0-3 (default: 3, higher = more aggressive filtering)
 # vad_sensitivity = 3
 
-# Seconds of silence before voice activation finalizes (default: 1.5)
-# vad_silence_timeout = 1.5
+# Seconds of silence before voice activation finalizes (default: 1.0)
+# vad_silence_timeout = 1.0
+
+# Seconds of silence before speculative STT starts on the audio so far.
+# Must be below vad_silence_timeout; set to 0 to disable. (default: 0.6)
+# vad_early_stt_timeout = 0.6
 
 # Require enough voiced content before accepting a VAD utterance.
 # Helps reject fan/hum/background-noise false triggers.
@@ -78,12 +97,34 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # vad_min_rms_dbfs = -45.0
 # Minimum strongest contiguous voiced run of 30ms frames (default: 6)
 # vad_min_voiced_run_frames = 6
+# Consecutive voiced time required before listening starts (default: 90ms)
+# vad_start_trigger_ms = 90
 #
 # Moonshine STT model size (default: "medium")
 # Options: tiny, small, medium
 # stt_moonshine_model = "medium"
 # Moonshine language code (default: "en")
 # stt_moonshine_language = "en"
+
+# Stream TTS audio (PCM chunks) instead of waiting for full per-sentence WAVs.
+# tts_streaming = true
+
+# Start speaking at the first clause boundary of a response (lower latency).
+# tts_first_clause_split = true
+
+# Allow interrupting Klaus by speaking while it talks (voice mode only).
+# Disable on open-speaker setups if playback bleed triggers false interrupts.
+# barge_in_enabled = true
+# Minimum sustained speech (ms) required to trigger a barge-in (default: 300)
+# barge_in_min_voiced_ms = 300
+# Loudness margin (dB) above measured playback bleed required for barge-in
+# barge_in_rms_margin_dbfs = 12.0
+
+# Play short audio cues on capture/cancel state changes.
+# earcons_enabled = true
+
+# Model used for standalone definition turns (fast, capped at two sentences).
+# definition_model = "claude-haiku-4-5"
 
 # Optional: describe your background so Klaus can tailor explanations.
 # user_background = ""
@@ -177,8 +218,9 @@ if _config_load_error is not None:
 
 load_dotenv()
 
-CLAUDE_MODEL = "claude-sonnet-4-6"
+CLAUDE_MODEL = "claude-sonnet-5"
 TTS_MODEL = "gpt-4o-mini-tts"
+REALTIME_MODEL = "gpt-realtime-2.1"
 _DEFAULT_PTT_KEY = "§" if sys.platform == "darwin" else "F2"
 _DEFAULT_TOGGLE_KEY = "§" if sys.platform == "darwin" else "F3"
 
@@ -210,17 +252,27 @@ class RuntimeSettings:
     camera_rotation: str
     mic_device_index: int
     tts_voice: str
+    voice_engine: str
     tts_speed: float
     input_mode: str
     vad_sensitivity: int
     vad_silence_timeout: float
+    vad_early_stt_timeout: float
     vad_min_duration: float
     vad_min_voiced_ratio: float
     vad_min_voiced_frames: int
     vad_min_rms_dbfs: float
     vad_min_voiced_run_frames: int
+    vad_start_trigger_ms: int
     stt_moonshine_model: str
     stt_moonshine_language: str
+    tts_streaming: bool
+    tts_first_clause_split: bool
+    barge_in_enabled: bool
+    barge_in_min_voiced_ms: int
+    barge_in_rms_margin_dbfs: float
+    earcons_enabled: bool
+    definition_model: str
     user_background: str
     enable_query_router: bool
     router_model: str
@@ -274,6 +326,11 @@ def _as_bool(value: object, default: bool) -> bool:
     return default
 
 
+def _as_voice_engine(value: object, default: str) -> str:
+    engine = _as_str(value, default).lower()
+    return engine if engine in {"realtime", "legacy"} else default
+
+
 _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
@@ -284,17 +341,27 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("camera_rotation", "camera_rotation", "auto", _as_str),
     _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
     _SettingSpec("tts_voice", "voice", "cedar", _as_str),
+    _SettingSpec("voice_engine", "voice_engine", "realtime", _as_voice_engine),
     _SettingSpec("tts_speed", "tts_speed", 1.0, _as_float),
     _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
     _SettingSpec("vad_sensitivity", "vad_sensitivity", 3, _as_int),
-    _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.5, _as_float),
+    _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.0, _as_float),
+    _SettingSpec("vad_early_stt_timeout", "vad_early_stt_timeout", 0.6, _as_float),
     _SettingSpec("vad_min_duration", "vad_min_duration", 0.5, _as_float),
     _SettingSpec("vad_min_voiced_ratio", "vad_min_voiced_ratio", 0.28, _as_float),
     _SettingSpec("vad_min_voiced_frames", "vad_min_voiced_frames", 8, _as_int),
     _SettingSpec("vad_min_rms_dbfs", "vad_min_rms_dbfs", -45.0, _as_float),
     _SettingSpec("vad_min_voiced_run_frames", "vad_min_voiced_run_frames", 6, _as_int),
+    _SettingSpec("vad_start_trigger_ms", "vad_start_trigger_ms", 90, _as_int),
     _SettingSpec("stt_moonshine_model", "stt_moonshine_model", "medium", _as_str),
     _SettingSpec("stt_moonshine_language", "stt_moonshine_language", "en", _as_str),
+    _SettingSpec("tts_streaming", "tts_streaming", True, _as_bool),
+    _SettingSpec("tts_first_clause_split", "tts_first_clause_split", True, _as_bool),
+    _SettingSpec("barge_in_enabled", "barge_in_enabled", True, _as_bool),
+    _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 300, _as_int),
+    _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 12.0, _as_float),
+    _SettingSpec("earcons_enabled", "earcons_enabled", True, _as_bool),
+    _SettingSpec("definition_model", "definition_model", "claude-haiku-4-5", _as_str),
     _SettingSpec("enable_query_router", "enable_query_router", True, _as_bool),
     _SettingSpec("router_model", "router_model", "claude-haiku-4-5", _as_str),
     _SettingSpec("router_timeout_ms", "router_timeout_ms", 350, _as_int),
@@ -323,9 +390,10 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
 def _build_system_prompt(user_background: str) -> str:
     """Assemble the system prompt, injecting user background when available."""
     intro = (
-        "You are Klaus, a concise, knowledgeable and articulate research companion. You value brevity."
-        "The user is reading a physical paper or book, which you can see "
-        "via their document camera."
+        "You are Klaus, a concise, knowledgeable and articulate research companion. "
+        "You value brevity. "
+        "The user is reading a paper, book, or PDF. You may receive either "
+        "an image of the reading source or the exact text they selected."
     )
     if user_background:
         intro += " " + user_background.strip()
@@ -380,7 +448,7 @@ two sentences.
 
 Your job:
 
-- The image from the document camera is context, not a prompt. Always \
+- The reading source is context, not a prompt. Always \
 answer the user's spoken question. Do not describe or summarize the \
 page unless explicitly asked to. If the user says something brief or \
 unclear, ask for clarification rather than defaulting to a page summary.
@@ -459,17 +527,27 @@ CAMERA_FRAME_HEIGHT: int
 CAMERA_ROTATION: str
 MIC_DEVICE_INDEX: int
 TTS_VOICE: str
+VOICE_ENGINE: str
 TTS_SPEED: float
 INPUT_MODE: str
 VAD_SENSITIVITY: int
 VAD_SILENCE_TIMEOUT: float
+VAD_EARLY_STT_TIMEOUT: float
 VAD_MIN_DURATION: float
 VAD_MIN_VOICED_RATIO: float
 VAD_MIN_VOICED_FRAMES: int
 VAD_MIN_RMS_DBFS: float
 VAD_MIN_VOICED_RUN_FRAMES: int
+VAD_START_TRIGGER_MS: int
 STT_MOONSHINE_MODEL: str
 STT_MOONSHINE_LANGUAGE: str
+TTS_STREAMING: bool
+TTS_FIRST_CLAUSE_SPLIT: bool
+BARGE_IN_ENABLED: bool
+BARGE_IN_MIN_VOICED_MS: int
+BARGE_IN_RMS_MARGIN_DBFS: float
+EARCONS_ENABLED: bool
+DEFINITION_MODEL: str
 USER_BACKGROUND: str
 ENABLE_QUERY_ROUTER: bool
 ROUTER_MODEL: str
@@ -494,17 +572,27 @@ _RUNTIME_EXPORTS: dict[str, str] = {
     "CAMERA_ROTATION": "camera_rotation",
     "MIC_DEVICE_INDEX": "mic_device_index",
     "TTS_VOICE": "tts_voice",
+    "VOICE_ENGINE": "voice_engine",
     "TTS_SPEED": "tts_speed",
     "INPUT_MODE": "input_mode",
     "VAD_SENSITIVITY": "vad_sensitivity",
     "VAD_SILENCE_TIMEOUT": "vad_silence_timeout",
+    "VAD_EARLY_STT_TIMEOUT": "vad_early_stt_timeout",
     "VAD_MIN_DURATION": "vad_min_duration",
     "VAD_MIN_VOICED_RATIO": "vad_min_voiced_ratio",
     "VAD_MIN_VOICED_FRAMES": "vad_min_voiced_frames",
     "VAD_MIN_RMS_DBFS": "vad_min_rms_dbfs",
     "VAD_MIN_VOICED_RUN_FRAMES": "vad_min_voiced_run_frames",
+    "VAD_START_TRIGGER_MS": "vad_start_trigger_ms",
     "STT_MOONSHINE_MODEL": "stt_moonshine_model",
     "STT_MOONSHINE_LANGUAGE": "stt_moonshine_language",
+    "TTS_STREAMING": "tts_streaming",
+    "TTS_FIRST_CLAUSE_SPLIT": "tts_first_clause_split",
+    "BARGE_IN_ENABLED": "barge_in_enabled",
+    "BARGE_IN_MIN_VOICED_MS": "barge_in_min_voiced_ms",
+    "BARGE_IN_RMS_MARGIN_DBFS": "barge_in_rms_margin_dbfs",
+    "EARCONS_ENABLED": "earcons_enabled",
+    "DEFINITION_MODEL": "definition_model",
     "USER_BACKGROUND": "user_background",
     "ENABLE_QUERY_ROUTER": "enable_query_router",
     "ROUTER_MODEL": "router_model",
@@ -604,7 +692,7 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
 
     _log.info(
         (
-            "%s settings: hotkey=%s | camera=%d (%dx%d) | voice=%s "
+            "%s settings: hotkey=%s | camera=%d (%dx%d) | voice_engine=%s | voice=%s "
             "(speed=%.2f) | input_mode=%s | log_level=%s"
         ),
         prefix,
@@ -612,6 +700,7 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
         settings.camera_device_index,
         settings.camera_frame_width,
         settings.camera_frame_height,
+        settings.voice_engine,
         settings.tts_voice,
         settings.tts_speed,
         settings.input_mode,
@@ -621,7 +710,7 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
         (
             "VAD: sensitivity=%d | silence_timeout=%.1fs | min_duration=%.1fs | "
             "min_voiced_ratio=%.2f | min_voiced_frames=%d | "
-            "min_rms_dbfs=%.1f | min_voiced_run_frames=%d"
+            "min_rms_dbfs=%.1f | min_voiced_run_frames=%d | start_trigger_ms=%d"
         ),
         settings.vad_sensitivity,
         settings.vad_silence_timeout,
@@ -630,6 +719,7 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
         settings.vad_min_voiced_frames,
         settings.vad_min_rms_dbfs,
         settings.vad_min_voiced_run_frames,
+        settings.vad_start_trigger_ms,
     )
     _log.info(
         "STT: moonshine_model=%s | moonshine_language=%s",
@@ -839,6 +929,24 @@ def save_obsidian_vault_path(path: str) -> None:
     _set_top_level_value("obsidian_vault_path", f'"{escaped}"')
 
 
+def save_tts_voice(voice: str) -> None:
+    """Persist the voice used by Realtime and legacy speech output."""
+    escaped = _escape_toml_basic_string(voice.strip())
+    _set_top_level_value("voice", f'"{escaped}"')
+
+
+def save_barge_in_enabled(enabled: bool) -> None:
+    """Persist whether speaking over an answer interrupts it."""
+    _set_top_level_value("barge_in_enabled", "true" if enabled else "false")
+
+
+def save_input_mode(mode: str) -> None:
+    """Persist the selected voice input mode."""
+    if mode not in {"voice_activation", "push_to_talk"}:
+        raise ValueError(f"Unknown input mode: {mode!r}")
+    _set_top_level_value("input_mode", f'"{mode}"')
+
+
 def _migrate_legacy_api_keys_to_keychain(user_config: dict) -> dict:
     """Move legacy plaintext keys into Keychain and purge [api_keys] on success."""
     if not secrets_store.is_keychain_supported():
@@ -862,7 +970,16 @@ def _migrate_legacy_api_keys_to_keychain(user_config: dict) -> dict:
         )
         return user_config
 
-    removed = _remove_legacy_api_keys_section()
+    try:
+        removed = _remove_legacy_api_keys_section()
+    except OSError as exc:
+        _log.warning(
+            "Migrated API keys to Keychain but could not remove the legacy section. "
+            "path=%s error=%s",
+            CONFIG_PATH,
+            exc,
+        )
+        return user_config
     if removed:
         _log.info("Migrated legacy [api_keys] section to Apple Keychain")
 

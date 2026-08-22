@@ -1,6 +1,6 @@
 """First-run setup wizard for Klaus.
 
-Walks users through API key entry, camera selection, microphone test, and
+Walks users through API key entry, reading source, microphone test, and
 voice-model download. Shown on first launch; skipped once ``setup_complete``
 is ``true`` in ``~/.klaus/config.toml``.
 """
@@ -8,8 +8,8 @@ is ``true`` in ``~/.klaus/config.toml``.
 from __future__ import annotations
 
 import logging
+import sys
 
-import cv2
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt6.QtWidgets import (
@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 import klaus.config as config
+from klaus.camera import Camera
 from klaus.device_catalog import (
     format_camera_label,
     format_mic_label,
@@ -38,12 +39,25 @@ from klaus.device_catalog import (
     list_input_devices,
 )
 from klaus.ui import theme
-from klaus.ui.shared.key_validation import KEY_PATTERNS, KEY_URLS, validate_api_key
+from klaus.ui.shared.key_validation import (
+    KEY_PATTERNS,
+    KEY_URLS,
+    REQUIRED_API_KEY_SLUGS,
+    validate_api_key,
+)
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
 
 logger = logging.getLogger(__name__)
 
-STEP_TITLES = ["Welcome", "API Keys", "Camera", "Microphone", "Voice Model", "About You", "Done"]
+STEP_TITLES = [
+    "Welcome",
+    "API Keys",
+    "Reading Source",
+    "Microphone",
+    "Offline Speech",
+    "About You",
+    "Done",
+]
 NUM_STEPS = len(STEP_TITLES)
 
 # ---------------------------------------------------------------------------
@@ -105,7 +119,7 @@ class _ModelDownloadThread(QThread):
 # ---------------------------------------------------------------------------
 
 class _CameraPreview(QWidget):
-    """Small live preview of a camera, used during setup."""
+    """Small live preview of any reading source used during setup."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -121,42 +135,44 @@ class _CameraPreview(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self._cap: cv2.VideoCapture | None = None
+        self._camera: Camera | None = None
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_frame)
-        self._backend = cv2.CAP_DSHOW if __import__("sys").platform == "win32" else cv2.CAP_ANY
 
     def start(self, device_index: int) -> None:
         self.stop()
-        self._cap = cv2.VideoCapture(device_index, self._backend)
-        if self._cap.isOpened():
+        self._camera = Camera(device_index=device_index)
+        try:
+            self._camera.start()
             self._timer.start(66)
-        else:
-            self._label.setText("Cannot open camera")
-            self._cap.release()
-            self._cap = None
+            self._label.setText("Waiting for reading source...")
+        except RuntimeError as exc:
+            self._label.setText(str(exc))
+            self._camera = None
 
     def stop(self) -> None:
         self._timer.stop()
-        if self._cap is not None:
-            self._cap.release()
-            self._cap = None
+        if self._camera is not None:
+            self._camera.stop()
+            self._camera = None
         self._label.clear()
         self._label.setText("No preview")
 
     def _update_frame(self) -> None:
-        if self._cap is None:
+        if self._camera is None:
             return
-        ret, frame = self._cap.read()
-        if not ret:
+        rgb = self._camera.get_frame_rgb()
+        if rgb is None:
             return
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
-        scale = min(320 / w, 240 / h)
-        new_w, new_h = int(w * scale), int(h * scale)
-        rgb = cv2.resize(rgb, (new_w, new_h))
-        img = QImage(rgb.data, new_w, new_h, new_w * ch, QImage.Format.Format_RGB888)
-        self._label.setPixmap(QPixmap.fromImage(img))
+        img = QImage(rgb.data, w, h, w * ch, QImage.Format.Format_RGB888).copy()
+        pixmap = QPixmap.fromImage(img).scaled(
+            320,
+            240,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self._label.setPixmap(pixmap)
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +218,9 @@ class SetupWizard(QMainWindow):
         root.addWidget(self._nav)
 
         self._collected: dict = {
-            "anthropic": "",
-            "openai": "",
-            "tavily": "",
+            "anthropic": config.ANTHROPIC_API_KEY,
+            "openai": config.OPENAI_API_KEY,
+            "tavily": config.TAVILY_API_KEY,
             "camera_index": -1,
             "mic_index": -1,
             "user_background": "",
@@ -262,7 +278,7 @@ class SetupWizard(QMainWindow):
     def _update_next_enabled(self) -> None:
         if self._current_step == 1:
             all_valid = all(
-                self._key_valid.get(slug, False) for _, slug, _, _ in KEY_PATTERNS
+                self._key_valid.get(slug, False) for slug in REQUIRED_API_KEY_SLUGS
             )
             self._next_btn.setEnabled(all_valid)
         else:
@@ -289,8 +305,8 @@ class SetupWizard(QMainWindow):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Ask questions out loud while you read. Klaus captures the page context when you "
-            "finish speaking, uses Claude to answer your question, and speaks the answer back to you concisely."
+            "Ask questions out loud while you read. Klaus listens, sees your reading "
+            "context, and answers naturally in one live voice conversation."
         )
         subtitle.setObjectName("wizard-welcome-subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -300,21 +316,18 @@ class SetupWizard(QMainWindow):
         card_specs = [
             (
                 "How It Works",
-                "Ask Klaus questions about what you're reading. It uses a local STT model "
-                "to parse what you're saying, combined with the picture of the page "
-                "to provide context to Claude.",
+                "Speak naturally about a paper, book, or PDF. GPT Realtime hears the "
+                "question, uses the page context, and answers out loud.",
             ),
             (
                 "Getting Better Answers",
-                "By default Klaus is very concise and to the point. It is designed, "
-                "so you can ask follow up questions quikcly. If you want more detail "
-                "say so or reference the part you want explained.",
+                "Klaus keeps the first answer short so follow-ups stay quick. Ask for "
+                "more detail or point to the exact passage when you need it.",
             ),
             (
-                "Tool use",
-                "Optionally connect your Obsidian vault and ask Klaus to save notes "
-                "directly to your vault while you browse. Klaus will also search "
-                "the web using Tavily verify its response. ",
+                "Interrupt Anytime",
+                "Start speaking while Klaus answers and it will stop the current answer. "
+                "Your next question continues from the point you heard.",
             ),
         ]
 
@@ -380,6 +393,16 @@ class SetupWizard(QMainWindow):
             "background: transparent; border: none;"
         )
         layout.addWidget(heading)
+        description = QLabel(
+            "OpenAI powers the live voice conversation. Tavily adds web search. "
+            "Anthropic only supports the legacy voice engine."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_SMALL}px; "
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(description)
         layout.addSpacing(8)
 
         self._key_edits: dict[str, QLineEdit] = {}
@@ -391,8 +414,9 @@ class SetupWizard(QMainWindow):
             row = QHBoxLayout()
             row.setSpacing(8)
 
-            name = QLabel(label)
-            name.setFixedWidth(90)
+            suffix = "" if slug in REQUIRED_API_KEY_SLUGS else "  optional"
+            name = QLabel(label + suffix)
+            name.setFixedWidth(135)
             name.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
                 "background: transparent; border: none;"
@@ -400,17 +424,23 @@ class SetupWizard(QMainWindow):
             row.addWidget(name)
 
             edit = QLineEdit()
-            edit.setPlaceholderText(f"{prefix}...")
+            existing_key = bool(self._collected.get(slug))
+            edit.setPlaceholderText("Already configured" if existing_key else f"{prefix}...")
             edit.setEchoMode(QLineEdit.EchoMode.Password)
             edit.setMinimumWidth(300)
             edit.textChanged.connect(lambda _, s=slug: self._validate_key(s))
             self._key_edits[slug] = edit
             row.addWidget(edit, stretch=1)
 
-            indicator = QLabel("")
+            indicator = QLabel("\u2713" if existing_key else "")
             indicator.setFixedWidth(24)
             indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
             indicator.setStyleSheet("background: transparent; border: none;")
+            if existing_key:
+                indicator.setStyleSheet(
+                    f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
+                    "background: transparent; border: none;"
+                )
             self._key_indicators[slug] = indicator
             row.addWidget(indicator)
 
@@ -436,7 +466,7 @@ class SetupWizard(QMainWindow):
             hint.setVisible(False)
             self._key_hints[slug] = hint
             layout.addWidget(hint)
-            self._key_valid[slug] = False
+            self._key_valid[slug] = existing_key
 
         layout.addStretch()
 
@@ -459,9 +489,15 @@ class SetupWizard(QMainWindow):
         hint = self._key_hints[slug]
 
         if not text:
-            indicator.setText("")
+            existing_key = bool(self._collected.get(slug))
+            indicator.setText("\u2713" if existing_key else "")
+            if existing_key:
+                indicator.setStyleSheet(
+                    f"color: {theme.KLAUS_ACCENT}; font-size: 18px; "
+                    "background: transparent; border: none;"
+                )
             hint.setVisible(False)
-            self._key_valid[slug] = False
+            self._key_valid[slug] = existing_key
             self._update_next_enabled()
             return
 
@@ -497,7 +533,7 @@ class SetupWizard(QMainWindow):
         layout.setContentsMargins(48, 24, 48, 16)
         layout.setSpacing(12)
 
-        heading = QLabel("Select your camera")
+        heading = QLabel("Choose how you are reading")
         heading.setStyleSheet(
             f"font-size: 22px; font-weight: bold; color: {theme.TEXT_PRIMARY}; "
             "background: transparent; border: none;"
@@ -512,8 +548,8 @@ class SetupWizard(QMainWindow):
         layout.addWidget(self._camera_preview, alignment=Qt.AlignmentFlag.AlignCenter)
 
         tip = QLabel(
-            "For best results, position your camera above your reading area\n"
-            "pointing down. A phone on a tripod works well."
+            "Physical paper: open Apple's Desk View and use bright, even light.\n"
+            "PDF: keep the reading window frontmost and select a passage when useful."
         )
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip.setStyleSheet(
@@ -528,8 +564,8 @@ class SetupWizard(QMainWindow):
     def _populate_cameras(self) -> None:
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
-        self._camera_combo.addItem("No camera (audio only)", -1)
-        cameras = list_camera_devices()
+        self._camera_combo.addItem("No reading source (audio only)", -1)
+        cameras = list_camera_devices(include_physical=sys.platform != "darwin")
         for cam in cameras:
             self._camera_combo.addItem(format_camera_label(cam), cam.index)
         if cameras:
@@ -542,7 +578,7 @@ class SetupWizard(QMainWindow):
         if idx is None:
             idx = -1
         self._collected["camera_index"] = idx
-        if idx >= 0:
+        if idx != -1:
             self._camera_preview.start(idx)
         else:
             self._camera_preview.stop()
@@ -663,8 +699,8 @@ class SetupWizard(QMainWindow):
         layout.addWidget(heading)
 
         self._model_info = QLabel(
-            "Klaus needs to download a speech recognition model (~245 MB).\n"
-            "This is a one-time download."
+            "Klaus uses a local speech model to show your question quickly and "
+            "filter noise before GPT Realtime answers.\nThis one-time download is about 245 MB."
         )
         self._model_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._model_info.setStyleSheet(
@@ -791,7 +827,7 @@ class SetupWizard(QMainWindow):
         )
         help_btn.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY}; "
-            "border: none; padding: 0px; font-weight: bold; font-size: 14px; }}"
+            "border: none; padding: 0px; font-weight: bold; font-size: 14px; }\n"
             f"QPushButton:hover {{ color: {theme.KLAUS_ACCENT}; }}"
         )
         help_btn.clicked.connect(self._show_vault_help)
@@ -802,7 +838,7 @@ class SetupWizard(QMainWindow):
         vault_row = QHBoxLayout()
         self._vault_path_edit = QLineEdit()
         self._vault_path_edit.setReadOnly(True)
-        self._vault_path_edit.setPlaceholderText("Optional — click Browse to select")
+        self._vault_path_edit.setPlaceholderText("Optional. Click Browse to select")
         vault_row.addWidget(self._vault_path_edit)
 
         browse_btn = QPushButton("Browse\u2026")
@@ -893,7 +929,7 @@ class SetupWizard(QMainWindow):
             self._collected["tavily"],
         )
         cam_idx = self._collected["camera_index"]
-        if cam_idx >= 0:
+        if cam_idx != -1:
             cfg.save_camera_index(cam_idx)
         mic_idx = int(self._collected.get("mic_index", -1))
         cfg.save_mic_index(mic_idx)

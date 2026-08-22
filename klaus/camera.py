@@ -11,6 +11,13 @@ import numpy as np
 from PIL import Image
 
 import klaus.config as config
+from klaus.macos_reading_source import (
+    ACTIVE_READING_WINDOW_SOURCE_INDEX,
+    DESK_VIEW_SOURCE_INDEX,
+    MacOSReadingSource,
+    is_window_reading_source,
+    reading_source_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +64,7 @@ def _resolve_rotation(setting: str, frame_w: int, frame_h: int) -> int | None:
 
 
 class Camera:
-    """Continuously captures frames from a document camera in a background thread."""
+    """Continuously captures frames from a camera or macOS reading window."""
 
     def __init__(
         self,
@@ -80,6 +87,7 @@ class Camera:
             settings.camera_rotation if rotation is None else str(rotation)
         )
         self._cap: cv2.VideoCapture | None = None
+        self._window_source: MacOSReadingSource | None = None
         self._frame: np.ndarray | None = None
         self._lock = threading.Lock()
         self._running = False
@@ -89,8 +97,11 @@ class Camera:
     def start(self) -> None:
         if self._running:
             return
+        if is_window_reading_source(self._device_index):
+            self._start_window_source()
+            return
         if self._device_index < 0:
-            raise RuntimeError("No camera selected (device index %d)" % self._device_index)
+            raise RuntimeError("No reading source selected")
         logger.info("Opening camera (device %d)...", self._device_index)
 
         self._cap = cv2.VideoCapture(self._device_index, _BACKEND)
@@ -116,6 +127,23 @@ class Camera:
         self._running = True
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
+
+    def _start_window_source(self) -> None:
+        mode = reading_source_mode(self._device_index)
+        source = MacOSReadingSource(mode)
+        source.start()
+        self._window_source = source
+        self._running = True
+        self._thread = threading.Thread(target=self._window_capture_loop, daemon=True)
+        self._thread.start()
+        logger.info("macOS reading source started (%s)", mode)
+
+    def _window_capture_loop(self) -> None:
+        while self._running and self._window_source is not None:
+            frame = self._window_source.capture_frame()
+            with self._lock:
+                self._frame = frame
+            time.sleep(0.2)
 
     def _capture_loop(self) -> None:
         while self._running:
@@ -144,7 +172,7 @@ class Camera:
             return None
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    def capture_base64_jpeg(self, quality: int = 85) -> str | None:
+    def capture_base64_jpeg(self, quality: int = 90) -> str | None:
         """Grab the current frame and return it as a base64-encoded JPEG string."""
         frame = self.get_frame()
         if frame is None:
@@ -164,6 +192,16 @@ class Camera:
         img.save(buf, format="JPEG", quality=75)
         return buf.getvalue()
 
+    def capture_text_context(self) -> str | None:
+        """Return selected text for the active-window PDF source when available."""
+        if self._window_source is None:
+            return None
+        frame = self._window_source.capture_frame()
+        if frame is not None:
+            with self._lock:
+                self._frame = frame
+        return self._window_source.capture_selected_text()
+
     def stop(self) -> None:
         self._running = False
         if self._thread is not None:
@@ -172,7 +210,10 @@ class Camera:
         if self._cap is not None:
             self._cap.release()
             self._cap = None
-        logger.info("Camera stopped")
+        self._window_source = None
+        with self._lock:
+            self._frame = None
+        logger.info("Reading source stopped")
 
     @property
     def is_running(self) -> bool:
@@ -181,3 +222,13 @@ class Camera:
     @property
     def device_index(self) -> int:
         return self._device_index
+
+    @property
+    def waiting_message(self) -> str:
+        if self._device_index == DESK_VIEW_SOURCE_INDEX:
+            return "Open Desk View to show your paper"
+        if self._device_index == ACTIVE_READING_WINDOW_SOURCE_INDEX:
+            return "Keep your PDF window frontmost"
+        if self._device_index < 0:
+            return "No reading source selected"
+        return "Waiting for camera..."

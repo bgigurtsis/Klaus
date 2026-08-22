@@ -1,6 +1,7 @@
 import collections
 import io
 import logging
+import math
 import threading
 import wave
 from typing import Callable
@@ -107,19 +108,27 @@ class VoiceActivatedRecorder:
         on_speech_start: Callable[[], None],
         on_speech_end: Callable[[bytes], None],
         on_speech_discard: Callable[[str], None] | None = None,
+        on_speech_maybe_end: Callable[[bytes], None] | None = None,
+        on_barge_in: Callable[[np.ndarray], None] | None = None,
         sample_rate: int = SAMPLE_RATE,
         sensitivity: int = 2,
         silence_timeout: float = 1.5,
+        early_silence_timeout: float = 0.0,
         min_voiced_ratio: float = 0.25,
         min_voiced_frames: int = 5,
         min_duration: float = 0.3,
         min_rms_dbfs: float = -45.0,
         min_voiced_run_frames: int = 6,
+        start_trigger_ms: int = 90,
+        barge_in_min_voiced_ms: int = 300,
+        barge_in_rms_margin_dbfs: float = 12.0,
         device: int | None = None,
     ):
         self._on_speech_start = on_speech_start
         self._on_speech_end = on_speech_end
         self._on_speech_discard = on_speech_discard
+        self._on_speech_maybe_end = on_speech_maybe_end
+        self._on_barge_in = on_barge_in
         self._sample_rate = sample_rate
         self._device = device
         self._sensitivity = max(0, min(3, sensitivity))
@@ -129,6 +138,10 @@ class VoiceActivatedRecorder:
         self._min_duration = max(0.0, min_duration)
         self._min_rms_dbfs = float(min_rms_dbfs)
         self._min_voiced_run_frames = max(1, min_voiced_run_frames)
+        self._start_run_needed = max(
+            1,
+            math.ceil(max(0, start_trigger_ms) / FRAME_DURATION_MS),
+        )
 
         self._vad = webrtcvad.Vad(self._sensitivity)
         self._stream: sd.InputStream | None = None
@@ -143,8 +156,30 @@ class VoiceActivatedRecorder:
         self._total_frames = 0
         self._current_voiced_run = 0
         self._max_voiced_run = 0
+        self._start_voiced_run = 0
         self._frames_for_timeout = int(
             self._silence_timeout / (FRAME_DURATION_MS / 1000)
+        )
+        frames_for_early = int(early_silence_timeout / (FRAME_DURATION_MS / 1000))
+        # Speculative early end-of-speech only makes sense strictly before
+        # the final timeout.
+        if 0 < frames_for_early < self._frames_for_timeout:
+            self._frames_for_early = frames_for_early
+        else:
+            self._frames_for_early = 0
+
+        # Barge-in gate: strict speech detection while Klaus is speaking.
+        self._gated = False
+        self._gate_vad = webrtcvad.Vad(3)
+        self._gate_run_needed = max(1, barge_in_min_voiced_ms // FRAME_DURATION_MS)
+        self._gate_rms_margin = float(barge_in_rms_margin_dbfs)
+        self._gate_calib_frames = 10  # ~300ms of playback bleed calibration
+        self._gate_calib: list[float] = []
+        self._gate_floor_dbfs = self._min_rms_dbfs
+        self._gate_run = 0
+        gate_buffer_frames = int(1000 / FRAME_DURATION_MS)  # keep last ~1s
+        self._gate_frames: collections.deque[np.ndarray] = collections.deque(
+            maxlen=gate_buffer_frames
         )
 
         pre_buffer_ms = 300
@@ -168,6 +203,7 @@ class VoiceActivatedRecorder:
             self._total_frames = 0
             self._current_voiced_run = 0
             self._max_voiced_run = 0
+            self._start_voiced_run = 0
             self._pre_buffer.clear()
             self._sample_buf = np.empty(0, dtype=np.int16)
 
@@ -201,10 +237,51 @@ class VoiceActivatedRecorder:
                 logger.error("Failed to open mic for VAD: %s", exc)
                 return
 
+    def enter_gated_mode(self) -> None:
+        """Listen for barge-in speech while Klaus plays audio.
+
+        The mic stream stays open, but frames must pass a stricter gate
+        (max-aggressiveness VAD, RMS above the calibrated playback-bleed
+        floor, sustained voiced run) before on_barge_in fires. Calibration
+        uses the first ~300ms of frames after entering the mode.
+        """
+        self._gate_calib = []
+        self._gate_floor_dbfs = self._min_rms_dbfs
+        self._gate_run = 0
+        self._gate_frames.clear()
+        self._gated = True
+        logger.debug("VAD gated mode entered")
+
+    def exit_gated_mode(self) -> None:
+        self._gated = False
+        logger.debug("VAD gated mode exited")
+
+    def prime_with_seed(self, seed: np.ndarray) -> None:
+        """Begin a new utterance pre-loaded with barge-in audio.
+
+        Called after a barge-in interrupt so the user's first words (captured
+        by the gate buffer while Klaus was still speaking) aren't clipped.
+        """
+        n_frames = max(1, len(seed) // FRAME_SIZE)
+        self._chunks = [seed.astype(np.int16)]
+        self._silent_frames = 0
+        # The seed passed the barge-in gate, so count it as voiced.
+        self._voiced_frames = n_frames
+        self._total_frames = n_frames
+        self._current_voiced_run = n_frames
+        self._max_voiced_run = n_frames
+        self._speaking = True
+        logger.debug("VAD primed with %d barge-in seed frames", n_frames)
+        try:
+            self._on_speech_start()
+        except Exception:
+            logger.exception("on_speech_start callback failed")
+
     def stop(self) -> None:
         """Stop the stream and discard any in-progress speech."""
         with self._lock:
             self._running = False
+            self._gated = False
             self._speaking = False
             self._chunks = []
             self._silent_frames = 0
@@ -212,6 +289,7 @@ class VoiceActivatedRecorder:
             self._total_frames = 0
             self._current_voiced_run = 0
             self._max_voiced_run = 0
+            self._start_voiced_run = 0
             if self._stream is not None:
                 self._stream.stop()
                 self._stream.close()
@@ -229,6 +307,7 @@ class VoiceActivatedRecorder:
             self._total_frames = 0
             self._current_voiced_run = 0
             self._max_voiced_run = 0
+            self._start_voiced_run = 0
         logger.debug("VAD paused")
 
     def resume(self) -> None:
@@ -240,6 +319,7 @@ class VoiceActivatedRecorder:
         self._total_frames = 0
         self._current_voiced_run = 0
         self._max_voiced_run = 0
+        self._start_voiced_run = 0
         logger.debug("VAD resumed")
 
     def suspend_stream(self) -> None:
@@ -284,7 +364,9 @@ class VoiceActivatedRecorder:
     ) -> None:
         if status:
             logger.debug("VAD audio status: %s", status)
-        if not self._running or self._paused:
+        if not self._running:
+            return
+        if self._paused and not self._gated:
             return
 
         samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy().flatten()
@@ -293,7 +375,49 @@ class VoiceActivatedRecorder:
         while len(self._sample_buf) >= FRAME_SIZE:
             frame = self._sample_buf[:FRAME_SIZE]
             self._sample_buf = self._sample_buf[FRAME_SIZE:]
-            self._process_frame(frame)
+            if self._gated:
+                self._process_gate_frame(frame)
+            elif not self._paused:
+                self._process_frame(frame)
+
+    def _process_gate_frame(self, frame: np.ndarray) -> None:
+        """Barge-in detection while Klaus is speaking (gated mode)."""
+        self._gate_frames.append(frame)
+        rms_dbfs = self._compute_rms_dbfs(frame)
+
+        if len(self._gate_calib) < self._gate_calib_frames:
+            self._gate_calib.append(rms_dbfs)
+            if len(self._gate_calib) == self._gate_calib_frames:
+                bleed = float(np.median(self._gate_calib))
+                self._gate_floor_dbfs = max(
+                    self._min_rms_dbfs, bleed + self._gate_rms_margin
+                )
+                logger.debug(
+                    "Barge-in gate calibrated (bleed=%.1f dBFS, floor=%.1f dBFS)",
+                    bleed,
+                    self._gate_floor_dbfs,
+                )
+            return
+
+        frame_bytes = frame.astype(np.int16).tobytes()
+        is_speech = self._gate_vad.is_speech(frame_bytes, self._sample_rate)
+        if is_speech and rms_dbfs >= self._gate_floor_dbfs:
+            self._gate_run += 1
+        else:
+            self._gate_run = 0
+
+        if self._gate_run >= self._gate_run_needed:
+            self._gated = False
+            self._gate_run = 0
+            seed = np.concatenate(list(self._gate_frames))
+            self._gate_frames.clear()
+            logger.info("Barge-in detected (%.1fs of gated audio buffered)",
+                        len(seed) / self._sample_rate)
+            if self._on_barge_in is not None:
+                try:
+                    self._on_barge_in(seed)
+                except Exception:
+                    logger.exception("on_barge_in callback failed")
 
     def _process_frame(self, frame: np.ndarray) -> None:
         frame_bytes = frame.astype(np.int16).tobytes()
@@ -301,16 +425,27 @@ class VoiceActivatedRecorder:
 
         if not self._speaking:
             self._pre_buffer.append(frame)
-            if is_speech:
+            rms_dbfs = self._compute_rms_dbfs(frame)
+            if is_speech and rms_dbfs >= self._min_rms_dbfs:
+                self._start_voiced_run += 1
+            else:
+                self._start_voiced_run = 0
+
+            if self._start_voiced_run >= self._start_run_needed:
+                buffered_frames = list(self._pre_buffer)
                 self._speaking = True
                 self._silent_frames = 0
-                self._chunks = list(self._pre_buffer)
+                self._chunks = buffered_frames
                 self._pre_buffer.clear()
-                self._voiced_frames = 1
-                self._total_frames = 1
-                self._current_voiced_run = 1
-                self._max_voiced_run = 1
-                logger.debug("VAD: speech started")
+                self._voiced_frames = self._start_voiced_run
+                self._total_frames = len(buffered_frames)
+                self._current_voiced_run = self._start_voiced_run
+                self._max_voiced_run = self._start_voiced_run
+                self._start_voiced_run = 0
+                logger.debug(
+                    "VAD: speech started after %d confirmed frames",
+                    self._start_run_needed,
+                )
                 try:
                     self._on_speech_start()
                 except Exception:
@@ -326,6 +461,17 @@ class VoiceActivatedRecorder:
             else:
                 self._silent_frames += 1
                 self._current_voiced_run = 0
+                if (
+                    self._frames_for_early
+                    and self._silent_frames == self._frames_for_early
+                    and self._on_speech_maybe_end is not None
+                    and self._chunks
+                ):
+                    audio = np.concatenate(self._chunks)
+                    try:
+                        self._on_speech_maybe_end(to_wav_bytes(audio, self._sample_rate))
+                    except Exception:
+                        logger.exception("on_speech_maybe_end callback failed")
                 if self._silent_frames >= self._frames_for_timeout:
                     self._finalize()
 
@@ -447,6 +593,18 @@ class VoiceActivatedRecorder:
     @property
     def is_paused(self) -> bool:
         return self._paused
+
+    @property
+    def speculative_gap_bytes(self) -> int:
+        """PCM bytes appended between the early maybe-end and finalize.
+
+        If the finalized audio is exactly this much longer than the last
+        maybe-end snapshot, no speech resumed and the speculative transcript
+        is valid. Returns 0 when speculation is disabled.
+        """
+        if not self._frames_for_early:
+            return 0
+        return (self._frames_for_timeout - self._frames_for_early) * FRAME_SIZE * 2
 
 
 class AudioPlayer:

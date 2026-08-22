@@ -1,13 +1,32 @@
 """Tests for klaus.tts -- text-to-speech chunking and synthesis."""
 
+import dataclasses
 import io
+import queue
 import wave
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import numpy as np
 import pytest
 
-from klaus.tts import TextToSpeech, SENTENCE_SPLIT, MAX_CHUNK_CHARS
+import klaus.config as config
+from klaus.tts import TextToSpeech, PCM_SAMPLE_RATE, SENTENCE_SPLIT, MAX_CHUNK_CHARS
+
+
+class _FakeStreamingResponse:
+    """Mimics openai's with_streaming_response context manager."""
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def iter_bytes(self, chunk_size=None):
+        return iter(self._chunks)
 
 
 def _make_wav_bytes(duration_ms=100, sample_rate=24000):
@@ -149,3 +168,126 @@ class TestSpeakWithMock:
             tts = TextToSpeech()
             tts.stop()
             assert tts._stop_event.is_set()
+
+
+class TestStreamingSynthesis:
+    @patch("klaus.tts.sd")
+    @patch("klaus.tts.OpenAI")
+    def test_pcm_stream_chunks_reach_audio_queue(self, mock_openai_cls, mock_sd):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        pcm_chunk = np.ones(2400, dtype=np.int16).tobytes()
+        mock_client.audio.speech.with_streaming_response.create.return_value = (
+            _FakeStreamingResponse([pcm_chunk, pcm_chunk])
+        )
+
+        tts = TextToSpeech()
+        sentence_q: queue.Queue = queue.Queue()
+        audio_q: queue.Queue = queue.Queue()
+        sentence_q.put("Hello there.")
+        sentence_q.put(None)
+
+        tts._streaming_synth_worker(sentence_q, audio_q)
+
+        items = []
+        while True:
+            item = audio_q.get_nowait()
+            if item is None:
+                break
+            items.append(item)
+        assert len(items) == 2
+        for rate, channels, audio in items:
+            assert rate == PCM_SAMPLE_RATE
+            assert channels == 1
+            assert audio.dtype == np.int16
+            assert len(audio) == 2400
+
+    @patch("klaus.tts.sd")
+    @patch("klaus.tts.OpenAI")
+    def test_odd_byte_chunks_are_reassembled(self, mock_openai_cls, mock_sd):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        pcm = np.arange(100, dtype=np.int16).tobytes()
+        # Split mid-sample: chunks with odd byte counts.
+        chunks = [pcm[:33], pcm[33:150], pcm[150:]]
+        mock_client.audio.speech.with_streaming_response.create.return_value = (
+            _FakeStreamingResponse(chunks)
+        )
+
+        tts = TextToSpeech()
+        sentence_q: queue.Queue = queue.Queue()
+        audio_q: queue.Queue = queue.Queue()
+        sentence_q.put("Hello.")
+        sentence_q.put(None)
+
+        tts._streaming_synth_worker(sentence_q, audio_q)
+
+        parts = []
+        while True:
+            item = audio_q.get_nowait()
+            if item is None:
+                break
+            parts.append(item[2])
+        rebuilt = np.concatenate(parts)
+        assert np.array_equal(rebuilt, np.arange(100, dtype=np.int16))
+
+    @patch("klaus.tts.sd")
+    @patch("klaus.tts.OpenAI")
+    def test_wav_fallback_when_streaming_disabled(self, mock_openai_cls, mock_sd):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.content = _make_wav_bytes()
+        mock_client.audio.speech.create.return_value = mock_response
+
+        settings = dataclasses.replace(
+            config.get_runtime_settings(), tts_streaming=False
+        )
+        tts = TextToSpeech(settings=settings)
+        sentence_q: queue.Queue = queue.Queue()
+        audio_q: queue.Queue = queue.Queue()
+        sentence_q.put("Hello.")
+        sentence_q.put(None)
+
+        tts._streaming_synth_worker(sentence_q, audio_q)
+
+        item = audio_q.get_nowait()
+        assert item is not None
+        mock_client.audio.speech.create.assert_called_once()
+        mock_client.audio.speech.with_streaming_response.create.assert_not_called()
+
+    @patch("klaus.tts.sd")
+    @patch("klaus.tts.OpenAI")
+    def test_speak_streaming_fires_on_first_audio(self, mock_openai_cls, mock_sd):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        pcm_chunk = np.ones(2400, dtype=np.int16).tobytes()
+        mock_client.audio.speech.with_streaming_response.create.return_value = (
+            _FakeStreamingResponse([pcm_chunk])
+        )
+        mock_stream = MagicMock()
+        mock_stream.closed = False
+        mock_sd.OutputStream.return_value = mock_stream
+
+        tts = TextToSpeech()
+        sentence_q: queue.Queue = queue.Queue()
+        sentence_q.put("Hello.")
+        sentence_q.put(None)
+        first_audio = MagicMock()
+
+        tts.speak_streaming(sentence_q, on_first_audio=first_audio)
+
+        first_audio.assert_called_once()
+        assert mock_stream.write.call_count >= 1
+
+    @patch("klaus.tts.sd")
+    @patch("klaus.tts.OpenAI")
+    def test_play_pcm_writes_to_stream(self, mock_openai_cls, mock_sd):
+        mock_stream = MagicMock()
+        mock_stream.closed = False
+        mock_sd.OutputStream.return_value = mock_stream
+
+        tts = TextToSpeech()
+        tts.play_pcm(np.zeros(1200, dtype=np.int16))
+
+        mock_stream.write.assert_called_once()

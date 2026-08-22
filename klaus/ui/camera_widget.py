@@ -1,19 +1,26 @@
-"""Live camera preview widget."""
+"""Live reading-source selector and preview widget."""
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt, QTimer
+import sys
+
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import cv2
 import numpy as np
 
 from klaus.ui import theme
+from klaus.macos_reading_source import (
+    ACTIVE_READING_WINDOW_SOURCE_INDEX,
+    DESK_VIEW_SOURCE_INDEX,
+)
 
 
 class CameraWidget(QWidget):
-    """Compact live camera preview."""
+    """Compact reading-source selector and live preview."""
 
+    source_changed = pyqtSignal(int)
     PREVIEW_WIDTH = theme.CAMERA_PREVIEW_WIDTH
 
     def __init__(self, parent: QWidget | None = None):
@@ -27,29 +34,85 @@ class CameraWidget(QWidget):
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(8)
+
+        header = QHBoxLayout()
+        heading = QLabel("READING CONTEXT")
+        heading.setObjectName("reading-context-title")
+        header.addWidget(heading)
+        header.addStretch()
+        self._status_badge = QLabel("OFF")
+        self._status_badge.setObjectName("reading-context-badge")
+        header.addWidget(self._status_badge)
+        layout.addLayout(header)
+
+        self._source_combo: QComboBox | None = None
+        if sys.platform == "darwin":
+            self._source_combo = QComboBox()
+            self._source_combo.addItem("Desk View: paper", DESK_VIEW_SOURCE_INDEX)
+            self._source_combo.addItem(
+                "Active window: PDF",
+                ACTIVE_READING_WINDOW_SOURCE_INDEX,
+            )
+            self._source_combo.activated.connect(self._on_source_activated)
+            layout.addWidget(self._source_combo)
 
         self._video_label = QLabel()
         self._video_label.setObjectName("camera-preview")
         self._video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._video_label.setMinimumSize(280, 210)
-        self._video_label.setMaximumHeight(300)
+        self._video_label.setMinimumSize(280, 168)
+        self._video_label.setMaximumHeight(220)
+        self._video_label.setText("No reading context\nChoose a source above")
         layout.addWidget(self._video_label)
         self.setMaximumWidth(self.PREVIEW_WIDTH)
 
     def set_camera(self, camera) -> None:
         """Bind a Camera instance and start preview if running."""
         self._camera = camera
+        self.set_source_selection(camera.device_index if camera is not None else -1)
         if camera and camera.is_running:
+            self._video_label.setText(camera.waiting_message)
+            self._status_badge.setText("LIVE")
             self._timer.start(33)
         else:
             self._timer.stop()
+            self._status_badge.setText("OFF")
+            self._video_label.setText("No reading source selected")
+
+    def _on_source_activated(self, _combo_index: int) -> None:
+        if self._source_combo is None:
+            return
+        source_index = self._source_combo.currentData()
+        if source_index is not None:
+            self.source_changed.emit(int(source_index))
+
+    def set_source_selection(self, device_index: int) -> None:
+        if self._source_combo is None:
+            return
+        special_sources = {
+            DESK_VIEW_SOURCE_INDEX,
+            ACTIVE_READING_WINDOW_SOURCE_INDEX,
+        }
+        for item_index in range(self._source_combo.count() - 1, -1, -1):
+            if self._source_combo.itemData(item_index) not in special_sources:
+                self._source_combo.removeItem(item_index)
+        combo_index = self._source_combo.findData(int(device_index))
+        if combo_index < 0:
+            label = (
+                "No reading source"
+                if device_index < 0
+                else f"Physical camera {device_index} (legacy)"
+            )
+            self._source_combo.addItem(label, int(device_index))
+            combo_index = self._source_combo.count() - 1
+        self._source_combo.setCurrentIndex(combo_index)
 
     def _update_frame(self) -> None:
         if self._camera is None:
             return
         frame = self._camera.get_frame_rgb()
         if frame is None:
+            self._video_label.setText(self._camera.waiting_message)
             return
 
         h, w, ch = frame.shape

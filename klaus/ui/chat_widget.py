@@ -43,6 +43,7 @@ class MessageCard(QFrame):
         super().__init__(parent)
         self._exchange_id = exchange_id
         self._role = role
+        self._text = text
 
         is_user = role == "user"
 
@@ -71,20 +72,27 @@ class MessageCard(QFrame):
             ts_label.setToolTip(tooltip)
             header.addWidget(ts_label)
 
+        self._status_label = QLabel("")
+        self._status_label.setObjectName("card-timestamp")
+        self._status_label.setVisible(False)
+        header.addWidget(self._status_label)
+
         header.addStretch()
 
         if not is_user:
-            copy_btn = QPushButton("\u2398 copy")
+            copy_btn = QPushButton("Copy")
             copy_btn.setObjectName("card-accent-btn")
-            copy_btn.setFixedHeight(22)
+            copy_btn.setFixedHeight(28)
             copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            copy_btn.clicked.connect(lambda: self._copy_text(text, copy_btn))
+            copy_btn.setToolTip("Copy answer")
+            copy_btn.clicked.connect(lambda: self._copy_text(self._text, copy_btn))
             header.addWidget(copy_btn)
 
-            replay_btn = QPushButton("\u25b6 replay")
+            replay_btn = QPushButton("\u25b6  Replay")
             replay_btn.setObjectName("card-accent-btn")
-            replay_btn.setFixedHeight(22)
+            replay_btn.setFixedHeight(28)
             replay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            replay_btn.setToolTip("Hear this answer again")
             replay_btn.clicked.connect(
                 lambda: self.replay_requested.emit(self._exchange_id)
             )
@@ -114,8 +122,26 @@ class MessageCard(QFrame):
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(body)
+        self._body = body
 
+        self.setMaximumWidth(620 if is_user else 760)
+        self.setMinimumWidth(280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def set_text(self, text: str) -> None:
+        self._text = text
+        self._body.setText(text)
+
+    def append_text(self, text: str) -> None:
+        combined = f"{self._text} {text}".strip() if self._text else text
+        self.set_text(combined)
+
+    def set_exchange_id(self, exchange_id: str) -> None:
+        self._exchange_id = exchange_id
+
+    def mark_interrupted(self) -> None:
+        self._status_label.setText("Interrupted")
+        self._status_label.setVisible(True)
 
     @staticmethod
     def _copy_text(text: str, btn: QPushButton) -> None:
@@ -137,6 +163,7 @@ class ChatWidget(QWidget):
         self._auto_scroll = True
         self._shown = False
         self._last_card: QWidget | None = None
+        self._streaming_card: MessageCard | None = None
         self._message_widgets: list[QWidget] = []
         self._init_ui()
 
@@ -153,18 +180,15 @@ class ChatWidget(QWidget):
 
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
-        self._layout.setContentsMargins(10, 10, 10, 10)
-        self._layout.setSpacing(12)
+        self._layout.setContentsMargins(24, 20, 24, 20)
+        self._layout.setSpacing(14)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
 
-        # Empty state placeholder
-        self._empty_label = QLabel(
-            "Place a page under the camera and ask a question"
+        self._empty_state = self._build_empty_state()
+        self._layout.addWidget(
+            self._empty_state,
+            alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        self._empty_label.setObjectName("chat-empty")
-        self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_label.setWordWrap(True)
-        self._layout.addWidget(self._empty_label)
 
         self._scroll.setWidget(self._container)
         outer.addWidget(self._scroll)
@@ -205,20 +229,66 @@ class ChatWidget(QWidget):
         card.replay_requested.connect(self.replay_requested.emit)
 
         self._auto_scroll = was_near_bottom
-        self._layout.addWidget(card)
-        self._message_widgets.append(card)
+        row = self._card_row(card, role)
+        self._layout.addWidget(row)
+        self._message_widgets.append(row)
         self._last_card = card
         logger.debug("Added %s message", role)
+
+    def append_assistant_stream(self, text: str) -> None:
+        """Append a streamed sentence to the live assistant card.
+
+        Creates the card on the first sentence of a response.
+        """
+        if self._streaming_card is None:
+            was_near_bottom = self._is_near_bottom()
+            self._hide_empty()
+            card = MessageCard(role="assistant", text=text, parent=self._container)
+            card.replay_requested.connect(self.replay_requested.emit)
+            self._auto_scroll = was_near_bottom
+            row = self._card_row(card, "assistant")
+            self._layout.addWidget(row)
+            self._message_widgets.append(row)
+            self._last_card = card
+            self._streaming_card = card
+        else:
+            self._streaming_card.append_text(text)
+
+    def finalize_assistant_stream(self, text: str, exchange_id: str) -> bool:
+        """Replace the streaming card's text with the final response.
+
+        Returns True if a streaming card was finalized, False if there was
+        none (caller should add a regular message instead).
+        """
+        card = self._streaming_card
+        self._streaming_card = None
+        if card is None:
+            return False
+        card.set_text(text)
+        card.set_exchange_id(exchange_id)
+        return True
+
+    def abort_assistant_stream(self) -> None:
+        """Detach the streaming card after a cancelled turn."""
+        if self._streaming_card is not None:
+            self._streaming_card.mark_interrupted()
+        self._streaming_card = None
 
     def add_status_message(self, text: str) -> None:
         was_near_bottom = self._is_near_bottom()
         self._hide_empty()
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_layout.addStretch()
         label = QLabel(text)
         label.setObjectName("chat-status-msg")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row_layout.addWidget(label)
+        row_layout.addStretch()
         self._auto_scroll = was_near_bottom
-        self._layout.addWidget(label)
-        self._message_widgets.append(label)
+        self._layout.addWidget(row)
+        self._message_widgets.append(row)
 
     def clear(self) -> None:
         for widget in self._message_widgets:
@@ -226,6 +296,7 @@ class ChatWidget(QWidget):
             widget.deleteLater()
         self._message_widgets.clear()
         self._last_card = None
+        self._streaming_card = None
         self._auto_scroll = True
         self._show_empty()
 
@@ -237,11 +308,68 @@ class ChatWidget(QWidget):
 
     # -- Private --
 
+    def _build_empty_state(self) -> QWidget:
+        state = QWidget()
+        state.setMinimumWidth(520)
+        state.setMaximumWidth(620)
+        layout = QVBoxLayout(state)
+        layout.setContentsMargins(28, 48, 28, 48)
+        layout.setSpacing(12)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        orb = QLabel("K")
+        orb.setObjectName("chat-empty-orb")
+        orb.setFixedSize(54, 54)
+        orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(orb, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        heading = QLabel("Ask as you read")
+        heading.setObjectName("chat-empty-heading")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(heading)
+
+        self._empty_label = QLabel(
+            "Klaus can see your selected reading context and answer out loud. "
+            "Start speaking whenever you are ready."
+        )
+        self._empty_label.setObjectName("chat-empty-subtitle")
+        self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setMaximumWidth(500)
+        self._empty_label.setMinimumHeight(46)
+        layout.addWidget(self._empty_label)
+
+        layout.addSpacing(6)
+        for example in (
+            "“What does this paragraph mean?”",
+            "“Define that term on the right.”",
+            "“Save the key idea to my notes.”",
+        ):
+            label = QLabel(example)
+            label.setObjectName("chat-example")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
+        return state
+
+    @staticmethod
+    def _card_row(card: MessageCard, role: str) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        if role == "user":
+            layout.addStretch()
+            layout.addWidget(card)
+        else:
+            layout.addWidget(card)
+            layout.addStretch()
+        return row
+
     def _hide_empty(self) -> None:
-        self._empty_label.setVisible(False)
+        self._empty_state.setVisible(False)
 
     def _show_empty(self) -> None:
-        self._empty_label.setVisible(True)
+        self._empty_state.setVisible(True)
 
     def _is_near_bottom(self) -> bool:
         sb = self._scroll.verticalScrollBar()

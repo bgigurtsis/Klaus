@@ -1,37 +1,68 @@
-"""Bottom status bar showing state, mode toggle, hotkey hint, and session stats."""
+"""Persistent voice dock showing state, interruption, and input controls."""
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from klaus.ui import theme
 
 
 class StatusWidget(QWidget):
-    """Bottom status bar with state indicator, mode toggle, and session stats."""
+    """Bottom voice dock with clear turn state and interruption controls."""
 
     mode_toggle_clicked = pyqtSignal()
     stop_clicked = pyqtSignal()
 
     _STATES = {
         "idle": {
-            "push_to_talk": ("\u25cf Idle", theme.IDLE_COLOR),
-            "voice_activation": ("\u25cf Ready", theme.SPEAKING_COLOR),
+            "push_to_talk": (
+                "Ready when you are",
+                "Hold {hotkey} to ask a question",
+                theme.IDLE_COLOR,
+                "\u25cf",
+            ),
+            "voice_activation": (
+                "Ready for your question",
+                "Just start speaking. You can interrupt any answer.",
+                theme.SPEAKING_COLOR,
+                "\u25cf",
+            ),
         },
-        "listening": ("\u25cf Listening", theme.LISTENING_COLOR),
-        "thinking": ("\u25cf Thinking", theme.THINKING_COLOR),
-        "speaking": ("\u25cf Speaking", theme.SPEAKING_COLOR),
+        "listening": (
+            "Listening",
+            "Finish your thought naturally",
+            theme.LISTENING_COLOR,
+            "\u223f",
+        ),
+        "thinking": (
+            "Thinking with your reading",
+            "Klaus is building a short spoken answer",
+            theme.THINKING_COLOR,
+            "\u2726",
+        ),
+        "speaking": (
+            "Answering",
+            "Speak to interrupt, or use the button",
+            theme.SPEAKING_COLOR,
+            "\u223f",
+        ),
+        "interrupted": (
+            "Interrupted",
+            "Go ahead with your next question",
+            theme.LISTENING_COLOR,
+            "\u21b3",
+        ),
     }
 
     _MODE_LABELS = {
-        "push_to_talk": "PTT",
-        "voice_activation": "Voice",
+        "push_to_talk": "Push to talk",
+        "voice_activation": "Hands-free",
     }
 
     _HOTKEY_HINTS = {
-        "push_to_talk": "Hold {hotkey} to speak  \u00b7  {toggle} to switch",
-        "voice_activation": "Just speak  \u00b7  {toggle} to switch mode",
+        "push_to_talk": "{toggle} switches to hands-free",
+        "voice_activation": "{toggle} switches to push to talk",
     }
 
     def __init__(
@@ -53,28 +84,26 @@ class StatusWidget(QWidget):
         self.setFixedHeight(theme.STATUS_BAR_HEIGHT)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 14, 0)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 12, 18, 12)
+        layout.setSpacing(12)
+
+        self._orb = QLabel()
+        self._orb.setObjectName("klaus-state-orb")
+        self._orb.setFixedSize(40, 40)
+        self._orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._orb)
+
+        state_column = QVBoxLayout()
+        state_column.setSpacing(3)
 
         self._state_label = QLabel()
         self._state_label.setObjectName("klaus-state-label")
-        self._apply_state_label("idle")
-        layout.addWidget(self._state_label)
+        state_column.addWidget(self._state_label)
 
-        self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
-        self._mode_btn.setObjectName("klaus-mode-btn")
-        self._mode_btn.setFixedHeight(24)
-        self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
-        layout.addWidget(self._mode_btn)
-
-        self._stop_btn = QPushButton("Stop")
-        self._stop_btn.setObjectName("klaus-stop-btn")
-        self._stop_btn.setFixedHeight(24)
-        self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._stop_btn.clicked.connect(self.stop_clicked.emit)
-        self._stop_btn.setVisible(False)
-        layout.addWidget(self._stop_btn)
+        self._detail_label = QLabel()
+        self._detail_label.setObjectName("klaus-state-detail")
+        state_column.addWidget(self._detail_label)
+        layout.addLayout(state_column)
 
         layout.addStretch()
 
@@ -85,29 +114,53 @@ class StatusWidget(QWidget):
         self._hotkey_label.setObjectName("klaus-hotkey-hint")
         layout.addWidget(self._hotkey_label)
 
-        layout.addStretch()
+        self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
+        self._mode_btn.setObjectName("klaus-mode-btn")
+        self._mode_btn.setFixedHeight(40)
+        self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._mode_btn.setToolTip("Switch voice input mode")
+        self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
+        layout.addWidget(self._mode_btn)
 
-        self._stats_label = QLabel("0 Q&A")
+        self._stop_btn = QPushButton("Interrupt")
+        self._stop_btn.setObjectName("klaus-stop-btn")
+        self._stop_btn.setFixedHeight(40)
+        self._stop_btn.setMinimumWidth(108)
+        self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._stop_btn.setToolTip("Stop this answer now")
+        self._stop_btn.clicked.connect(self.stop_clicked.emit)
+        self._stop_btn.setVisible(False)
+        layout.addWidget(self._stop_btn)
+
+        self._stats_label = QLabel("0 answers")
         self._stats_label.setObjectName("klaus-stats")
         layout.addWidget(self._stats_label)
+        self._apply_state_label("idle")
 
     def _apply_state_label(self, state: str) -> None:
         entry = self._STATES.get(state, self._STATES["idle"])
         if isinstance(entry, dict):
-            text, color = entry.get(self._mode, ("\u25cf Idle", theme.IDLE_COLOR))
+            title, detail, color, symbol = entry.get(
+                self._mode,
+                ("Ready", "", theme.IDLE_COLOR, "\u25cf"),
+            )
         else:
-            text, color = entry
-        self._state_label.setText(text)
-        # Dynamic color -- must stay as inline setStyleSheet
-        self._state_label.setStyleSheet(
-            f"color: {color}; font-size: {theme.FONT_SIZE_SMALL}px; font-weight: bold;"
+            title, detail, color, symbol = entry
+        detail = detail.format(hotkey=self._hotkey, toggle=self._toggle_key)
+        self._state_label.setText(title)
+        self._detail_label.setText(detail)
+        self._state_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        self._orb.setText(symbol)
+        self._orb.setStyleSheet(
+            f"color: {color}; background: {theme.SURFACE_RAISED}; "
+            f"border: 1px solid {color}; border-radius: 20px;"
         )
 
     def set_state(self, state: str) -> None:
         """Update the state indicator."""
         self._current_state = state
         self._apply_state_label(state)
-        self._stop_btn.setVisible(state == "speaking")
+        self._stop_btn.setVisible(state in ("thinking", "speaking"))
 
     def set_mode(self, mode: str) -> None:
         """Update the mode button label and hotkey hint."""
@@ -121,7 +174,8 @@ class StatusWidget(QWidget):
 
     def set_exchange_count(self, count: int) -> None:
         """Update the session exchange count display."""
-        self._stats_label.setText(f"{count} Q&A this session")
+        label = "answer" if count == 1 else "answers"
+        self._stats_label.setText(f"{count} {label}")
 
     def set_hotkeys(self, hotkey: str, toggle_key: str) -> None:
         """Update hotkey labels shown in the status bar."""
@@ -131,3 +185,4 @@ class StatusWidget(QWidget):
             hotkey=self._hotkey, toggle=self._toggle_key,
         )
         self._hotkey_label.setText(hint)
+        self._apply_state_label(self._current_state)

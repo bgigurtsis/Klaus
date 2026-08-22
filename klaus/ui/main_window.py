@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSplitter,
+    QFrame,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
@@ -113,21 +114,52 @@ class MainWindow(QMainWindow):
         header.setObjectName("klaus-header")
         header.setFixedHeight(theme.HEADER_HEIGHT)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
+        header_layout.setContentsMargins(18, 0, 18, 0)
+        header_layout.setSpacing(10)
 
+        brand_mark = QLabel("K")
+        brand_mark.setObjectName("klaus-brand-mark")
+        brand_mark.setFixedSize(34, 34)
+        brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(brand_mark)
+
+        brand_column = QVBoxLayout()
+        brand_column.setSpacing(0)
         title = QLabel("Klaus")
         title.setObjectName("klaus-title")
-        header_layout.addWidget(title)
+        brand_column.addWidget(title)
+        brand_subtitle = QLabel("Voice research companion")
+        brand_subtitle.setObjectName("klaus-brand-subtitle")
+        brand_column.addWidget(brand_subtitle)
+        header_layout.addLayout(brand_column)
 
-        header_layout.addStretch()
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setStyleSheet(f"color: {theme.BORDER_DEFAULT};")
+        divider.setFixedHeight(28)
+        header_layout.addWidget(divider)
 
         self._session_title_label = QLabel("")
         self._session_title_label.setObjectName("klaus-session-title")
         header_layout.addWidget(self._session_title_label)
 
+        header_layout.addStretch()
+
+        model_name = "GPT Realtime" if config.VOICE_ENGINE == "realtime" else "Legacy voice"
+        model_color = theme.KLAUS_ACCENT if config.VOICE_ENGINE == "realtime" else theme.TEXT_MUTED
+        model_pill = QLabel(
+            f'<span style="color:{model_color};">\u25cf</span>&nbsp;&nbsp;{model_name}'
+        )
+        model_pill.setTextFormat(Qt.TextFormat.RichText)
+        model_pill.setObjectName("klaus-model-pill")
+        model_pill.setToolTip(
+            config.REALTIME_MODEL if config.VOICE_ENGINE == "realtime" else "Claude + OpenAI TTS"
+        )
+        header_layout.addWidget(model_pill)
+
         settings_btn = QPushButton("\u2699")
         settings_btn.setObjectName("klaus-settings-btn")
-        settings_btn.setFixedSize(32, 32)
+        settings_btn.setFixedSize(38, 38)
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.setToolTip("Settings")
         settings_btn.clicked.connect(self.settings_requested.emit)
@@ -140,9 +172,10 @@ class MainWindow(QMainWindow):
 
         # Left panel: camera + session list
         left_panel = QWidget()
+        left_panel.setObjectName("klaus-sidebar")
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(8, 8, 8, 8)
-        left_layout.setSpacing(8)
+        left_layout.setContentsMargins(12, 12, 12, 10)
+        left_layout.setSpacing(12)
 
         self.camera_widget = CameraWidget()
         left_layout.addWidget(self.camera_widget)
@@ -163,7 +196,7 @@ class MainWindow(QMainWindow):
         self.chat_widget.replay_requested.connect(self.replay_requested.emit)
         splitter.addWidget(self.chat_widget)
 
-        splitter.setSizes([300, 700])
+        splitter.setSizes([320, 780])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
 

@@ -1,4 +1,4 @@
-"""Tests for klaus.audio -- push-to-talk recording and playback."""
+"""Tests for klaus.audio -- push-to-talk recording, VAD, and playback."""
 
 import io
 import wave
@@ -7,7 +7,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from klaus.audio import PushToTalkRecorder, AudioPlayer, to_wav_bytes
+from klaus.audio import (
+    FRAME_SIZE,
+    AudioPlayer,
+    PushToTalkRecorder,
+    VoiceActivatedRecorder,
+    to_wav_bytes,
+)
 
 
 class TestPushToTalkRecorder:
@@ -102,6 +108,189 @@ class TestPushToTalkRecorder:
             assert wf.getsampwidth() == 2
             assert wf.getframerate() == 16000
             assert wf.getnframes() == 3200
+
+
+def _make_vad_recorder(**kwargs):
+    defaults = dict(
+        on_speech_start=MagicMock(),
+        on_speech_end=MagicMock(),
+        silence_timeout=0.3,  # 10 frames
+        min_duration=0.0,
+        min_voiced_ratio=0.0,
+        min_voiced_frames=1,
+        min_rms_dbfs=-120.0,
+        min_voiced_run_frames=1,
+    )
+    defaults.update(kwargs)
+    return VoiceActivatedRecorder(**defaults)
+
+
+class TestVoiceStartGate:
+    def test_single_vad_spike_does_not_start_listening(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(on_speech_start=started, start_trigger_ms=90)
+        rec._vad = MagicMock()
+        frame = np.full(FRAME_SIZE, 1000, dtype=np.int16)
+
+        rec._vad.is_speech.side_effect = [True, False, False, False]
+        for _ in range(4):
+            rec._process_frame(frame)
+
+        started.assert_not_called()
+        assert rec._speaking is False
+
+    def test_three_consecutive_voiced_frames_start_listening(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(on_speech_start=started, start_trigger_ms=90)
+        rec._vad = MagicMock()
+        rec._vad.is_speech.return_value = True
+        frame = np.full(FRAME_SIZE, 1000, dtype=np.int16)
+
+        for _ in range(3):
+            rec._process_frame(frame)
+
+        started.assert_called_once()
+        assert rec._speaking is True
+        assert len(rec._chunks) == 3
+
+    def test_vad_positive_frames_below_rms_floor_do_not_start(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(
+            on_speech_start=started,
+            start_trigger_ms=90,
+            min_rms_dbfs=-40.0,
+        )
+        rec._vad = MagicMock()
+        rec._vad.is_speech.return_value = True
+        quiet = np.full(FRAME_SIZE, 10, dtype=np.int16)
+
+        for _ in range(6):
+            rec._process_frame(quiet)
+
+        started.assert_not_called()
+        assert rec._speaking is False
+
+
+class TestSpeculativeMaybeEnd:
+    def test_maybe_end_fires_before_finalize_with_exact_gap(self):
+        maybe: list[bytes] = []
+        ended: list[bytes] = []
+        rec = _make_vad_recorder(
+            on_speech_end=ended.append,
+            on_speech_maybe_end=maybe.append,
+            early_silence_timeout=0.15,  # 5 frames
+        )
+        rec._vad = MagicMock()
+        frame = np.full(FRAME_SIZE, 1000, dtype=np.int16)
+
+        rec._vad.is_speech.return_value = True
+        for _ in range(5):
+            rec._process_frame(frame)
+        rec._vad.is_speech.return_value = False
+        for _ in range(5):
+            rec._process_frame(frame)
+
+        assert len(maybe) == 1
+        assert not ended
+
+        for _ in range(5):
+            rec._process_frame(frame)
+
+        assert len(ended) == 1
+        assert len(ended[0]) - len(maybe[0]) == rec.speculative_gap_bytes
+
+    def test_resumed_speech_breaks_the_gap(self):
+        maybe: list[bytes] = []
+        ended: list[bytes] = []
+        rec = _make_vad_recorder(
+            on_speech_end=ended.append,
+            on_speech_maybe_end=maybe.append,
+            early_silence_timeout=0.15,
+        )
+        rec._vad = MagicMock()
+        frame = np.full(FRAME_SIZE, 1000, dtype=np.int16)
+
+        rec._vad.is_speech.return_value = True
+        for _ in range(5):
+            rec._process_frame(frame)
+        rec._vad.is_speech.return_value = False
+        for _ in range(5):
+            rec._process_frame(frame)
+        assert len(maybe) == 1
+
+        # Speech resumes, then silence to finalize.
+        rec._vad.is_speech.return_value = True
+        for _ in range(3):
+            rec._process_frame(frame)
+        rec._vad.is_speech.return_value = False
+        for _ in range(10):
+            rec._process_frame(frame)
+
+        assert len(maybe) == 2  # second early snapshot fired
+        assert len(ended) == 1
+        # Final audio matches the *second* snapshot's gap, not the first.
+        assert len(ended[0]) - len(maybe[0]) != rec.speculative_gap_bytes
+        assert len(ended[0]) - len(maybe[1]) == rec.speculative_gap_bytes
+
+    def test_disabled_when_early_timeout_not_below_final(self):
+        rec = _make_vad_recorder(
+            on_speech_maybe_end=MagicMock(),
+            early_silence_timeout=0.5,  # >= silence_timeout of 0.3
+        )
+        assert rec.speculative_gap_bytes == 0
+
+
+class TestBargeInGate:
+    def _gated_recorder(self, barge):
+        rec = _make_vad_recorder(
+            on_barge_in=barge.append,
+            barge_in_min_voiced_ms=90,  # 3 frames
+            barge_in_rms_margin_dbfs=6.0,
+            min_rms_dbfs=-60.0,
+        )
+        rec._gate_vad = MagicMock()
+        rec._gate_vad.is_speech.return_value = True
+        rec.enter_gated_mode()
+        return rec
+
+    def test_loud_speech_triggers_barge_in_after_calibration(self):
+        barge: list[np.ndarray] = []
+        rec = self._gated_recorder(barge)
+        quiet = np.full(FRAME_SIZE, 10, dtype=np.int16)
+        loud = np.full(FRAME_SIZE, 5000, dtype=np.int16)
+
+        for _ in range(10):  # calibration window
+            rec._process_gate_frame(quiet)
+        assert not barge
+
+        for _ in range(3):
+            rec._process_gate_frame(loud)
+
+        assert len(barge) == 1
+        assert rec._gated is False
+        assert isinstance(barge[0], np.ndarray)
+
+    def test_playback_bleed_does_not_trigger(self):
+        barge: list[np.ndarray] = []
+        rec = self._gated_recorder(barge)
+        quiet = np.full(FRAME_SIZE, 10, dtype=np.int16)
+
+        for _ in range(30):
+            rec._process_gate_frame(quiet)
+
+        assert not barge
+        assert rec._gated is True
+
+    def test_prime_with_seed_starts_utterance(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(on_speech_start=started)
+        seed = np.full(FRAME_SIZE * 5, 1000, dtype=np.int16)
+
+        rec.prime_with_seed(seed)
+
+        assert rec._speaking is True
+        assert len(rec._chunks) == 1
+        started.assert_called_once()
 
 
 class TestAudioPlayer:

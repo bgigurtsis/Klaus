@@ -1,19 +1,19 @@
 # Klaus
 
-**Voice-powered research assistant for physical books and papers.**
+**Voice-powered research assistant for paper and PDFs on macOS.**
 
-Klaus is a desktop voice assistant that lets you ask questions about what you're reading hands free. Place a page under a camera, ask a question out loud, Klaus reads the page and reasons about your question through Claude's vision API before answering in natural speech.
+Klaus can answer questions about what you are reading without taking you away from the page. It may read physical paper through Apple's Desk View. It can also read the active PDF window on your Mac. For PDFs, Klaus can use exact selected text when macOS exposes it. It may use a window image otherwise.
 
 The experience is tuned for fast study loops: read, ask, clarify, continue. Klaus searches the web when it's unsure about a claim, remembers context across turns, and can write notes directly to your Obsidian vault on request.
 
-Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshine](https://github.com/usefulsensors/moonshine) Medium, a local speech-to-text model. This model is downloaded on first use. A hybrid query router (local heuristics with `claude-haiku-4-5` fallback) decides what context each question needs. The main reasoning loop runs on `claude-sonnet-4-6` with tool use, and output streams sentence-by-sentence to OpenAI `gpt-4o-mini-tts`. End-to-end latency is 2-4 seconds.
+Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshine](https://github.com/usefulsensors/moonshine) Medium, a local speech-to-text model. This model is downloaded on first use. A local query router decides what context each question needs. The primary voice engine sends the recorded question and reading context to `gpt-realtime-2.1` over one persistent WebSocket conversation. An optional `legacy` engine can instead use `claude-sonnet-5` with streamed OpenAI `gpt-4o-mini-tts` output.
 
 ## Table of Contents
 
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
-- [Camera Setup](#camera-setup)
+- [Reading Sources](#reading-sources)
 - [Usage](#usage)
 - [Latency and Cost](#latency-and-cost)
 - [Configuration](#configuration)
@@ -25,11 +25,13 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 
 ## Features
 
-- **Vision-grounded Q&A** -- place a page under a camera, ask a question, and Klaus will read the page before answering your question so that it has all the context
-- **Web search** -- Tavily search triggers automatically when Claude is uncertain about a claim
-- **Voice input** -- voice-activated recording (WebRTC VAD) or push-to-talk; speech-to-text runs locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium (no API cost, ~300ms)
-- **Streamed speech output** -- OpenAI TTS streams sentence-by-sentence so playback starts before the full response is generated (2-3s end-to-end)
-- **Smart query routing** -- a hybrid local + LLM router classifies each question and decides what context (image, history, memory, notes) to include
+- **Two reading workflows** -- Klaus can read physical paper through Desk View or PDFs through the active macOS window
+- **Text-first PDF context** -- Klaus can prefer selected PDF text, with a window image as fallback
+- **Web search** -- Tavily search can verify a claim when GPT Realtime needs current information
+- **Voice input** -- voice activation can require a sustained voiced signal before recording, while push-to-talk may remain available; speech-to-text runs locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium
+- **Native speech-to-speech output** -- GPT Realtime can stream audio and its transcript as the answer forms
+- **Legacy voice fallback** -- Claude with OpenAI TTS remains available through one config setting
+- **Smart query routing** -- a local router decides whether each question needs an image, history, memory, or notes
 - **Obsidian notes** -- dictate notes hands-free; Klaus writes them directly to your Obsidian vault
 - **Conversation memory** -- SQLite-backed session history with persistent knowledge profile
 - **Secure API key storage** -- Apple Keychain on macOS (auto-migrates legacy plaintext keys); `config.toml` fallback on Windows
@@ -41,9 +43,9 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 
 | Component | Details |
 |-----------|---------|
-| Camera | Document camera AKA Visualiser (recommended) or phone on a gooseneck mount pointed at your reading surface |
+| Camera | An iPhone that supports Desk View may handle physical paper; PDFs need no camera |
 | Microphone | Built-in or external; selected during setup |
-| Audio Outputs | Built-in or external; used for TTS playback |
+| Audio output | Built-in or external; used for spoken answers |
 
 ### Software
 
@@ -61,13 +63,13 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 
 ### API Keys
 
-Klaus requires keys from three providers. The setup wizard asks for them on first launch. On macOS, these keys are escrowed securely to Keychain for storage.
+Klaus requires an OpenAI key. Tavily and Anthropic keys enable optional features. The setup wizard asks for them on first launch. On macOS, Klaus stores these keys in Apple Keychain.
 
 | Provider | Purpose | Get a key |
 |----------|---------|-----------|
-| Anthropic | Vision + reasoning (Claude) | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| OpenAI | Text-to-speech | [platform.openai.com](https://platform.openai.com/api-keys) |
-| Tavily | Web search (free tier: 1,000 searches/mo) | [app.tavily.com](https://app.tavily.com/home) |
+| OpenAI | Required. Live speech, page reasoning, and spoken answers | [platform.openai.com](https://platform.openai.com/api-keys) |
+| Tavily | Optional. Web search | [app.tavily.com](https://app.tavily.com/home) |
+| Anthropic | Optional. Legacy Claude voice engine | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 
 **Key storage on macOS** -- keys are stored in **Apple Keychain**. Klaus resolves each key in this order:
 
@@ -102,9 +104,9 @@ pipx install klaus-assistant
 klaus
 ```
 
-On first launch, a setup wizard walks you through API keys, camera, mic, and voice model setup.
+On first launch, the setup wizard can guide you through API keys, reading source, microphone, and offline speech setup.
 
-> **macOS input monitoring:** macOS may prompt you to grant your terminal Accessibility (input monitoring) permission. This is needed for global hotkeys (push-to-talk and voice-activation toggle) to work when Klaus is not focused. You can deny the prompt and use the in-app UI buttons instead.
+> **macOS permissions:** macOS may request Accessibility for global hotkeys and selected PDF text. It may also request Screen Recording so Klaus can capture Desk View or a PDF window. You can deny Accessibility and use the in-app buttons, though selected-text capture may then use the window-image fallback.
 
 > **macOS 26 + Python 3.14:** `pynput` global hotkeys can crash on this combination. Klaus automatically disables global hotkeys and keeps in-app hotkeys active. Use Python 3.13 for stable global hotkeys.
 
@@ -123,28 +125,30 @@ pip install -e .
 klaus
 ```
 
-## Camera Setup
+## Reading Sources
 
-A camera is required for Klaus to see what you're reading.
+Klaus can expose two first-class macOS workflows from the selector above the live preview or from **Settings > Reading**.
 
-A USB document camera (also called a visualiser) is recommended. Alternatively, a phone on a gooseneck mount (~$10-15) pointed straight down at your reading surface works well. Either gives Klaus a clear, stable view of the full page.
+### Physical paper through Desk View
 
-I personally quite like this model as it has a light too:
+1. Open Apple's Desk View app.
+2. Place the paper in the Desk View reading area.
+3. Use bright, even light so small text can stay sharp.
+4. Choose **Desk View: paper** in Klaus.
+5. Ask a question while you point at or read the relevant passage.
 
-https://www.amazon.com/PAKOTOO-Document-Teachers-Classroom-Distance (Amazon US)
+Klaus may capture the Desk View window itself, so it does not need a separate document camera. Desk View quality can depend on page size, lighting, camera distance, and the iPhone model.
 
-https://www.amazon.co.uk/kitchbai-Visualiser-Teaching-Classroom-Chromebook (Amazon UK)
+### PDFs in a macOS app
 
-Or, some recommended apps to connect your phone as a webcam:
+1. Open the PDF in Preview, a browser, or another reading app.
+2. Choose **Active window: PDF** in Klaus.
+3. Keep the PDF window frontmost while you read.
+4. Select a passage when you want exact text context, then ask your question.
 
-| Setup | App |
-|-------|-----|
-| macOS + iPhone | Built-in -- [Continuity Camera](https://support.apple.com/en-us/102546) (iOS 16+, macOS Ventura+, no install needed) |
-| macOS + Android | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + Mac, pair via QR or USB |
-| Windows + Android | [DroidCam](https://www.dev47apps.com/) (free) -- install on phone + PC, connect over Wi-Fi or USB |
-| Windows + iPhone | [Camo](https://reincubate.com/camo/) (free, 1080p) -- install on phone + PC, pair via QR or USB |
+Klaus can prefer selected text when the app exposes it through macOS Accessibility. It may capture the active window when no usable selection exists.
 
-Klaus auto-detects portrait orientation and rotates the image. Override with `camera_rotation` in `~/.klaus/config.toml` if needed.
+Existing configs may still use physical camera indices. Klaus can auto-rotate those camera frames according to `camera_rotation` in `~/.klaus/config.toml`.
 
 ## Usage
 
@@ -155,21 +159,19 @@ Klaus supports two input modes:
 
 Toggle between modes with the toggle key (default `§` on macOS, `F3` on Windows) or use the mode button in the UI.
 
-When you finish speaking, Klaus captures a frame from the camera and sends the page image along with your transcript to Claude. Claude reasons over the page, optionally searches the web via Tavily, and responds aloud. The response streams sentence-by-sentence so you hear the first sentence within 2-3 seconds.
+When you finish speaking, Klaus may collect selected text or a reading-window image according to the question route. GPT Realtime can answer from that context, and it may search the web through Tavily when needed. Its response can start playing before the full answer finishes. The optional `legacy` engine sends the same context through Claude and OpenAI TTS.
+
+### Interrupt an answer
+
+Start speaking while Klaus answers. Klaus stops playback after it confirms your voice, cancels the server response, and removes unheard audio from the Realtime conversation. Your follow-up can then refer to the part you heard. You can also select **Interrupt** in the voice dock while Klaus thinks or speaks.
 
 **Obsidian integration** -- if you've configured a vault path (in the setup wizard or settings), you can ask Klaus to take notes as you speak. Ensure that you specify which markdown file you want it to put the notes in. It will then write markdown files directly to your Obsidian vault.
 
 ## Latency and Cost
 
-End-to-end latency from question to first spoken word is 2-4 seconds (STT + Claude + first TTS chunk). TTS streams sentence-by-sentence so playback starts before the full response is generated.
+Klaus can log transcript, route, first-sentence, first-audio, and completion timing for each turn. Actual latency may depend on the Mac, network, source size, route, and provider load.
 
-| Usage | Approx. cost |
-|-------|-------------|
-| 10 questions | ~$0.05 |
-| 50 questions | ~$0.25 |
-| 100 questions/day | ~$2.50-3.50/day |
-
-Largest cost driver is Claude Sonnet 4.6 (vision + context window). Reasoning model can be changed as you wish in the config.toml for either a cheaper or more expensive model. In my experience Sonnet 4.6 is a nice middleground. STT is free via a local copy of [Moonshine](https://github.com/usefulsensors/moonshine) Medium. TTS is $0.015/min of generated audio.
+Moonshine transcription can run on the Mac without an STT API charge. GPT Realtime may incur OpenAI audio, text, and image charges. The `legacy` engine may incur Anthropic and OpenAI TTS charges instead. Each provider calculates charges from its current pricing and the context sent for each turn.
 
 ## Configuration
 
@@ -181,13 +183,15 @@ Settings live in `~/.klaus/config.toml` (created on first run). Edit any line to
 | `toggle_key` | `§` (macOS) / `F3` (Windows) | Toggle between voice-activated and push-to-talk |
 | `input_mode` | `voice_activation` | Or `push_to_talk` |
 | `voice` | `cedar` | Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin |
+| `voice_engine` | `realtime` | `realtime` for GPT speech-to-speech or `legacy` for Claude plus OpenAI TTS |
 | `tts_speed` | `1.0` | 0.25 to 4.0 |
-| `camera_index` | `0` | Change if you have multiple cameras |
+| `camera_index` | `0` | `-2` for Desk View, `-3` for active PDF window, `-1` for audio only, or a camera index |
 | `mic_index` | `-1` | `-1` uses system default microphone |
 | `camera_rotation` | `auto` | `auto`, `none`, `90`, `180`, `270` |
 | `camera_width` / `camera_height` | `1920` / `1080` | Camera resolution |
 | `vad_sensitivity` | `3` | 0-3, higher = more aggressive noise filtering |
-| `vad_silence_timeout` | `1.5` | Seconds of silence before voice activation finalizes |
+| `vad_silence_timeout` | `1.0` | Seconds of silence before voice activation finalizes |
+| `vad_start_trigger_ms` | `90` | Sustained voiced time required before listening starts |
 | `stt_moonshine_model` | `medium` | Options: `tiny`, `small`, `medium` |
 | `stt_moonshine_language` | `en` | Moonshine language code |
 | `log_level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
@@ -200,21 +204,26 @@ Optional: set `obsidian_vault_path` in `config.toml` (or `OBSIDIAN_VAULT_PATH` i
 flowchart LR
     Mic --> VAD[WebRTC VAD]
     VAD --> STT[Moonshine Medium]
-    Camera --> Capture[Frame Capture]
+    VAD --> AudioTurn[Recorded Question]
+    DeskView[Desk View] --> Capture[Window Image]
+    PDF[Active PDF Window] --> Selection[Selected Text]
+    PDF --> Capture
+    Camera[Optional Physical Camera] --> Capture
     STT --> Router[Query Router]
-    Router --> Claude["Claude (vision + tools)"]
-    Capture --> Claude
-    Claude --> TTS[OpenAI TTS]
-    TTS --> Output[Audio Output]
-    Claude <--> Tavily[Web Search]
-    Claude <--> Obsidian[Notes]
-    Claude <--> SQLite[Memory]
-    Claude --> ChatUI[Chat UI]
+    Router --> Realtime[GPT Realtime]
+    AudioTurn --> Realtime
+    Capture --> Realtime
+    Selection --> Realtime
+    Realtime --> Output[Audio Output]
+    Realtime <--> Tavily[Web Search]
+    Realtime <--> Obsidian[Notes]
+    Realtime --> SQLite[Memory]
+    Realtime --> ChatUI[Chat UI]
 ```
 
-Speech-to-text runs entirely locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium (245M params, ~300ms latency, no API cost). Voice activation uses WebRTC VAD with multi-stage filtering (voiced ratio, RMS loudness, contiguous voiced runs) to reject background noise before audio reaches STT.
+Speech-to-text can run locally through [Moonshine](https://github.com/usefulsensors/moonshine) Medium. Voice activation may combine WebRTC VAD with sustained-start, voiced-ratio, RMS, and contiguous-run gates before audio reaches transcription.
 
-The query router classifies each transcript before answer generation. Most turns are handled by fast local heuristics; uncertain turns can invoke a lightweight LLM router call with a strict timeout. The route controls whether image, history, memory, and notes context are sent to Claude and applies per-turn sentence caps.
+The query router classifies each transcript before answer generation. The Realtime engine uses local rules, which avoid a second model request. The legacy engine may use Claude Haiku for an uncertain route. The route controls whether Klaus sends image, history, memory, or notes context. It also applies per-turn sentence caps.
 
 ## Data Flow
 
@@ -226,28 +235,21 @@ sequenceDiagram
     participant VAD as WebRTC VAD
     participant STT as Moonshine STT
     participant Router as Query Router
-    participant Claude
-    participant TTS as OpenAI TTS
+    participant Realtime as GPT Realtime
     participant Audio Output
 
     User->>VAD: Speak question
     VAD->>STT: Voiced audio frames
     STT->>Router: Transcript text
     Router->>Router: Classify intent (local heuristics)
-    alt Uncertain classification
-        Router->>Claude: LLM router call (strict timeout)
-    end
-    Router->>Claude: Transcript + context policy
-    Note over Claude: Attach image, history, memory,<br/>and notes per route policy
-    Claude-->>TTS: Sentence 1 (streamed)
-    TTS-->>Audio Output: Audio chunk 1 (playback starts)
-    Claude-->>TTS: Sentence 2
-    TTS-->>Audio Output: Audio chunk 2
-    Claude-->>TTS: Sentence N
-    TTS-->>Audio Output: Audio chunk N
+    VAD->>Realtime: Recorded question
+    Router->>Realtime: Context policy
+    Note over Realtime: Attach selected text or image<br/>and notes per route policy
+    Realtime-->>Audio Output: PCM chunks (playback starts)
+    Realtime-->>Audio Output: Remaining answer audio
 ```
 
-TTS uses a single persistent audio output stream per session to avoid CoreAudio latency from repeated stream creation. The VAD mic stream is suspended during TTS playback and resumed afterward.
+The default voice engine keeps one Realtime conversation per reading session. Klaus streams each response into its audio output as PCM chunks. The VAD mic stream can stay open behind a playback-bleed gate, so the user may interrupt Klaus. The `legacy` engine streams Claude text through OpenAI TTS.
 
 ## Module Layout
 
@@ -255,14 +257,16 @@ TTS uses a single persistent audio output stream per session to avoid CoreAudio 
 |--------|------|
 | `main.py` | Entry point; wires all components, hotkey listener, Qt signal bridge |
 | `config.py` | Config via TOML + .env, models, voice settings, system prompt |
-| `brain.py` | Claude vision + tool use, conversation history, streaming |
-| `query_router.py` | Hybrid local + LLM route classifier with timeout/fallback |
+| `brain.py` | Optional legacy Claude vision, tool use, history, and streaming |
+| `realtime.py` | GPT Realtime WebSocket conversation, audio streaming, tool calls, and interruption truncation |
+| `query_router.py` | Local GPT Realtime routing plus the optional legacy LLM fallback |
 | `audio.py` | Push-to-talk recorder, VAD recorder, audio player |
-| `camera.py` | OpenCV background thread, frame capture, auto-rotation |
+| `camera.py` | Shared background capture for cameras and macOS reading windows |
+| `macos_reading_source.py` | Desk View capture, active-window capture, and selected PDF text |
 | `stt.py` | Moonshine Voice local speech-to-text |
-| `tts.py` | OpenAI TTS with sentence-level streaming |
-| `search.py` | Tavily web search, exposed as a Claude tool |
-| `notes.py` | Obsidian vault note-taking, exposed as Claude tools |
+| `tts.py` | Shared PCM playback plus OpenAI TTS for the legacy engine |
+| `search.py` | Tavily web search tool for Realtime and Claude |
+| `notes.py` | Obsidian note tools for Realtime and Claude |
 | `memory.py` | SQLite persistence (sessions, exchanges, knowledge profile) |
 | `secrets_store.py` | Apple Keychain integration via keyring |
 | `device_catalog.py` | Shared camera/mic enumeration and labeling |

@@ -27,6 +27,23 @@ class TestCameraNoHardware:
         cam = Camera()
         assert cam.capture_thumbnail_bytes() is None
 
+    def test_capture_text_returns_none_for_physical_camera(self):
+        cam = Camera()
+        assert cam.capture_text_context() is None
+
+    def test_capture_text_refreshes_active_window_frame(self):
+        cam = Camera(device_index=-3)
+        source = MagicMock()
+        frame = np.ones((100, 200, 3), dtype=np.uint8)
+        source.capture_frame.return_value = frame
+        source.capture_selected_text.return_value = "selected passage"
+        cam._window_source = source
+
+        text = cam.capture_text_context()
+
+        assert text == "selected passage"
+        assert np.array_equal(cam.get_frame(), frame)
+
 
 class TestCameraWithMockFrame:
     def _make_camera_with_frame(self):
@@ -101,6 +118,18 @@ class TestCameraStartStop:
         cam = Camera()
         cam.stop()
         assert cam.is_running is False
+
+    @patch("klaus.camera.MacOSReadingSource")
+    def test_starts_macos_window_source(self, mock_source_cls):
+        source = mock_source_cls.return_value
+        source.capture_frame.return_value = None
+        cam = Camera(device_index=-2)
+
+        cam.start()
+
+        source.start.assert_called_once()
+        assert cam.is_running is True
+        cam.stop()
 
     @patch("klaus.camera.cv2.VideoCapture")
     def test_start_twice_is_idempotent(self, mock_vc_cls):
