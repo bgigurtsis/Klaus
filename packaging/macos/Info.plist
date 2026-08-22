@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Klaus</string>
+	<key>CFBundleExecutable</key>
+	<string>Klaus</string>
+	<key>CFBundleIconFile</key>
+	<string>Klaus</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.bgigurtsis.klaus</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Klaus</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.3.3</string>
+	<key>CFBundleVersion</key>
+	<string>0.3.3</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Klaus uses the camera to read paper while you study.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Klaus uses the microphone to hear your questions.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

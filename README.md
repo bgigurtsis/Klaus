@@ -121,9 +121,21 @@ On first launch, the setup wizard can guide you through API keys, reading source
 ```
 git clone https://github.com/bgigurtsis/Klaus.git
 cd Klaus
-pip install -e .
-klaus
+python3.12 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/klaus
 ```
+
+To add Klaus to Finder and Spotlight on macOS, create a virtual environment in
+the checkout, then run:
+
+```
+./scripts/install-macos-app.sh
+open "$HOME/Applications/Klaus.app"
+```
+
+The app uses the checkout's `.venv`, so rerun the installer if you move the
+checkout. Launch errors are written to `~/Library/Logs/Klaus/Klaus.log`.
 
 ## Reading Sources
 
