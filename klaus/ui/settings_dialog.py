@@ -277,7 +277,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._camera_combo)
 
         hint = QLabel(
-            "Choose Desk View to open its setup. Keep your PDF app frontmost for the active window."
+            "Choose Desk View to open its setup. Keep the app you want Klaus to read frontmost."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(

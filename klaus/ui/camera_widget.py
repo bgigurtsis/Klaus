@@ -56,7 +56,7 @@ class CameraWidget(QWidget):
         self._source_combo.setView(source_view)
         self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
         self._source_combo.addItem(
-            "Active window  ·  PDF",
+            "Active window  ·  any app",
             ACTIVE_READING_WINDOW_SOURCE_INDEX,
         )
         self._source_combo.activated.connect(self._on_source_activated)

@@ -5,7 +5,7 @@ Klaus runs on your Mac, but some features may send data to configured providers.
 ## Data sent to providers
 
 The default Realtime engine may send recorded question audio and reading context to OpenAI.
-Reading context may include selected PDF text, a reading-window image, or a camera image.
+Reading context may include text selected in any app, an active-window image, or a camera image.
 
 The legacy engine may send transcripts, reading context, conversation context, and tool results to Anthropic.
 It may send generated answer text to OpenAI for speech output.

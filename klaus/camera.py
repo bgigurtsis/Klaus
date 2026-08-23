@@ -192,7 +192,7 @@ class Camera:
         return buf.getvalue()
 
     def capture_text_context(self) -> str | None:
-        """Return selected text for the active-window PDF source when available."""
+        """Return selected text for the active-window source when available."""
         if self._window_source is None:
             return None
         frame = self._window_source.capture_frame()
@@ -227,7 +227,7 @@ class Camera:
         if self._device_index == DESK_VIEW_SOURCE_INDEX:
             return "Desk View is not running\nChoose Desk View again to reopen setup"
         if self._device_index == ACTIVE_READING_WINDOW_SOURCE_INDEX:
-            return "Keep your PDF window frontmost"
+            return "Keep the window you want to read frontmost"
         if self._device_index < 0:
             return "No reading source selected"
         return "Waiting for camera..."

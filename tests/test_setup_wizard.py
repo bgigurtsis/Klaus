@@ -18,7 +18,8 @@ def test_welcome_page_explains_features_and_first_actions(qt_app) -> None:
     wizard = SetupWizard()
     labels = "\n".join(label.text() for label in wizard.findChildren(QLabel))
 
-    assert "Read Any Page" in labels
+    assert "Read Anything" in labels
+    assert "keep any app window frontmost" in labels
     assert "Ask by Voice" in labels
     assert "Check and Remember" in labels
     assert "Save to Obsidian" in labels

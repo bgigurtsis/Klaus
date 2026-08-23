@@ -12,7 +12,7 @@
 #   shasum -a 256 Klaus-0.3.3.tar.gz
 
 class Klaus < Formula
-  desc "Voice-powered research assistant for paper and PDFs on macOS"
+  desc "Voice-powered research assistant for physical and digital media."
   homepage "https://github.com/bgigurtsis/Klaus"
   url "https://github.com/bgigurtsis/Klaus/archive/refs/tags/v0.3.3.tar.gz"
   sha256 "70fd2f1b1fd843ba0e04ba8a4b5e0b3c30b7a30eb44fc3bbb9389fff978bae83"

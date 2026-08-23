@@ -316,9 +316,9 @@ class SetupWizard(QMainWindow):
 
         card_specs = [
             (
-                "Read Any Page",
-                "Choose Desk View for paper, or keep a PDF window frontmost. Klaus can "
-                "use selected PDF text before it falls back to a window image.",
+                "Read Anything",
+                "Choose Desk View for paper, or keep any app window frontmost. Klaus can "
+                "use selected text before it falls back to a window image.",
             ),
             (
                 "Ask by Voice",
@@ -565,7 +565,7 @@ class SetupWizard(QMainWindow):
 
         tip = QLabel(
             "Physical paper: Klaus opens Apple's Desk View setup for you.\n"
-            "PDF: keep the reading window frontmost and select a passage when useful."
+            "On screen: keep any app window frontmost and select text when useful."
         )
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip.setStyleSheet(

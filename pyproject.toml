@@ -11,7 +11,7 @@ license = "MIT"
 authors = [
     { name = "Billy Gigurtsis" },
 ]
-keywords = ["accessibility", "macos", "pdf", "research", "voice-assistant"]
+keywords = ["accessibility", "macos", "screen-reading", "research", "voice-assistant"]
 requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",

@@ -108,6 +108,17 @@ class TestCameraCatalog:
 
         assert format_camera_label(source) == "Desk View (physical papers)"
 
+        active_window = device_catalog.CameraDevice(
+            index=-3,
+            display_name="Active macOS window (any app)",
+            width=0,
+            height=0,
+            backend="CoreGraphics + Accessibility",
+            source="active_reading_window",
+        )
+
+        assert format_camera_label(active_window) == "Active macOS window (any app)"
+
 
 class TestMicCatalog:
     @patch("klaus.device_catalog._default_input_index", return_value=3)

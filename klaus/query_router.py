@@ -264,13 +264,13 @@ class QueryRouter:
 
     def _route_with_llm(self, question: str) -> _LlmDecision | None:
         router_system = (
-            "You classify user questions for a document-camera assistant. "
+            "You classify user questions for an active-window and physical-page assistant. "
             "Return JSON only with keys mode, confidence, reason. "
             "mode must be one of: standalone_definition, page_grounded_definition, general_contextual. "
             "Use standalone_definition for direct concept definitions without requested page grounding. "
-            "Use page_grounded_definition for definition requests tied to page location or document references "
+            "Use page_grounded_definition for definition requests tied to visible locations or content references "
             "(e.g., 'definition on the far right'). "
-            "Use general_contextual for general page interpretation. "
+            "Use general_contextual for general interpretation of visible content. "
             "confidence must be between 0 and 1."
         )
         router_user = (

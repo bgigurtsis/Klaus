@@ -41,7 +41,7 @@ def _macos_reading_sources() -> list[CameraDevice]:
         ),
         CameraDevice(
             index=ACTIVE_READING_WINDOW_SOURCE_INDEX,
-            display_name="Active macOS window (PDFs)",
+            display_name="Active macOS window (any app)",
             width=0,
             height=0,
             backend="CoreGraphics + Accessibility",
