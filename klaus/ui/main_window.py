@@ -6,6 +6,7 @@ import logging
 import sys
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -15,7 +16,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QFrame,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
 
 import klaus.config as config
@@ -214,6 +215,10 @@ class MainWindow(QMainWindow):
         self.status_widget.stop_clicked.connect(self.stop_requested.emit)
         main_layout.addWidget(self.status_widget)
 
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
     # -- Session management --
 
     def set_sessions(
@@ -252,9 +257,7 @@ class MainWindow(QMainWindow):
             "Qt in-app hotkeys configured (ptt=%s, toggle=%s)", ptt_key, toggle_key,
         )
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.isAutoRepeat():
-            return
+    def _handle_hotkey_press(self, event: QKeyEvent) -> bool:
         key = event.key()
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         action = hotkey_action_for_keypress(
@@ -264,21 +267,47 @@ class MainWindow(QMainWindow):
             toggle_key=self._qt_toggle_key,
             platform_name=sys.platform,
         )
+        if action is None:
+            return False
+        if event.isAutoRepeat():
+            return True
         if action == "ptt_down":
             self._ptt_key_armed = True
             self.ptt_key_pressed.emit()
-        elif action == "toggle":
+        else:
             self._ptt_key_armed = False
             self.toggle_key_pressed.emit()
-        else:
-            super().keyPressEvent(event)
+        return True
 
-    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+    def _handle_hotkey_release(self, event: QKeyEvent) -> bool:
+        key = _QT_SHIFTED_VARIANTS.get(event.key(), event.key())
+        is_hotkey = key in {self._qt_ptt_key, self._qt_toggle_key}
+        if not is_hotkey:
+            return False
         if event.isAutoRepeat():
-            return
-        key = event.key()
+            return True
         if key == self._qt_ptt_key and self._ptt_key_armed:
             self._ptt_key_armed = False
             self.ptt_key_released.emit()
-        else:
+        return True
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Catch hotkeys before a focused child widget can consume them."""
+        if (
+            isinstance(watched, QWidget)
+            and watched.window() is self
+            and isinstance(event, QKeyEvent)
+        ):
+            if event.type() == QEvent.Type.KeyPress:
+                return self._handle_hotkey_press(event)
+            if event.type() == QEvent.Type.KeyRelease:
+                return self._handle_hotkey_release(event)
+        return super().eventFilter(watched, event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if not self._handle_hotkey_press(event):
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if not self._handle_hotkey_release(event):
             super().keyReleaseEvent(event)

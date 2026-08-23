@@ -3,13 +3,32 @@
 import sys
 
 import klaus.main as main_module
+import pytest
+from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtWidgets import QApplication, QPushButton
 from klaus.main import (
     _hotkey_action_for_press,
     _mark_key_pressed,
     _mark_key_released,
     _should_disable_global_hotkeys,
 )
-from klaus.ui.main_window import hotkey_action_for_keypress
+from klaus.ui.main_window import MainWindow, hotkey_action_for_keypress
+
+
+@pytest.fixture(scope="module")
+def qt_app():
+    return QApplication.instance() or QApplication([])
+
+
+def send_key_event(
+    app: QApplication,
+    child: QPushButton,
+    event_type: QEvent.Type,
+    key: int,
+    modifiers: Qt.KeyboardModifier,
+) -> None:
+    app.sendEvent(child, QKeyEvent(event_type, key, modifiers))
 
 
 def test_disables_global_hotkeys_on_macos_26_with_python_312(monkeypatch) -> None:
@@ -109,3 +128,66 @@ def test_qt_distinct_toggle_key_keeps_normal_toggle_behavior() -> None:
         platform_name="linux",
     )
     assert action == "toggle"
+
+
+def test_focused_child_cannot_consume_plain_section_hotkey(
+    qt_app,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    window = MainWindow()
+    window.set_hotkeys("§", "§")
+    child = QPushButton(window)
+    presses: list[bool] = []
+    releases: list[bool] = []
+    window.ptt_key_pressed.connect(lambda: presses.append(True))
+    window.ptt_key_released.connect(lambda: releases.append(True))
+
+    send_key_event(
+        qt_app,
+        child,
+        QEvent.Type.KeyPress,
+        ord("§"),
+        Qt.KeyboardModifier.NoModifier,
+    )
+    send_key_event(
+        qt_app,
+        child,
+        QEvent.Type.KeyRelease,
+        ord("§"),
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    assert presses == [True]
+    assert releases == [True]
+    window.close()
+
+
+def test_focused_child_cannot_consume_shift_section_hotkey(
+    qt_app,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    window = MainWindow()
+    window.set_hotkeys("§", "§")
+    child = QPushButton(window)
+    toggles: list[bool] = []
+    window.toggle_key_pressed.connect(lambda: toggles.append(True))
+
+    send_key_event(
+        qt_app,
+        child,
+        QEvent.Type.KeyPress,
+        ord("±"),
+        Qt.KeyboardModifier.ShiftModifier,
+    )
+    send_key_event(
+        qt_app,
+        child,
+        QEvent.Type.KeyRelease,
+        ord("±"),
+        Qt.KeyboardModifier.ShiftModifier,
+    )
+
+    assert toggles == [True]
+    window.close()
