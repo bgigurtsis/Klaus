@@ -87,6 +87,34 @@ def test_chat_rows_do_not_expand_into_blank_vertical_space(qt_app) -> None:
     )
 
 
+def test_chat_scroll_range_ends_after_last_message(qt_app) -> None:
+    chat = ChatWidget()
+    chat.resize(1200, 800)
+    for index in range(18):
+        chat.add_message(
+            "user",
+            f"Question {index}: Can you tell me what I am looking at?",
+        )
+        chat.add_message(
+            "assistant",
+            "A concise answer that occupies one or two lines of text.",
+        )
+    chat.add_status_message("Answer interrupted.")
+    chat.show()
+    for _ in range(4):
+        qt_app.processEvents()
+
+    scrollbar = chat._scroll.verticalScrollBar()
+    scrollbar.setValue(scrollbar.maximum())
+    qt_app.processEvents()
+    last_row = chat._message_widgets[-1]
+    bottom_gap = chat._container.height() - (
+        last_row.y() + last_row.height()
+    )
+
+    assert bottom_gap <= chat._layout.contentsMargins().bottom() + 1
+
+
 def test_note_card_exposes_a_finder_link(qt_app, tmp_path) -> None:
     note = tmp_path / "Research Notes.md"
     note.write_text("# Notes\n", encoding="utf-8")

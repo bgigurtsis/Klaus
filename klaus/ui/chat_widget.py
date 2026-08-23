@@ -203,6 +203,7 @@ class ChatWidget(QWidget):
         self._last_card: QWidget | None = None
         self._streaming_card: MessageCard | None = None
         self._message_widgets: list[QWidget] = []
+        self._height_sync_pending = False
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -274,6 +275,7 @@ class ChatWidget(QWidget):
         self._layout.addWidget(row)
         self._message_widgets.append(row)
         self._last_card = card
+        self._schedule_content_height_sync()
         logger.debug("Added %s message", role)
 
     def append_assistant_stream(self, text: str) -> None:
@@ -294,6 +296,7 @@ class ChatWidget(QWidget):
             self._streaming_card = card
         else:
             self._streaming_card.append_text(text)
+        self._schedule_content_height_sync()
 
     def finalize_assistant_stream(
         self,
@@ -313,6 +316,7 @@ class ChatWidget(QWidget):
         card.set_text(text)
         card.set_exchange_id(exchange_id)
         card.set_note_file(note_file_path)
+        self._schedule_content_height_sync()
         return True
 
     def abort_assistant_stream(self) -> None:
@@ -320,6 +324,7 @@ class ChatWidget(QWidget):
         if self._streaming_card is not None:
             self._streaming_card.mark_interrupted()
         self._streaming_card = None
+        self._schedule_content_height_sync()
 
     def add_status_message(self, text: str) -> None:
         was_near_bottom = self._is_near_bottom()
@@ -338,6 +343,7 @@ class ChatWidget(QWidget):
         self._auto_scroll = was_near_bottom
         self._layout.addWidget(row)
         self._message_widgets.append(row)
+        self._schedule_content_height_sync()
 
     def clear(self) -> None:
         for widget in self._message_widgets:
@@ -348,6 +354,7 @@ class ChatWidget(QWidget):
         self._streaming_card = None
         self._auto_scroll = True
         self._show_empty()
+        self._schedule_content_height_sync()
 
     def scroll_to_bottom(self) -> None:
         """Schedule a deferred scroll after layout settles."""
@@ -415,6 +422,7 @@ class ChatWidget(QWidget):
             else QBoxLayout.Direction.LeftToRight
         )
         self._prompts.setDirection(direction)
+        self._schedule_content_height_sync()
         super().resizeEvent(event)
 
     @staticmethod
@@ -446,9 +454,36 @@ class ChatWidget(QWidget):
         self._auto_scroll = self._is_near_bottom()
 
     def _on_range_changed(self, _min: int, new_max: int) -> None:
+        self._schedule_content_height_sync()
         if self._auto_scroll:
             QTimer.singleShot(0, self._do_scroll_to_bottom)
 
     def _do_scroll_to_bottom(self) -> None:
         sb = self._scroll.verticalScrollBar()
         sb.setValue(sb.maximum())
+
+    def _schedule_content_height_sync(self) -> None:
+        if self._height_sync_pending:
+            return
+        self._height_sync_pending = True
+        QTimer.singleShot(0, self._sync_content_height)
+
+    def _sync_content_height(self) -> None:
+        """Remove stale word-wrap height from the scrollable canvas."""
+        self._height_sync_pending = False
+        widgets = [
+            widget
+            for widget in (self._empty_state, *self._message_widgets)
+            if not widget.isHidden()
+        ]
+        self._layout.activate()
+        margins = self._layout.contentsMargins()
+        content_height = margins.top() + margins.bottom()
+        content_height += sum(widget.height() for widget in widgets)
+        if widgets:
+            content_height += self._layout.spacing() * (len(widgets) - 1)
+        target = max(self._scroll.viewport().height(), content_height)
+        if self._container.height() != target:
+            self._container.setFixedHeight(target)
+            if self._auto_scroll:
+                QTimer.singleShot(0, self._do_scroll_to_bottom)
