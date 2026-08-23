@@ -31,9 +31,7 @@ from klaus.device_catalog import (
     list_camera_devices,
     list_input_devices,
 )
-from klaus.macos_reading_source import DESK_VIEW_SOURCE_INDEX
 from klaus.ui import theme
-from klaus.ui.desk_view_setup import launch_desk_view_setup
 from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
     REQUIRED_API_KEY_SLUGS,
@@ -331,8 +329,6 @@ class SettingsDialog(QDialog):
         cam_idx = int(cam_idx)
         self._active_camera_index = cam_idx
         config.set_camera_index(cam_idx, persist=True)
-        if cam_idx == DESK_VIEW_SOURCE_INDEX:
-            launch_desk_view_setup(self)
         self.camera_device_changed.emit(cam_idx)
 
     # -- Profile tab --

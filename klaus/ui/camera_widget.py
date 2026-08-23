@@ -73,19 +73,32 @@ class CameraWidget(QWidget):
         self.set_source_selection(camera.device_index if camera is not None else -1)
         if camera and camera.is_running:
             self._video_label.setText(camera.waiting_message)
-            self._status_badge.setText("LIVE")
+            self._status_badge.setText("WAITING")
             self._timer.start(33)
+            if camera.device_index == DESK_VIEW_SOURCE_INDEX:
+                QTimer.singleShot(0, self._launch_desk_view_if_current)
         else:
             self._timer.stop()
             self._status_badge.setText("OFF")
             self._video_label.setText("No reading source selected")
+
+    def _launch_desk_view_if_current(self) -> None:
+        if (
+            self._camera is not None
+            and self._camera.device_index == DESK_VIEW_SOURCE_INDEX
+        ):
+            launch_desk_view_setup(self)
 
     def _on_source_activated(self, _combo_index: int) -> None:
         if self._source_combo is None:
             return
         source_index = self._source_combo.currentData()
         if source_index is not None:
-            if int(source_index) == DESK_VIEW_SOURCE_INDEX:
+            if (
+                int(source_index) == DESK_VIEW_SOURCE_INDEX
+                and self._camera is not None
+                and self._camera.device_index == DESK_VIEW_SOURCE_INDEX
+            ):
                 launch_desk_view_setup(self)
             self.source_changed.emit(int(source_index))
 
@@ -115,8 +128,11 @@ class CameraWidget(QWidget):
             return
         frame = self._camera.get_frame_rgb()
         if frame is None:
+            self._status_badge.setText("WAITING")
             self._video_label.setText(self._camera.waiting_message)
             return
+
+        self._status_badge.setText("LIVE")
 
         h, w, ch = frame.shape
         if w > self.PREVIEW_WIDTH:

@@ -4,11 +4,23 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QApplication
+
+from klaus.ui.camera_widget import CameraWidget
 from klaus.ui.desk_view_setup import (
     _launch_native_desk_view,
     _open_photo_booth,
     launch_desk_view_setup,
 )
+
+
+@pytest.fixture(scope="module")
+def qt_app():
+    app = QApplication.instance() or QApplication([])
+    yield app
 
 
 def test_native_launcher_uses_avfoundation() -> None:
@@ -55,3 +67,50 @@ def test_fallback_explains_how_to_enable_desk_view(
     assert "Video icon" in message
     assert "Choose Desk View" in message
     assert "Start Desk View" in message
+
+
+@patch("klaus.ui.camera_widget.launch_desk_view_setup")
+def test_startup_launches_selected_desk_view(mock_launch, qt_app) -> None:
+    camera = SimpleNamespace(
+        device_index=-2,
+        is_running=True,
+        waiting_message="Waiting for Desk View",
+    )
+    widget = CameraWidget()
+
+    with patch.object(QTimer, "singleShot") as mock_single_shot:
+        widget.set_camera(camera)
+
+    assert widget._status_badge.text() == "WAITING"
+    callback = mock_single_shot.call_args.args[1]
+    callback()
+    mock_launch.assert_called_once_with(widget)
+
+
+@patch("klaus.ui.camera_widget.launch_desk_view_setup")
+def test_selecting_active_desk_view_reopens_setup(mock_launch, qt_app) -> None:
+    camera = SimpleNamespace(device_index=-2)
+    widget = CameraWidget()
+    widget._camera = camera
+    widget.set_source_selection(-2)
+
+    widget._on_source_activated(0)
+
+    mock_launch.assert_called_once_with(widget)
+
+
+def test_preview_only_marks_desk_view_live_after_a_frame(qt_app) -> None:
+    frame = np.ones((20, 30, 3), dtype=np.uint8)
+    camera = SimpleNamespace(
+        device_index=-2,
+        is_running=True,
+        waiting_message="Waiting for Desk View",
+        get_frame_rgb=MagicMock(return_value=frame),
+    )
+    widget = CameraWidget()
+
+    with patch.object(QTimer, "singleShot"):
+        widget.set_camera(camera)
+    widget._update_frame()
+
+    assert widget._status_badge.text() == "LIVE"
