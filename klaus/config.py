@@ -96,8 +96,8 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # stt_moonshine_language = "en"
 
 # Allow interrupting Klaus by speaking while it talks (voice mode only).
-# Disable on open-speaker setups if playback bleed triggers false interrupts.
-# barge_in_enabled = true
+# Keep this off on open-speaker setups because playback can resemble speech.
+# barge_in_enabled = false
 # Minimum sustained speech (ms) required to trigger a barge-in (default: 120)
 # barge_in_min_voiced_ms = 120
 # Loudness margin (dB) above measured playback bleed required for barge-in
@@ -308,7 +308,7 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("vad_start_trigger_ms", "vad_start_trigger_ms", 90, _as_int),
     _SettingSpec("stt_moonshine_model", "stt_moonshine_model", "medium", _as_str),
     _SettingSpec("stt_moonshine_language", "stt_moonshine_language", "en", _as_str),
-    _SettingSpec("barge_in_enabled", "barge_in_enabled", True, _as_bool),
+    _SettingSpec("barge_in_enabled", "barge_in_enabled", False, _as_bool),
     _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 120, _as_int),
     _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 4.0, _as_float),
     _SettingSpec("earcons_enabled", "earcons_enabled", True, _as_bool),

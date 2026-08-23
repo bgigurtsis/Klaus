@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 _REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
 _CONNECTION_MAX_AGE_SECONDS = 55 * 60
 _RECV_POLL_SECONDS = 0.15
+_CANCEL_ACK_TIMEOUT_SECONDS = 2.0
 
 
 class AskCancelled(Exception):
@@ -116,6 +117,8 @@ class RealtimeBrain:
         self._turn_lock = threading.Lock()
         self._send_lock = threading.Lock()
         self._response_active = False
+        self._cancel_requested = False
+        self._response_state_lock = threading.Lock()
         self._last_item_id: str | None = None
         self._last_content_index = 0
         self._played_frames = 0
@@ -155,7 +158,9 @@ class RealtimeBrain:
     def close(self) -> None:
         with self._send_lock:
             ws, self._ws = self._ws, None
+        with self._response_state_lock:
             self._response_active = False
+            self._cancel_requested = False
         if ws is not None:
             try:
                 ws.close()
@@ -165,14 +170,16 @@ class RealtimeBrain:
     def cancel_current(self) -> None:
         """Cancel server generation and remove audio the user did not hear."""
         self._audio_output.stop()
-        if not self._response_active:
-            return
-        self._response_active = False
+        with self._response_state_lock:
+            if not self._response_active or self._cancel_requested:
+                return
+            self._cancel_requested = True
         try:
             self._send({"type": "response.cancel"})
             self._truncate_unplayed_audio()
         except Exception:
             logger.debug("Realtime cancellation send failed", exc_info=True)
+            self.close()
 
     def ask_audio(
         self,
@@ -235,7 +242,9 @@ class RealtimeBrain:
                 }
             )
             self._send({"type": "response.create"})
-            self._response_active = True
+            with self._response_state_lock:
+                self._response_active = True
+                self._cancel_requested = False
             self._last_item_id = None
             self._last_content_index = 0
             self._played_frames = 0
@@ -265,11 +274,21 @@ class RealtimeBrain:
             transcript = ""
             transcript_buffer = ""
             cancelled = False
+            cancel_deadline: float | None = None
             try:
                 while True:
-                    if cancel_event is not None and cancel_event.is_set():
+                    if (
+                        cancel_event is not None
+                        and cancel_event.is_set()
+                        and not cancelled
+                    ):
                         self.cancel_current()
                         cancelled = True
+                        cancel_deadline = time.monotonic() + _CANCEL_ACK_TIMEOUT_SECONDS
+
+                    if cancel_deadline is not None and time.monotonic() >= cancel_deadline:
+                        logger.info("GPT cancellation timed out; closing session")
+                        self.close()
                         break
 
                     event = self._receive_event()
@@ -303,6 +322,8 @@ class RealtimeBrain:
                     elif event_type == "response.done":
                         response = event.get("response", {})
                         status = response.get("status")
+                        if cancelled:
+                            break
                         if status in {"cancelled", "failed", "incomplete"}:
                             if status == "cancelled":
                                 cancelled = True
@@ -345,11 +366,18 @@ class RealtimeBrain:
                         break
                     elif event_type == "error":
                         error = event.get("error", event)
+                        if cancelled:
+                            break
+                        self.close()
                         raise RuntimeError(str(error.get("message", error)))
             finally:
-                self._response_active = False
+                with self._response_state_lock:
+                    self._response_active = False
+                    self._cancel_requested = False
                 audio_queue.put(None)
                 playback_thread.join(timeout=10)
+                if cancelled:
+                    self.close()
 
             if cancelled:
                 raise AskCancelled()
@@ -394,7 +422,9 @@ class RealtimeBrain:
                     },
                 }
             )
-            self._response_active = True
+            with self._response_state_lock:
+                self._response_active = True
+                self._cancel_requested = False
             self._last_item_id = None
             self._last_content_index = 0
             self._played_frames = 0
@@ -431,7 +461,9 @@ class RealtimeBrain:
                         error = event.get("error", event)
                         raise RuntimeError(str(error.get("message", error)))
             finally:
-                self._response_active = False
+                with self._response_state_lock:
+                    self._response_active = False
+                    self._cancel_requested = False
                 audio_queue.put(None)
                 playback_thread.join(timeout=10)
 

@@ -88,7 +88,7 @@ def test_defaults_use_realtime_and_desk_view():
     assert settings.camera_device_index == -2
     assert settings.live_model == config.GEMINI_LIVE_MODEL
     assert settings.voice == "Kore"
-    assert settings.barge_in_enabled is True
+    assert settings.barge_in_enabled is False
 
 
 def test_live_model_and_reasoning_effort_persist(config_dir):

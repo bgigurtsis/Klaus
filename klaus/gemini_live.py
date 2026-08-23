@@ -13,7 +13,7 @@ from collections.abc import Callable
 import numpy as np
 
 import klaus.config as config
-from klaus.audio_output import PCM_SAMPLE_RATE, AudioOutput
+from klaus.audio_output import AudioOutput
 from klaus.notes import (
     NotesManager,
     READ_NOTE_TOOL,
@@ -25,6 +25,7 @@ from klaus.query_router import RouteDecision, default_route_decision, local_rout
 from klaus.realtime import AskCancelled, Exchange, _extract_sentences, wav_to_pcm24k
 
 logger = logging.getLogger(__name__)
+_RESPONSE_TIMEOUT_SECONDS = 30.0
 
 
 def _as_gemini_tool(tool: dict) -> dict:
@@ -53,6 +54,9 @@ class GeminiLiveBrain:
         self._turn_lock = threading.Lock()
         self._cancel_event = threading.Event()
         self._response_active = False
+        self._session_lock = threading.Lock()
+        self._active_loop: asyncio.AbstractEventLoop | None = None
+        self._active_session = None
         self._history: list[dict] = []
         self._tools = self._build_tools()
 
@@ -93,6 +97,11 @@ class GeminiLiveBrain:
         """Stop local playback and end the current Gemini Live turn."""
         self._cancel_event.set()
         self._audio_output.stop()
+        with self._session_lock:
+            loop = self._active_loop
+            session = self._active_session
+        if loop is not None and session is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(session.close(), loop)
 
     def ask_audio(
         self,
@@ -110,8 +119,7 @@ class GeminiLiveBrain:
     ) -> Exchange:
         """Send one recorded question and stream Gemini's native audio response."""
         route = route_decision or default_route_decision()
-        pcm = wav_to_pcm24k(wav_bytes)
-        if not pcm:
+        if not wav_to_pcm24k(wav_bytes):
             raise ValueError("The recorded question did not contain audio")
 
         with self._turn_lock:
@@ -120,7 +128,6 @@ class GeminiLiveBrain:
                 self._notes.reset_changed()
             answer = asyncio.run(
                 self._run_turn(
-                    pcm=pcm,
                     question=question,
                     image_base64=image_base64 if route.use_image else None,
                     reading_text=reading_text if route.use_image else None,
@@ -156,7 +163,6 @@ class GeminiLiveBrain:
             self._cancel_event.clear()
             asyncio.run(
                 self._run_turn(
-                    pcm=None,
                     question=(
                         "Read the following text aloud exactly as written. Do not add, "
                         "remove, explain, or paraphrase anything.\n\n"
@@ -175,7 +181,6 @@ class GeminiLiveBrain:
     async def _run_turn(
         self,
         *,
-        pcm: bytes | None,
         question: str,
         image_base64: str | None,
         reading_text: str | None,
@@ -229,82 +234,93 @@ class GeminiLiveBrain:
         transcript_buffer = ""
 
         try:
-            async with client.aio.live.connect(
-                model=self._settings.live_model,
-                config=session_config,
-            ) as session:
-                if self._history:
-                    await session.send_client_content(
-                        turns=self._history,
-                        turn_complete=False,
-                    )
-
-                turn_context = self._turn_context(question, reading_text)
-                await session.send_realtime_input(text=turn_context)
-                if image_base64:
-                    await session.send_realtime_input(
-                        video=types.Blob(
-                            data=base64.b64decode(image_base64),
-                            mime_type="image/jpeg",
-                        )
-                    )
-                if pcm is not None:
-                    await session.send_realtime_input(
-                        audio=types.Blob(
-                            data=pcm,
-                            mime_type=f"audio/pcm;rate={PCM_SAMPLE_RATE}",
-                        )
-                    )
-                    await session.send_realtime_input(audio_stream_end=True)
-
-                async for response in session.receive():
+            try:
+                async with client.aio.live.connect(
+                    model=self._settings.live_model,
+                    config=session_config,
+                ) as session:
+                    with self._session_lock:
+                        self._active_loop = asyncio.get_running_loop()
+                        self._active_session = session
                     if self._cancelled(external_cancel_event):
-                        break
-                    server_content = getattr(response, "server_content", None)
-                    if server_content:
-                        if getattr(server_content, "interrupted", False):
-                            self._cancel_event.set()
-                            break
-                        output = getattr(server_content, "output_transcription", None)
-                        delta = str(getattr(output, "text", "") or "")
-                        if delta:
-                            transcript += delta
-                            transcript_buffer += delta
-                            sentences, transcript_buffer = _extract_sentences(transcript_buffer)
-                            if on_sentence:
-                                for sentence in sentences:
-                                    on_sentence(sentence)
-                        model_turn = getattr(server_content, "model_turn", None)
-                        for part in getattr(model_turn, "parts", []) or []:
-                            inline_data = getattr(part, "inline_data", None)
-                            raw = getattr(inline_data, "data", None)
-                            if raw:
-                                usable = len(raw) - (len(raw) % 2)
-                                if usable:
-                                    audio_queue.put(np.frombuffer(raw[:usable], dtype=np.int16))
-                        if getattr(server_content, "turn_complete", False):
-                            break
+                        raise AskCancelled()
 
-                    tool_call = getattr(response, "tool_call", None)
-                    function_calls = getattr(tool_call, "function_calls", []) or []
-                    if function_calls:
-                        responses = []
-                        for call in function_calls:
-                            result = self._run_tool(
-                                {
-                                    "name": getattr(call, "name", ""),
-                                    "arguments": json.dumps(getattr(call, "args", {}) or {}),
-                                }
-                            )
-                            responses.append(
-                                types.FunctionResponse(
-                                    id=getattr(call, "id", ""),
-                                    name=getattr(call, "name", ""),
-                                    response={"result": result},
+                    await self._send_turn_content(
+                        session=session,
+                        types=types,
+                        question=question,
+                        image_base64=image_base64,
+                        reading_text=reading_text,
+                    )
+
+                    async with asyncio.timeout(_RESPONSE_TIMEOUT_SECONDS):
+                        async for response in session.receive():
+                            if self._cancelled(external_cancel_event):
+                                break
+                            server_content = getattr(response, "server_content", None)
+                            if server_content:
+                                if getattr(server_content, "interrupted", False):
+                                    self._cancel_event.set()
+                                    break
+                                output = getattr(server_content, "output_transcription", None)
+                                delta = str(getattr(output, "text", "") or "")
+                                if delta:
+                                    transcript += delta
+                                    transcript_buffer += delta
+                                    sentences, transcript_buffer = _extract_sentences(
+                                        transcript_buffer
+                                    )
+                                    if on_sentence:
+                                        for sentence in sentences:
+                                            on_sentence(sentence)
+                                model_turn = getattr(server_content, "model_turn", None)
+                                for part in getattr(model_turn, "parts", []) or []:
+                                    inline_data = getattr(part, "inline_data", None)
+                                    raw = getattr(inline_data, "data", None)
+                                    if raw:
+                                        usable = len(raw) - (len(raw) % 2)
+                                        if usable:
+                                            audio_queue.put(
+                                                np.frombuffer(raw[:usable], dtype=np.int16)
+                                            )
+                                if getattr(server_content, "turn_complete", False):
+                                    break
+
+                            tool_call = getattr(response, "tool_call", None)
+                            function_calls = getattr(tool_call, "function_calls", []) or []
+                            if function_calls:
+                                responses = []
+                                for call in function_calls:
+                                    result = self._run_tool(
+                                        {
+                                            "name": getattr(call, "name", ""),
+                                            "arguments": json.dumps(
+                                                getattr(call, "args", {}) or {}
+                                            ),
+                                        }
+                                    )
+                                    responses.append(
+                                        types.FunctionResponse(
+                                            id=getattr(call, "id", ""),
+                                            name=getattr(call, "name", ""),
+                                            response={"result": result},
+                                        )
+                                    )
+                                await session.send_tool_response(
+                                    function_responses=responses
                                 )
-                            )
-                        await session.send_tool_response(function_responses=responses)
+            except TimeoutError as exc:
+                raise RuntimeError(
+                    "Gemini Live did not respond within 30 seconds"
+                ) from exc
+            except Exception:
+                if self._cancelled(external_cancel_event):
+                    raise AskCancelled() from None
+                raise
         finally:
+            with self._session_lock:
+                self._active_loop = None
+                self._active_session = None
             self._response_active = False
             audio_queue.put(None)
             playback_thread.join(timeout=10)
@@ -318,6 +334,38 @@ class GeminiLiveBrain:
         if not answer:
             raise RuntimeError("Gemini Live response finished without a transcript")
         return answer
+
+    async def _send_turn_content(
+        self,
+        *,
+        session,
+        types,
+        question: str,
+        image_base64: str | None,
+        reading_text: str | None,
+    ) -> None:
+        if self._history:
+            await session.send_client_content(
+                turns=self._history,
+                turn_complete=False,
+            )
+
+        if image_base64:
+            await session.send_client_content(
+                turns=types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_bytes(
+                            data=base64.b64decode(image_base64),
+                            mime_type="image/jpeg",
+                        )
+                    ],
+                ),
+                turn_complete=False,
+            )
+        await session.send_realtime_input(
+            text=self._turn_context(question, reading_text)
+        )
 
     @staticmethod
     def _turn_context(question: str, reading_text: str | None) -> str:

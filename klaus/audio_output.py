@@ -20,12 +20,27 @@ class AudioOutput:
     """Play 24 kHz PCM audio through one persistent output stream."""
 
     def __init__(self) -> None:
-        self._stop_event = threading.Event()
         self._stream: sd.OutputStream | None = None
         self._stream_lock = threading.Lock()
+        self._playback_id = 0
+        self._stream_playback_id: int | None = None
 
-    def _ensure_stream(self, rate: int, channels: int) -> sd.OutputStream:
+    def _begin_playback(self) -> int:
         with self._stream_lock:
+            self._playback_id += 1
+            self._close_stream_locked()
+            return self._playback_id
+
+    def _is_current(self, playback_id: int) -> bool:
+        with self._stream_lock:
+            return playback_id == self._playback_id
+
+    def _ensure_stream(
+        self, rate: int, channels: int, playback_id: int
+    ) -> sd.OutputStream | None:
+        with self._stream_lock:
+            if playback_id != self._playback_id:
+                return None
             if self._stream is not None and not self._stream.closed:
                 return self._stream
             self._stream = sd.OutputStream(
@@ -35,28 +50,37 @@ class AudioOutput:
                 latency="high",
             )
             self._stream.start()
+            self._stream_playback_id = playback_id
             logger.info("Opened audio output stream (%d Hz, %d ch)", rate, channels)
             return self._stream
 
-    def _close_stream(self) -> None:
-        with self._stream_lock:
-            if self._stream is not None and not self._stream.closed:
-                try:
-                    self._stream.stop()
-                    self._stream.close()
-                except Exception:
-                    pass
-                logger.info("Closed audio output stream")
-            self._stream = None
+    def _close_stream_locked(self) -> None:
+        if self._stream is not None and not self._stream.closed:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            logger.info("Closed audio output stream")
+        self._stream = None
+        self._stream_playback_id = None
 
-    def _write_audio(self, stream: sd.OutputStream, audio: np.ndarray) -> int:
+    def _close_stream(self, playback_id: int) -> None:
+        with self._stream_lock:
+            if self._stream_playback_id != playback_id:
+                return
+            self._close_stream_locked()
+
+    def _write_audio(
+        self, stream: sd.OutputStream, audio: np.ndarray, playback_id: int
+    ) -> int:
         offset = 0
-        while offset < len(audio) and not self._stop_event.is_set():
+        while offset < len(audio) and self._is_current(playback_id):
             end = min(offset + WRITE_BLOCK_FRAMES, len(audio))
             try:
                 stream.write(audio[offset:end])
             except Exception:
-                if self._stop_event.is_set():
+                if not self._is_current(playback_id):
                     logger.debug("Audio write ended during cancellation", exc_info=True)
                     break
                 raise
@@ -71,39 +95,43 @@ class AudioOutput:
         on_frames_played: Callable[[int], None] | None = None,
     ) -> None:
         """Play a live 24 kHz PCM stream from the Realtime API."""
-        self._stop_event.clear()
+        playback_id = self._begin_playback()
         first_audio = True
         try:
-            while not self._stop_event.is_set():
+            while self._is_current(playback_id):
                 audio = audio_queue.get()
                 if audio is None:
                     break
                 if audio.size == 0:
                     continue
-                stream = self._ensure_stream(PCM_SAMPLE_RATE, 1)
+                stream = self._ensure_stream(PCM_SAMPLE_RATE, 1, playback_id)
+                if stream is None:
+                    break
                 if first_audio:
                     first_audio = False
                     if on_first_audio:
                         on_first_audio()
-                played = self._write_audio(stream, audio)
+                played = self._write_audio(stream, audio, playback_id)
                 if played and on_frames_played:
                     on_frames_played(played)
         finally:
-            self._close_stream()
+            self._close_stream(playback_id)
 
     def play_pcm(self, audio: np.ndarray) -> None:
         """Play one PCM buffer."""
-        self._stop_event.clear()
+        playback_id = self._begin_playback()
         if audio.size == 0:
             return
         try:
-            stream = self._ensure_stream(PCM_SAMPLE_RATE, 1)
-            self._write_audio(stream, audio)
+            stream = self._ensure_stream(PCM_SAMPLE_RATE, 1, playback_id)
+            if stream is not None:
+                self._write_audio(stream, audio, playback_id)
         finally:
-            self._close_stream()
+            self._close_stream(playback_id)
 
     def stop(self) -> None:
         """Stop playback and close the output stream."""
-        self._stop_event.set()
-        self._close_stream()
+        with self._stream_lock:
+            self._playback_id += 1
+            self._close_stream_locked()
         logger.info("Audio playback interrupted")

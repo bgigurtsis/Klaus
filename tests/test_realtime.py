@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import threading
 import time
 import wave
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ import pytest
 
 import klaus.config as config
 from klaus.query_router import RouteDecision, RouteMode
-from klaus.realtime import RealtimeBrain, wav_to_pcm24k
+from klaus.realtime import AskCancelled, RealtimeBrain, wav_to_pcm24k
 
 
 def _wav_bytes(samples: np.ndarray, *, sample_rate: int, channels: int = 1) -> bytes:
@@ -280,6 +281,61 @@ def test_cancel_truncates_audio_at_played_position() -> None:
             "audio_end_ms": 500,
         },
     ]
+
+
+def test_cancel_waits_for_done_then_reconnects_cleanly() -> None:
+    cancelled_socket = _FakeWebSocket(
+        [
+            {
+                "type": "response.done",
+                "response": {"status": "cancelled", "output": []},
+            }
+        ]
+    )
+    fresh_socket = _FakeWebSocket(
+        [
+            {
+                "type": "response.output_audio_transcript.delta",
+                "delta": "Fresh response.",
+            },
+            {
+                "type": "response.done",
+                "response": {"status": "completed", "output": []},
+            },
+        ]
+    )
+    sockets = iter((cancelled_socket, fresh_socket))
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: next(sockets),
+    )
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    with pytest.raises(AskCancelled):
+        brain.ask_audio(
+            wav_bytes=_wav_bytes(
+                np.array([1, 2, 3], dtype=np.int16),
+                sample_rate=24_000,
+            ),
+            question="Cancel this",
+            route_decision=_route(),
+            cancel_event=cancel_event,
+        )
+
+    assert cancelled_socket.closed is True
+    assert any(
+        event["type"] == "response.cancel" for event in cancelled_socket.sent
+    )
+
+    exchange = brain.ask_audio(
+        wav_bytes=_wav_bytes(np.array([1, 2, 3], dtype=np.int16), sample_rate=24_000),
+        question="Try again",
+        route_decision=_route(),
+    )
+    assert exchange.assistant_text == "Fresh response."
 
 
 def test_replay_uses_out_of_band_realtime_audio() -> None:
