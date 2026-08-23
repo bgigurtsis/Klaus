@@ -109,76 +109,39 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # -- Header --
-        header = QWidget()
-        header.setObjectName("klaus-header")
-        header.setFixedHeight(theme.HEADER_HEIGHT)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 0, 18, 0)
-        header_layout.setSpacing(10)
-
-        brand_mark = QLabel("K")
-        brand_mark.setObjectName("klaus-brand-mark")
-        brand_mark.setFixedSize(38, 38)
-        brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header_layout.addWidget(brand_mark)
-
-        brand_column = QVBoxLayout()
-        brand_column.setSpacing(0)
-        title = QLabel("Klaus")
-        title.setObjectName("klaus-title")
-        brand_column.addWidget(title)
-        brand_subtitle = QLabel("RESEARCH COPILOT")
-        brand_subtitle.setObjectName("klaus-brand-subtitle")
-        brand_column.addWidget(brand_subtitle)
-        header_layout.addLayout(brand_column)
-
-        header_layout.addSpacing(18)
-
-        session_column = QVBoxLayout()
-        session_column.setSpacing(1)
-        breadcrumb = QLabel("WORKSPACE  /  ACTIVE SESSION")
-        breadcrumb.setObjectName("klaus-breadcrumb")
-        session_column.addWidget(breadcrumb)
-        self._session_title_label = QLabel("Untitled reading session")
-        self._session_title_label.setObjectName("klaus-session-title")
-        session_column.addWidget(self._session_title_label)
-        header_layout.addLayout(session_column)
-
-        header_layout.addStretch()
-
-        model_name = "GPT Realtime" if config.VOICE_ENGINE == "realtime" else "Legacy voice"
-        model_color = theme.KLAUS_ACCENT if config.VOICE_ENGINE == "realtime" else theme.TEXT_MUTED
-        model_pill = QLabel(
-            f'<span style="color:{model_color};">\u25cf</span>&nbsp;&nbsp;{model_name}'
-        )
-        model_pill.setTextFormat(Qt.TextFormat.RichText)
-        model_pill.setObjectName("klaus-model-pill")
-        model_pill.setToolTip(
-            config.REALTIME_MODEL if config.VOICE_ENGINE == "realtime" else "Claude + OpenAI TTS"
-        )
-        model_pill.setFixedHeight(28)
-        header_layout.addWidget(model_pill)
-
-        settings_btn = QPushButton("\u2699")
-        settings_btn.setObjectName("klaus-settings-btn")
-        settings_btn.setFixedSize(34, 34)
-        settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        settings_btn.setToolTip("Settings")
-        settings_btn.clicked.connect(self.settings_requested.emit)
-        header_layout.addWidget(settings_btn)
-
-        main_layout.addWidget(header)
-
-        # -- Body: left sidebar + chat --
+        # -- Codex-style shell: persistent sidebar + focused thread --
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left panel: camera + session list
         left_panel = QWidget()
         left_panel.setObjectName("klaus-sidebar")
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(16, 16, 16, 12)
-        left_layout.setSpacing(16)
+        left_layout.setContentsMargins(12, 12, 12, 12)
+        left_layout.setSpacing(14)
+
+        identity_row = QHBoxLayout()
+        identity_row.setContentsMargins(2, 0, 0, 0)
+        identity_row.setSpacing(9)
+
+        brand_mark = QLabel("K")
+        brand_mark.setObjectName("klaus-brand-mark")
+        brand_mark.setFixedSize(32, 32)
+        brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        identity_row.addWidget(brand_mark)
+
+        title = QLabel("Klaus")
+        title.setObjectName("klaus-title")
+        identity_row.addWidget(title)
+        identity_row.addStretch()
+
+        settings_btn = QPushButton("\u2699")
+        settings_btn.setObjectName("klaus-settings-btn")
+        settings_btn.setFixedSize(32, 32)
+        settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        settings_btn.setToolTip("Settings")
+        settings_btn.clicked.connect(self.settings_requested.emit)
+        identity_row.addWidget(settings_btn)
+        left_layout.addLayout(identity_row)
 
         self.camera_widget = CameraWidget()
         left_layout.addWidget(self.camera_widget)
@@ -194,18 +157,38 @@ class MainWindow(QMainWindow):
 
         splitter.addWidget(left_panel)
 
-        # Right panel: chat
+        # Right panel: active thread + voice composer
+        right_panel = QWidget()
+        right_panel.setObjectName("klaus-thread")
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        thread_header = QWidget()
+        thread_header.setObjectName("klaus-header")
+        thread_header.setFixedHeight(theme.HEADER_HEIGHT)
+        thread_header_layout = QHBoxLayout(thread_header)
+        thread_header_layout.setContentsMargins(24, 0, 22, 0)
+
+        self._session_title_label = QLabel("Untitled reading session")
+        self._session_title_label.setObjectName("klaus-session-title")
+        thread_header_layout.addWidget(self._session_title_label)
+        thread_header_layout.addStretch()
+
+        model_name = "GPT Realtime" if config.VOICE_ENGINE == "realtime" else "Legacy voice"
+        model_pill = QLabel(model_name)
+        model_pill.setObjectName("klaus-model-pill")
+        model_pill.setToolTip(
+            config.REALTIME_MODEL if config.VOICE_ENGINE == "realtime" else "Claude + OpenAI TTS"
+        )
+        model_pill.setFixedHeight(28)
+        thread_header_layout.addWidget(model_pill)
+        right_layout.addWidget(thread_header)
+
         self.chat_widget = ChatWidget()
         self.chat_widget.replay_requested.connect(self.replay_requested.emit)
-        splitter.addWidget(self.chat_widget)
+        right_layout.addWidget(self.chat_widget, stretch=1)
 
-        splitter.setSizes([318, 862])
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-
-        main_layout.addWidget(splitter, stretch=1)
-
-        # -- Status Bar --
         self.status_widget = StatusWidget(
             hotkey=config.PUSH_TO_TALK_KEY,
             toggle_key=config.TOGGLE_KEY,
@@ -214,7 +197,15 @@ class MainWindow(QMainWindow):
             self.mode_toggle_requested.emit
         )
         self.status_widget.stop_clicked.connect(self.stop_requested.emit)
-        main_layout.addWidget(self.status_widget)
+        right_layout.addWidget(self.status_widget)
+
+        splitter.addWidget(right_panel)
+
+        splitter.setSizes([318, 862])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        main_layout.addWidget(splitter, stretch=1)
 
         app = QApplication.instance()
         if app is not None:

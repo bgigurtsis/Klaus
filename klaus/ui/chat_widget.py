@@ -124,7 +124,7 @@ class MessageCard(QFrame):
         layout.addWidget(body)
         self._body = body
 
-        self.setMaximumWidth(620 if is_user else 760)
+        self.setMaximumWidth(620 if is_user else 740)
         self.setMinimumWidth(280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
@@ -172,32 +172,6 @@ class ChatWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        masthead = QWidget()
-        masthead.setObjectName("conversation-header")
-        masthead.setFixedHeight(58)
-        masthead_layout = QHBoxLayout(masthead)
-        masthead_layout.setContentsMargins(24, 0, 24, 0)
-
-        title_column = QVBoxLayout()
-        title_column.setSpacing(1)
-        heading = QLabel("Conversation")
-        heading.setObjectName("conversation-heading")
-        title_column.addWidget(heading)
-        subtitle = QLabel("Klaus uses the reading context shown at left")
-        subtitle.setObjectName("conversation-subtitle")
-        title_column.addWidget(subtitle)
-        masthead_layout.addLayout(title_column)
-        masthead_layout.addStretch()
-
-        badge = QLabel("●  VOICE READY")
-        badge.setObjectName("conversation-badge")
-        badge.setFixedHeight(28)
-        masthead_layout.addWidget(
-            badge,
-            alignment=Qt.AlignmentFlag.AlignVCenter,
-        )
-        outer.addWidget(masthead)
-
         self._scroll = QScrollArea()
         self._scroll.setObjectName("chat-scroll")
         self._scroll.setWidgetResizable(True)
@@ -207,8 +181,8 @@ class ChatWidget(QWidget):
 
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
-        self._layout.setContentsMargins(28, 24, 28, 28)
-        self._layout.setSpacing(16)
+        self._layout.setContentsMargins(32, 26, 32, 24)
+        self._layout.setSpacing(20)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._empty_state = self._build_empty_state()
@@ -337,10 +311,10 @@ class ChatWidget(QWidget):
 
     def _build_empty_state(self) -> QWidget:
         state = QWidget()
-        state.setMinimumWidth(560)
-        state.setMaximumWidth(720)
+        state.setMinimumWidth(520)
+        state.setMaximumWidth(680)
         layout = QVBoxLayout(state)
-        layout.setContentsMargins(32, 70, 32, 48)
+        layout.setContentsMargins(32, 96, 32, 40)
         layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -350,14 +324,13 @@ class ChatWidget(QWidget):
         orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(orb, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        heading = QLabel("Ask as you read")
+        heading = QLabel("What are you reading?")
         heading.setObjectName("chat-empty-heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(heading)
 
         self._empty_label = QLabel(
-            "Talk through any paper, PDF, or book. Klaus follows your reading "
-            "context and answers in a natural voice."
+            "Select a source, then ask Klaus anything about the page in front of you."
         )
         self._empty_label.setObjectName("chat-empty-subtitle")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

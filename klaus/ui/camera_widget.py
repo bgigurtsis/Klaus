@@ -26,6 +26,7 @@ class CameraWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setObjectName("reading-source-panel")
         self._camera = None
         self._init_ui()
 

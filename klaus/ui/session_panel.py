@@ -63,6 +63,7 @@ class SessionPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setObjectName("session-panel")
         self._sessions: list[dict] = []
         self._current_id: str | None = None
         self._init_ui()

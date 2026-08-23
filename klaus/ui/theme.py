@@ -21,32 +21,32 @@ _FONTS_DIR = Path(__file__).parent / "fonts"
 # ---------------------------------------------------------------------------
 
 # Base layers (darkest to lightest)
-BG = "#080b10"
-SURFACE = "#0e1219"
-SURFACE_RAISED = "#141a23"
-SURFACE_OVERLAY = "#1b2330"
-SIDEBAR = "#0b0f15"
+BG = "#ffffff"
+SURFACE = "#fafaf9"
+SURFACE_RAISED = "#f4f4f2"
+SURFACE_OVERLAY = "#ecece9"
+SIDEBAR = "#f7f7f5"
 
 # Borders
-BORDER_MUTED = "#1b2430"
-BORDER_DEFAULT = "#283342"
-BORDER_EMPHASIS = "#526177"
+BORDER_MUTED = "#ecece8"
+BORDER_DEFAULT = "#deded9"
+BORDER_EMPHASIS = "#b9b9b2"
 
 # Text
-TEXT_PRIMARY = "#f5f7fb"
-TEXT_SECONDARY = "#aeb8c8"
-TEXT_MUTED = "#748095"
+TEXT_PRIMARY = "#20201e"
+TEXT_SECONDARY = "#5f5f5a"
+TEXT_MUTED = "#8a8a83"
 
 # Accents
-USER_ACCENT = "#9b8cff"
-USER_BG = "#1a1830"
-KLAUS_ACCENT = "#64dfad"
-KLAUS_BG = "#10231d"
+USER_ACCENT = "#7c68d9"
+USER_BG = "#f4f4f2"
+KLAUS_ACCENT = "#20201e"
+KLAUS_BG = "#ededeb"
 
-LISTENING_COLOR = "#ff6b7a"
-THINKING_COLOR = "#f6b85f"
-SPEAKING_COLOR = "#69d79c"
-IDLE_COLOR = "#8992a3"
+LISTENING_COLOR = "#e25466"
+THINKING_COLOR = "#b7791f"
+SPEAKING_COLOR = "#16835f"
+IDLE_COLOR = "#74746e"
 ERROR_COLOR = "#ef4444"
 
 # Stop button (semantic aliases for ERROR_COLOR shades)
@@ -55,8 +55,8 @@ STOP_BORDER = "#dc2626"
 STOP_HOVER_BG = "#dc2626"
 
 # Klaus card accent buttons
-KLAUS_BTN_BORDER = "#2a4a2a"
-KLAUS_BTN_HOVER_BG = "#1e331e"
+KLAUS_BTN_BORDER = "#d3d3ce"
+KLAUS_BTN_HOVER_BG = "#e7e7e3"
 
 # ---------------------------------------------------------------------------
 # Fonts
@@ -73,8 +73,8 @@ FONT_SIZE_HEADING = 20
 # Dimensions
 # ---------------------------------------------------------------------------
 
-HEADER_HEIGHT = 72
-STATUS_BAR_HEIGHT = 84
+HEADER_HEIGHT = 58
+STATUS_BAR_HEIGHT = 104
 CARD_PADDING_H = 20
 CARD_PADDING_V = 16
 CARD_RADIUS = 16
@@ -199,11 +199,11 @@ QPushButton:hover {{
     border: none;
 }}
 #klaus-brand-mark {{
-    color: #06120e;
+    color: #ffffff;
     background: {KLAUS_ACCENT};
-    border: 1px solid #85ebc4;
-    border-radius: 11px;
-    font-size: 16px;
+    border: 1px solid {KLAUS_ACCENT};
+    border-radius: 9px;
+    font-size: 15px;
     font-weight: 800;
 }}
 #klaus-brand-subtitle {{
@@ -249,10 +249,16 @@ QSplitter::handle {{
     background: {SIDEBAR};
     border-right: 1px solid {BORDER_MUTED};
 }}
+#reading-source-panel, #session-panel {{
+    background: transparent;
+}}
+#klaus-thread {{
+    background: {BG};
+}}
 
 /* ===== Camera preview ===== */
 #camera-preview {{
-    background-color: #06090d;
+    background-color: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: 14px;
     color: {TEXT_MUTED};
@@ -283,7 +289,7 @@ QSplitter::handle {{
     border: none;
 }}
 #session-new-btn {{
-    color: #0a1511;
+    color: #ffffff;
     background: {KLAUS_ACCENT};
     border: 1px solid {KLAUS_ACCENT};
     border-radius: 8px;
@@ -291,13 +297,16 @@ QSplitter::handle {{
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #session-new-btn:hover {{
-    background-color: #83e9c1;
-    border-color: #83e9c1;
+    background-color: #3a3a37;
+    border-color: #3a3a37;
 }}
 #session-list {{
     background: transparent;
     border: none;
     outline: none;
+}}
+#session-list QWidget {{
+    background: transparent;
 }}
 #session-list::item {{
     background: transparent;
@@ -309,7 +318,7 @@ QSplitter::handle {{
 }}
 #session-list::item:selected {{
     background: {SURFACE_OVERLAY};
-    border: 1px solid #354256;
+    border: 1px solid {BORDER_DEFAULT};
 }}
 #session-list::item:hover:!selected {{
     background: {SURFACE};
@@ -374,7 +383,7 @@ QMenu::item:selected {{
 #conversation-badge {{
     color: {KLAUS_ACCENT};
     background: {KLAUS_BG};
-    border: 1px solid #255541;
+    border: 1px solid {BORDER_DEFAULT};
     border-radius: 10px;
     padding: 3px 9px;
     font-size: 10px;
@@ -430,13 +439,13 @@ QLabel#chat-status-msg {{
 /* ===== MessageCard (role-based via dynamic property) ===== */
 MessageCard[role="user"] {{
     background-color: {USER_BG};
-    border: 1px solid #39345f;
+    border: 1px solid {BORDER_DEFAULT};
     border-radius: {CARD_RADIUS}px;
 }}
 MessageCard[role="assistant"] {{
-    background-color: {SURFACE_RAISED};
-    border: 1px solid #2a3646;
-    border-radius: {CARD_RADIUS}px;
+    background-color: {BG};
+    border: none;
+    border-radius: 0;
 }}
 
 /* Labels inside cards inherit transparent bg */
@@ -493,7 +502,12 @@ QPushButton#card-accent-btn:hover {{
 /* ===== Status bar ===== */
 #klaus-status-bar {{
     background-color: {BG};
-    border-top: 1px solid {BORDER_MUTED};
+    border: none;
+}}
+#klaus-voice-composer {{
+    background-color: {BG};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 18px;
 }}
 #klaus-state-label {{
     font-size: {FONT_SIZE_BODY}px;
@@ -505,7 +519,7 @@ QPushButton#card-accent-btn:hover {{
     background: transparent;
 }}
 #klaus-state-orb {{
-    background: {KLAUS_BG};
+    background: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: 20px;
     font-size: 18px;
@@ -650,7 +664,7 @@ QInputDialog QLabel {{
     border: none;
 }}
 #wizard-primary-btn {{
-    background-color: {USER_ACCENT};
+    background-color: {KLAUS_ACCENT};
     color: #fff;
     border: none;
     border-radius: {RADIUS_SM}px;
@@ -659,7 +673,7 @@ QInputDialog QLabel {{
     font-weight: 600;
 }}
 #wizard-primary-btn:hover {{
-    background-color: #9999dd;
+    background-color: #3a3a37;
 }}
 #wizard-link-btn {{
     color: {USER_ACCENT};
@@ -685,7 +699,7 @@ QInputDialog QLabel {{
     border-color: {BORDER_EMPHASIS};
 }}
 #wizard-next-btn {{
-    background-color: {USER_ACCENT};
+    background-color: {KLAUS_ACCENT};
     color: #fff;
     border: none;
     border-radius: {RADIUS_SM}px;
@@ -694,7 +708,7 @@ QInputDialog QLabel {{
     font-weight: 600;
 }}
 #wizard-next-btn:hover {{
-    background-color: #9999dd;
+    background-color: #3a3a37;
 }}
 #wizard-next-btn:disabled {{
     background-color: {SURFACE_RAISED};
