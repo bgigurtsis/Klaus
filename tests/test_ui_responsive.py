@@ -47,6 +47,23 @@ def test_voice_dock_reflows_and_hides_optional_text(qt_app) -> None:
     assert dock._stats_label.isHidden()
 
 
+def test_voice_dock_reflows_before_active_controls_clip(qt_app) -> None:
+    dock = StatusWidget(toggle_key="Shift+§")
+    dock.set_state("thinking")
+    dock.set_exchange_count(18)
+    dock.resize(900, dock.height())
+    dock.show()
+    qt_app.processEvents()
+
+    keycap_text_width = dock._hotkey_keycap.fontMetrics().horizontalAdvance("Shift+§")
+    assert dock._compact_layout is True
+    assert dock.height() == 138
+    assert dock._detail_label.isHidden() is False
+    assert dock._hotkey_keycap.width() >= keycap_text_width + 24
+
+    dock.close()
+
+
 def test_empty_state_stacks_prompts_when_narrow(qt_app) -> None:
     chat = ChatWidget()
     chat.resize(440, 500)

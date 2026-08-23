@@ -98,7 +98,7 @@ class StatusWidget(QWidget):
         composer = QFrame()
         composer.setObjectName("klaus-voice-composer")
         composer.setMinimumWidth(0)
-        composer.setMaximumWidth(840)
+        composer.setMaximumWidth(1040)
         self._composer = composer
         self._composer_layout = QGridLayout(composer)
         self._composer_layout.setContentsMargins(14, 10, 12, 10)
@@ -135,8 +135,8 @@ class StatusWidget(QWidget):
         self._hotkey_keycap = QLabel(self._toggle_key)
         self._hotkey_keycap.setObjectName("klaus-hotkey-keycap")
         self._hotkey_keycap.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hotkey_keycap.setMinimumWidth(52)
         self._hotkey_keycap.setMaximumWidth(110)
+        self._resize_hotkey_keycap()
         hotkey_cluster.addWidget(self._hotkey_keycap)
 
         self._hotkey_label = QLabel(self._HOTKEY_HINTS.get(self._mode, ""))
@@ -171,7 +171,7 @@ class StatusWidget(QWidget):
 
     def _apply_responsive_layout(self, force: bool = False) -> None:
         """Reflow the voice controls before they can clip."""
-        compact = self.width() < 760
+        compact = self.width() < 1040
         if not force and compact == self._compact_layout:
             self._apply_compact_visibility()
             return
@@ -255,5 +255,13 @@ class StatusWidget(QWidget):
         self._hotkey = hotkey
         self._toggle_key = toggle_key
         self._hotkey_keycap.setText(self._toggle_key)
+        self._resize_hotkey_keycap()
         self._hotkey_label.setText(self._HOTKEY_HINTS.get(self._mode, ""))
         self._apply_state_label(self._current_state)
+
+    def _resize_hotkey_keycap(self) -> None:
+        """Keep the full shortcut visible inside its padded keycap."""
+        text_width = self._hotkey_keycap.fontMetrics().horizontalAdvance(
+            self._hotkey_keycap.text()
+        )
+        self._hotkey_keycap.setMinimumWidth(min(110, max(52, text_width + 24)))
