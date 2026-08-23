@@ -991,11 +991,12 @@ class SetupWizard(QMainWindow):
     def _finish_setup(self) -> None:
         """Write all collected config and close the wizard."""
         import klaus.config as cfg
-        for slug in cfg.API_KEY_SLUGS:
-            value = str(self._collected.get(slug, "")).strip()
-            if value:
-                cfg.set_api_key(slug, value)
-        cfg.save_live_model(str(self._live_model_combo.currentData()))
+        model = str(self._live_model_combo.currentData())
+        slug = cfg.live_model_details(model)["provider"]
+        value = str(self._collected.get(slug, "")).strip()
+        if value:
+            cfg.set_api_key(slug, value)
+        cfg.save_live_model(model)
         cfg.save_reasoning_effort(str(self._reasoning_effort_combo.currentData()))
         cam_idx = self._collected["camera_index"]
         if cam_idx != -1:

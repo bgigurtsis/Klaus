@@ -599,6 +599,21 @@ class SettingsDialog(QDialog):
     # -- Save --
 
     def _save(self) -> None:
+        selected_model = str(self._live_model_combo.currentData())
+        selected_slug = config.live_model_details(selected_model)["provider"]
+        selected_key = self._key_edits[selected_slug].text().strip()
+        selected_cleared = self._key_clear_checks[selected_slug].isChecked()
+        selected_source = self._api_key_sources.get(selected_slug, "missing")
+        if selected_cleared or (not selected_key and selected_source == "missing"):
+            self._tabs.setCurrentIndex(self._keys_tab_index)
+            provider = "Gemini" if selected_slug == "gemini" else "OpenAI"
+            QMessageBox.warning(
+                self,
+                "API key required",
+                f"{provider} needs an API key for the selected live model.",
+            )
+            return
+
         for label, slug, _prefix, _min_len in KEY_PATTERNS:
             if self._key_clear_checks[slug].isChecked():
                 config.clear_api_key(slug)
