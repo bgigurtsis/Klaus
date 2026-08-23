@@ -200,7 +200,7 @@ class RealtimeBrain:
                 self._notes.reset_changed()
 
             instructions = self._turn_instructions(route, notes_context)
-            self._send(self._session_update(instructions))
+            self._send_session_update(self._session_update(instructions))
 
             content: list[dict] = []
             if reading_text and route.use_image:
@@ -520,6 +520,16 @@ class RealtimeBrain:
             if self._ws is None:
                 raise RuntimeError("Realtime session is not connected")
             self._ws.send(json.dumps(event))
+
+    def _send_session_update(self, event: dict) -> None:
+        """Reconnect once when a cached session has closed between turns."""
+        try:
+            self._send(event)
+        except (OSError, websocket.WebSocketConnectionClosedException):
+            logger.info("GPT Realtime session went stale; reconnecting")
+            self.close()
+            self._ensure_connected()
+            self._send(event)
 
     def _truncate_unplayed_audio(self) -> None:
         if not self._last_item_id:

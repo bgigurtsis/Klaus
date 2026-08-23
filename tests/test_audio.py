@@ -259,7 +259,7 @@ class TestBargeInGate:
         quiet = np.full(FRAME_SIZE, 10, dtype=np.int16)
         loud = np.full(FRAME_SIZE, 5000, dtype=np.int16)
 
-        for _ in range(10):  # calibration window
+        for _ in range(rec._gate_calib_frames):
             rec._process_gate_frame(quiet)
         assert not barge
 
@@ -282,13 +282,29 @@ class TestBargeInGate:
         playback = np.full(FRAME_SIZE, 100, dtype=np.int16)
         speech = np.full(FRAME_SIZE, 200, dtype=np.int16)
 
-        for _ in range(5):
+        for _ in range(rec._gate_calib_frames):
             rec._process_gate_frame(playback)
         for _ in range(4):
             rec._process_gate_frame(speech)
 
         assert len(barge) == 1
         assert len(barge[0]) <= FRAME_SIZE * 7
+
+    def test_delayed_playback_bleed_stays_inside_calibration(self):
+        barge: list[np.ndarray] = []
+        rec = self._gated_recorder(barge)
+        silence = np.full(FRAME_SIZE, 10, dtype=np.int16)
+        playback = np.full(FRAME_SIZE, 5000, dtype=np.int16)
+
+        for _ in range(5):
+            rec._process_gate_frame(silence)
+        for _ in range(rec._gate_calib_frames - 5):
+            rec._process_gate_frame(playback)
+        for _ in range(10):
+            rec._process_gate_frame(playback)
+
+        assert not barge
+        assert rec._gated is True
 
     def test_playback_bleed_does_not_trigger(self):
         barge: list[np.ndarray] = []

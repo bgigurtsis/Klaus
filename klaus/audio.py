@@ -176,7 +176,9 @@ class VoiceActivatedRecorder:
             math.ceil(barge_in_min_voiced_ms / FRAME_DURATION_MS),
         )
         self._gate_rms_margin = float(barge_in_rms_margin_dbfs)
-        self._gate_calib_frames = 5  # ~150ms of playback bleed calibration
+        # Output can reach the microphone after the playback callback starts.
+        # Keep the gate closed long enough to measure that delayed speaker bleed.
+        self._gate_calib_frames = 20  # ~600ms of playback bleed calibration
         self._gate_seed_prefix_frames = 3  # keep ~90ms before detected speech
         self._gate_calib: list[float] = []
         self._gate_floor_dbfs = self._min_rms_dbfs
@@ -247,7 +249,7 @@ class VoiceActivatedRecorder:
         The mic stream stays open, but frames must pass a stricter gate
         (max-aggressiveness VAD, RMS above the calibrated playback-bleed
         floor, sustained voiced run) before on_barge_in fires. Calibration
-        uses the first ~300ms of frames after entering the mode.
+        uses the first ~600ms of frames after entering the mode.
         """
         self._gate_calib = []
         self._gate_floor_dbfs = self._min_rms_dbfs
@@ -392,7 +394,7 @@ class VoiceActivatedRecorder:
         if len(self._gate_calib) < self._gate_calib_frames:
             self._gate_calib.append(rms_dbfs)
             if len(self._gate_calib) == self._gate_calib_frames:
-                bleed = float(np.median(self._gate_calib))
+                bleed = float(np.percentile(self._gate_calib, 90))
                 self._gate_floor_dbfs = max(
                     self._min_rms_dbfs, bleed + self._gate_rms_margin
                 )

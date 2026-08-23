@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import time
 import wave
 from types import SimpleNamespace
 
@@ -60,6 +61,11 @@ class _FakeWebSocket:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _BrokenWebSocket(_FakeWebSocket):
+    def send(self, payload: str) -> None:
+        raise BrokenPipeError(32, "Broken pipe")
 
 
 class _FakeAudioOutput:
@@ -214,6 +220,40 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
     assert "Exact selected passage" in content[0]["text"]
     assert content[1]["type"] == "input_audio"
     assert all(part["type"] != "input_image" for part in content)
+
+
+def test_audio_turn_reconnects_when_cached_session_is_stale() -> None:
+    stale = _BrokenWebSocket([])
+    fresh = _FakeWebSocket(
+        [
+            {
+                "type": "response.output_audio_transcript.delta",
+                "delta": "Recovered answer.",
+            },
+            {
+                "type": "response.done",
+                "response": {"status": "completed", "output": []},
+            },
+        ]
+    )
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: fresh,
+    )
+    brain._ws = stale
+    brain._connected_at = time.monotonic()
+
+    exchange = brain.ask_audio(
+        wav_bytes=_wav_bytes(np.array([1, 2, 3], dtype=np.int16), sample_rate=24_000),
+        question="Try again",
+        route_decision=_route(),
+    )
+
+    assert stale.closed is True
+    assert exchange.assistant_text == "Recovered answer."
+    assert fresh.sent[0]["type"] == "session.update"
 
 
 def test_cancel_truncates_audio_at_played_position() -> None:

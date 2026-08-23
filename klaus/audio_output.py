@@ -53,7 +53,13 @@ class AudioOutput:
         offset = 0
         while offset < len(audio) and not self._stop_event.is_set():
             end = min(offset + WRITE_BLOCK_FRAMES, len(audio))
-            stream.write(audio[offset:end])
+            try:
+                stream.write(audio[offset:end])
+            except Exception:
+                if self._stop_event.is_set():
+                    logger.debug("Audio write ended during cancellation", exc_info=True)
+                    break
+                raise
             offset = end
         return offset
 

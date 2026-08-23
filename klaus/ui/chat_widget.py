@@ -331,8 +331,10 @@ class ChatWidget(QWidget):
         label = QLabel(text)
         label.setObjectName("chat-status-msg")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
         row_layout.addWidget(label)
         row_layout.addStretch()
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self._auto_scroll = was_near_bottom
         self._layout.addWidget(row)
         self._message_widgets.append(row)
@@ -418,6 +420,7 @@ class ChatWidget(QWidget):
     @staticmethod
     def _card_row(card: MessageCard, role: str) -> QWidget:
         row = QWidget()
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)

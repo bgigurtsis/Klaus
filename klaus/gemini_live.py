@@ -243,7 +243,7 @@ class GeminiLiveBrain:
                 await session.send_realtime_input(text=turn_context)
                 if image_base64:
                     await session.send_realtime_input(
-                        media=types.Blob(
+                        video=types.Blob(
                             data=base64.b64decode(image_base64),
                             mime_type="image/jpeg",
                         )

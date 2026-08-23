@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import QApplication, QBoxLayout
+from PyQt6.QtWidgets import QApplication, QBoxLayout, QSizePolicy
 
 from klaus.ui.chat_widget import ChatWidget, MessageCard
 from klaus.ui.file_links import reveal_file_in_browser
@@ -71,6 +71,20 @@ def test_empty_state_stacks_prompts_when_narrow(qt_app) -> None:
     qt_app.processEvents()
 
     assert chat._prompts.direction() == QBoxLayout.Direction.TopToBottom
+
+
+def test_chat_rows_do_not_expand_into_blank_vertical_space(qt_app) -> None:
+    chat = ChatWidget()
+    chat.resize(900, 700)
+    chat.add_message("user", "What am I looking at?")
+    chat.add_status_message("Answer interrupted.")
+    chat.show()
+    qt_app.processEvents()
+
+    assert all(
+        row.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
+        for row in chat._message_widgets
+    )
 
 
 def test_note_card_exposes_a_finder_link(qt_app, tmp_path) -> None:
