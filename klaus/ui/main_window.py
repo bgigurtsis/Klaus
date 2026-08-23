@@ -114,8 +114,8 @@ class MainWindow(QMainWindow):
         header.setObjectName("klaus-header")
         header.setFixedHeight(theme.HEADER_HEIGHT)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 0, 18, 0)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(16, 0, 14, 0)
+        header_layout.setSpacing(8)
 
         brand_mark = QLabel("K")
         brand_mark.setObjectName("klaus-brand-mark")
@@ -155,11 +155,12 @@ class MainWindow(QMainWindow):
         model_pill.setToolTip(
             config.REALTIME_MODEL if config.VOICE_ENGINE == "realtime" else "Claude + OpenAI TTS"
         )
+        model_pill.setFixedHeight(28)
         header_layout.addWidget(model_pill)
 
         settings_btn = QPushButton("\u2699")
         settings_btn.setObjectName("klaus-settings-btn")
-        settings_btn.setFixedSize(38, 38)
+        settings_btn.setFixedSize(34, 34)
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.setToolTip("Settings")
         settings_btn.clicked.connect(self.settings_requested.emit)

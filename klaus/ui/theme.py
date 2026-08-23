@@ -206,18 +206,17 @@ QPushButton:hover {{
 }}
 #klaus-model-pill {{
     color: {TEXT_SECONDARY};
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 12px;
-    padding: 5px 10px;
+    background: transparent;
+    border: none;
+    padding: 0 6px;
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #klaus-settings-btn {{
     color: {TEXT_SECONDARY};
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 10px;
-    font-size: 17px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 16px;
     padding: 0;
 }}
 #klaus-settings-btn:hover {{
