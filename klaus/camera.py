@@ -226,7 +226,7 @@ class Camera:
     @property
     def waiting_message(self) -> str:
         if self._device_index == DESK_VIEW_SOURCE_INDEX:
-            return "Open Desk View to show your paper"
+            return "Desk View is not running\nChoose Desk View again to reopen setup"
         if self._device_index == ACTIVE_READING_WINDOW_SOURCE_INDEX:
             return "Keep your PDF window frontmost"
         if self._device_index < 0:

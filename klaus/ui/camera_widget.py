@@ -10,11 +10,12 @@ from PyQt6.QtGui import QImage, QPixmap
 import cv2
 import numpy as np
 
-from klaus.ui import theme
 from klaus.macos_reading_source import (
     ACTIVE_READING_WINDOW_SOURCE_INDEX,
     DESK_VIEW_SOURCE_INDEX,
 )
+from klaus.ui import theme
+from klaus.ui.desk_view_setup import launch_desk_view_setup
 
 
 class CameraWidget(QWidget):
@@ -84,6 +85,8 @@ class CameraWidget(QWidget):
             return
         source_index = self._source_combo.currentData()
         if source_index is not None:
+            if int(source_index) == DESK_VIEW_SOURCE_INDEX:
+                launch_desk_view_setup(self)
             self.source_changed.emit(int(source_index))
 
     def set_source_selection(self, device_index: int) -> None:

@@ -39,6 +39,7 @@ from klaus.device_catalog import (
     list_input_devices,
 )
 from klaus.ui import theme
+from klaus.ui.desk_view_setup import launch_desk_view_setup
 from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
     KEY_URLS,
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 STEP_TITLES = [
     "Welcome",
-    "API Keys",
+    "API Key",
     "Reading Source",
     "Microphone",
     "Offline Speech",
@@ -387,15 +388,14 @@ class SetupWizard(QMainWindow):
         layout.setContentsMargins(48, 24, 48, 16)
         layout.setSpacing(8)
 
-        heading = QLabel("Enter your API keys")
+        heading = QLabel("Enter your OpenAI API key")
         heading.setStyleSheet(
             f"font-size: 22px; font-weight: bold; color: {theme.TEXT_PRIMARY}; "
             "background: transparent; border: none;"
         )
         layout.addWidget(heading)
         description = QLabel(
-            "OpenAI powers the live voice conversation. Tavily adds web search. "
-            "Anthropic only supports the legacy voice engine."
+            "OpenAI powers the live voice conversation."
         )
         description.setWordWrap(True)
         description.setStyleSheet(
@@ -548,7 +548,7 @@ class SetupWizard(QMainWindow):
         layout.addWidget(self._camera_preview, alignment=Qt.AlignmentFlag.AlignCenter)
 
         tip = QLabel(
-            "Physical paper: open Apple's Desk View and use bright, even light.\n"
+            "Physical paper: Klaus opens Apple's Desk View setup for you.\n"
             "PDF: keep the reading window frontmost and select a passage when useful."
         )
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -580,6 +580,8 @@ class SetupWizard(QMainWindow):
         self._collected["camera_index"] = idx
         if idx != -1:
             self._camera_preview.start(idx)
+            if idx == -2:
+                launch_desk_view_setup(self)
         else:
             self._camera_preview.stop()
 

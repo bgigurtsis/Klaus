@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 KEY_PATTERNS: list[tuple[str, str, str, int]] = [
-    ("Anthropic", "anthropic", "sk-ant-", 40),
     ("OpenAI", "openai", "sk-", 20),
-    ("Tavily", "tavily", "tvly-", 20),
 ]
 
-# GPT Realtime powers the core experience. The other keys enable optional tools
-# or the legacy voice engine.
+# GPT Realtime powers the core experience.
 REQUIRED_API_KEY_SLUGS: frozenset[str] = frozenset({"openai"})
 
 KEY_URLS = {
-    "anthropic": "https://console.anthropic.com/settings/keys",
     "openai": "https://platform.openai.com/api-keys",
-    "tavily": "https://app.tavily.com/home",
 }
 
 

@@ -31,7 +31,9 @@ from klaus.device_catalog import (
     list_camera_devices,
     list_input_devices,
 )
+from klaus.macos_reading_source import DESK_VIEW_SOURCE_INDEX
 from klaus.ui import theme
+from klaus.ui.desk_view_setup import launch_desk_view_setup
 from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
     REQUIRED_API_KEY_SLUGS,
@@ -75,7 +77,7 @@ class SettingsDialog(QDialog):
         self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
         self._tabs.tabBar().setExpanding(False)
         self._tabs.addTab(self._build_voice_tab(), "Voice")
-        self._keys_tab_index = self._tabs.addTab(self._build_keys_tab(), "API Keys")
+        self._keys_tab_index = self._tabs.addTab(self._build_keys_tab(), "API Key")
         self._camera_tab_index = self._tabs.addTab(self._build_camera_tab(), "Reading")
         self._mic_tab_index = self._tabs.addTab(self._build_mic_tab(), "Microphone")
         self._tabs.addTab(self._build_profile_tab(), "Profile")
@@ -278,7 +280,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._camera_combo)
 
         hint = QLabel(
-            "Use Desk View for paper. Keep your PDF app frontmost for the active window."
+            "Choose Desk View to open its setup. Keep your PDF app frontmost for the active window."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
@@ -329,6 +331,8 @@ class SettingsDialog(QDialog):
         cam_idx = int(cam_idx)
         self._active_camera_index = cam_idx
         config.set_camera_index(cam_idx, persist=True)
+        if cam_idx == DESK_VIEW_SOURCE_INDEX:
+            launch_desk_view_setup(self)
         self.camera_device_changed.emit(cam_idx)
 
     # -- Profile tab --
