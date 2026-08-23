@@ -44,4 +44,5 @@ def test_realtime_replay_pauses_voice_detection_when_interruption_is_disabled() 
 
     app._vad_recorder.enter_gated_mode.assert_not_called()
     app._vad_recorder.pause.assert_called_once()
+    app._vad_recorder.suspend_stream.assert_called_once()
     app._vad_recorder.prime_with_seed.assert_not_called()

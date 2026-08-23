@@ -187,6 +187,8 @@ class QuestionPipeline:
                 "yes" if image_b64 else "no",
                 "yes" if reading_text else "no",
             )
+            if context.suspend_input_stream is not None:
+                context.suspend_input_stream()
             exchange = self._brain.ask_audio(
                 wav_bytes=wav_bytes,
                 question=transcript,

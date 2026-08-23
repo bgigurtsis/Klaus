@@ -895,7 +895,7 @@ class KlausApp:
             if self._input_mode == "voice_activation":
                 self._vad_recorder.exit_gated_mode()
                 self._vad_recorder.resume_stream()
-                self._vad_recorder.resume()
+                self._vad_recorder.resume(settle_ms=450)
                 seed = self._barge_in_seed
                 self._barge_in_seed = None
                 if seed is not None:
@@ -975,6 +975,7 @@ class KlausApp:
             self._vad_recorder.enter_gated_mode()
         elif self._input_mode == "voice_activation":
             self._vad_recorder.pause()
+            self._vad_recorder.suspend_stream()
         self._signals.state_changed.emit("speaking")
         try:
             self._brain.speak_text(text)
@@ -983,7 +984,7 @@ class KlausApp:
             if self._input_mode == "voice_activation":
                 self._vad_recorder.exit_gated_mode()
                 self._vad_recorder.resume_stream()
-                self._vad_recorder.resume()
+                self._vad_recorder.resume(settle_ms=450)
                 seed = self._barge_in_seed
                 self._barge_in_seed = None
                 if seed is not None:

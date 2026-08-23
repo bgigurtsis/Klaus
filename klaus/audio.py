@@ -148,6 +148,7 @@ class VoiceActivatedRecorder:
         self._lock = threading.Lock()
         self._paused = False
         self._running = False
+        self._settle_frames = 0
 
         self._speaking = False
         self._chunks: list[np.ndarray] = []
@@ -268,6 +269,7 @@ class VoiceActivatedRecorder:
         Called after a barge-in interrupt so the user's first words (captured
         by the gate buffer while Klaus was still speaking) aren't clipped.
         """
+        self._settle_frames = 0
         n_frames = max(1, len(seed) // FRAME_SIZE)
         self._chunks = [seed.astype(np.int16)]
         self._silent_frames = 0
@@ -316,9 +318,13 @@ class VoiceActivatedRecorder:
             self._start_voiced_run = 0
         logger.debug("VAD paused")
 
-    def resume(self) -> None:
-        """Resume detection after pause."""
+    def resume(self, settle_ms: int = 0) -> None:
+        """Resume detection after pause, optionally dropping warm-up audio."""
         self._paused = False
+        self._settle_frames = max(
+            0,
+            math.ceil(max(0, settle_ms) / FRAME_DURATION_MS),
+        )
         self._pre_buffer.clear()
         self._sample_buf = np.empty(0, dtype=np.int16)
         self._voiced_frames = 0
@@ -381,6 +387,9 @@ class VoiceActivatedRecorder:
         while len(self._sample_buf) >= FRAME_SIZE:
             frame = self._sample_buf[:FRAME_SIZE]
             self._sample_buf = self._sample_buf[FRAME_SIZE:]
+            if self._settle_frames:
+                self._settle_frames -= 1
+                continue
             if self._gated:
                 self._process_gate_frame(frame)
             elif not self._paused:
