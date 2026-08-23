@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -296,7 +295,7 @@ class SettingsDialog(QDialog):
         self._camera_index_by_device = {-1: 0}
         self._camera_combo.addItem("No reading source (audio only)", -1)
         try:
-            cameras = list_camera_devices(include_physical=sys.platform != "darwin")
+            cameras = list_camera_devices(include_physical=False)
         except Exception as exc:
             logger.warning("Failed to enumerate cameras: %s", exc)
             cameras = []

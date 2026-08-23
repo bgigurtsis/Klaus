@@ -32,7 +32,6 @@ def _dark_input_dialog(
     dlg.setLabelText(label)
     dlg.setTextValue(text)
     dlg.setMinimumWidth(350)
-    theme.apply_dark_titlebar(dlg)
     ok = dlg.exec()
     return dlg.textValue(), bool(ok)
 
@@ -49,7 +48,6 @@ def _dark_question_box(
     )
     box.setDefaultButton(QMessageBox.StandardButton.No)
     box.setMinimumWidth(350)
-    theme.apply_dark_titlebar(box)
     return box.exec() == QMessageBox.StandardButton.Yes
 
 

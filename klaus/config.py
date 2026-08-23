@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import sys
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -34,10 +33,10 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Set to true after the setup wizard completes.
 # setup_complete = false
 
-# Push-to-talk hotkey (default: § on macOS, F2 elsewhere)
-# hotkey = "F2"
+# Push-to-talk hotkey (default: §)
+# hotkey = "§"
 
-# Toggle input mode hotkey (default: § on macOS, F3 on Windows)
+# Toggle input mode hotkey (default: §; press Shift+§ to toggle)
 # toggle_key = "§"
 
 # Reading source index (default: 0)
@@ -221,8 +220,8 @@ load_dotenv()
 CLAUDE_MODEL = "claude-sonnet-5"
 TTS_MODEL = "gpt-4o-mini-tts"
 REALTIME_MODEL = "gpt-realtime-2.1"
-_DEFAULT_PTT_KEY = "§" if sys.platform == "darwin" else "F2"
-_DEFAULT_TOGGLE_KEY = "§" if sys.platform == "darwin" else "F3"
+_DEFAULT_PTT_KEY = "§"
+_DEFAULT_TOGGLE_KEY = "§"
 
 API_KEY_SLUGS: tuple[str, ...] = ("anthropic", "openai", "tavily")
 _API_KEY_ENV_VARS: dict[str, str] = {
@@ -618,18 +617,17 @@ def _resolve_api_key(slug: str, legacy_value: str) -> tuple[str, str]:
     if env_value:
         return env_value, "env"
 
-    if secrets_store.is_keychain_supported():
-        try:
-            keychain_value = _as_str(secrets_store.get_api_key(slug), "")
-        except secrets_store.SecretsStoreError as exc:
-            _log.warning(
-                "Keychain read failed for %s; falling back to config if present. error=%s",
-                slug,
-                exc,
-            )
-        else:
-            if keychain_value:
-                return keychain_value, "keychain"
+    try:
+        keychain_value = _as_str(secrets_store.get_api_key(slug), "")
+    except secrets_store.SecretsStoreError as exc:
+        _log.warning(
+            "Keychain read failed for %s; falling back to config if present. error=%s",
+            slug,
+            exc,
+        )
+    else:
+        if keychain_value:
+            return keychain_value, "keychain"
 
     if legacy_value:
         return legacy_value, "config"
@@ -809,21 +807,20 @@ def set_api_key(slug: str, value: str) -> None:
         raise ValueError(f"Unknown API key slug: {slug!r}")
 
     normalized = value.strip()
-    if secrets_store.is_keychain_supported():
-        try:
-            if normalized:
-                secrets_store.set_api_key(slug, normalized)
-            else:
-                secrets_store.delete_api_key(slug)
-        except secrets_store.SecretsStoreError as exc:
-            _log.warning(
-                "Keychain write failed for %s; falling back to config.toml storage. error=%s",
-                slug,
-                exc,
-            )
+    try:
+        if normalized:
+            secrets_store.set_api_key(slug, normalized)
         else:
-            _remove_legacy_api_keys_section()
-            return
+            secrets_store.delete_api_key(slug)
+    except secrets_store.SecretsStoreError as exc:
+        _log.warning(
+            "Keychain write failed for %s; falling back to config.toml storage. error=%s",
+            slug,
+            exc,
+        )
+    else:
+        _remove_legacy_api_keys_section()
+        return
 
     legacy = _read_legacy_api_keys_from_disk()
     legacy[slug] = normalized
@@ -846,21 +843,20 @@ def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
         "openai": openai.strip(),
         "tavily": tavily.strip(),
     }
-    if secrets_store.is_keychain_supported():
-        try:
-            for slug, value in normalized.items():
-                if value:
-                    secrets_store.set_api_key(slug, value)
-                else:
-                    secrets_store.delete_api_key(slug)
-        except secrets_store.SecretsStoreError as exc:
-            _log.warning(
-                "Keychain write failed; falling back to config.toml storage. error=%s",
-                exc,
-            )
-        else:
-            _remove_legacy_api_keys_section()
-            return
+    try:
+        for slug, value in normalized.items():
+            if value:
+                secrets_store.set_api_key(slug, value)
+            else:
+                secrets_store.delete_api_key(slug)
+    except secrets_store.SecretsStoreError as exc:
+        _log.warning(
+            "Keychain write failed; falling back to config.toml storage. error=%s",
+            exc,
+        )
+    else:
+        _remove_legacy_api_keys_section()
+        return
 
     _write_legacy_api_keys(
         normalized["anthropic"],
@@ -949,8 +945,6 @@ def save_input_mode(mode: str) -> None:
 
 def _migrate_legacy_api_keys_to_keychain(user_config: dict) -> dict:
     """Move legacy plaintext keys into Keychain and purge [api_keys] on success."""
-    if not secrets_store.is_keychain_supported():
-        return user_config
     if "api_keys" not in user_config:
         return user_config
 

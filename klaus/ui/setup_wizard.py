@@ -8,7 +8,6 @@ is ``true`` in ``~/.klaus/config.toml``.
 from __future__ import annotations
 
 import logging
-import sys
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QDesktopServices, QImage, QPixmap
@@ -565,7 +564,7 @@ class SetupWizard(QMainWindow):
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_combo.addItem("No reading source (audio only)", -1)
-        cameras = list_camera_devices(include_physical=sys.platform != "darwin")
+        cameras = list_camera_devices(include_physical=False)
         for cam in cameras:
             self._camera_combo.addItem(format_camera_label(cam), cam.index)
         if cameras:
@@ -900,9 +899,13 @@ class SetupWizard(QMainWindow):
         )
         layout.addWidget(heading)
 
+        toggle_hint = config.TOGGLE_KEY
+        if config.PUSH_TO_TALK_KEY == config.TOGGLE_KEY and len(config.TOGGLE_KEY) == 1:
+            toggle_hint = f"Shift+{config.TOGGLE_KEY}"
         instructions = QLabel(
-            "Just start speaking, or hold F2 to use push-to-talk.\n"
-            "Press F3 to switch modes."
+            f"Just start speaking, or hold {config.PUSH_TO_TALK_KEY} "
+            "to use push-to-talk.\n"
+            f"Press {toggle_hint} to switch modes."
         )
         instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
         instructions.setStyleSheet(

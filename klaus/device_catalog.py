@@ -5,7 +5,6 @@ from __future__ import annotations
 import collections
 import logging
 import os
-import sys
 from dataclasses import dataclass
 
 import cv2
@@ -13,7 +12,7 @@ import sounddevice as sd
 
 logger = logging.getLogger(__name__)
 
-_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+_BACKEND = cv2.CAP_ANY
 
 _GENERIC_MIC_NAMES = {
     "microphone",
@@ -26,8 +25,6 @@ _GENERIC_MIC_NAMES = {
 
 
 def _macos_reading_sources() -> list[CameraDevice]:
-    if sys.platform != "darwin":
-        return []
     from klaus.macos_reading_source import (
         ACTIVE_READING_WINDOW_SOURCE_INDEX,
         DESK_VIEW_SOURCE_INDEX,
@@ -83,8 +80,6 @@ def _avfoundation_device_name_at(index: int) -> str | None:
     shift between calls. Querying right before OpenCV opens the device
     keeps the two in sync.
     """
-    if sys.platform != "darwin":
-        return None
     try:
         from AVFoundation import (
             AVCaptureDeviceDiscoverySession,
@@ -113,8 +108,6 @@ def _avfoundation_device_name_at(index: int) -> str | None:
 
 def _macos_avfoundation_camera_count() -> int:
     """Return the number of AVFoundation video devices (used for probe limit)."""
-    if sys.platform != "darwin":
-        return 0
     try:
         from AVFoundation import (
             AVCaptureDeviceDiscoverySession,
@@ -165,10 +158,9 @@ def list_camera_devices(
     found_any = False
     failure_streak = 0
     try:
-        if sys.platform in {"win32", "darwin"}:
-            devnull = open(os.devnull, "w")
-            old_stderr = os.dup(2)
-            os.dup2(devnull.fileno(), 2)
+        devnull = open(os.devnull, "w")
+        old_stderr = os.dup(2)
+        os.dup2(devnull.fileno(), 2)
 
         for i in range(probe_limit):
             # Query AVFoundation for device name at index i using a fresh

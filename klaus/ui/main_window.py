@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -57,7 +56,6 @@ def hotkey_action_for_keypress(
     shift_pressed: bool,
     ptt_key: int,
     toggle_key: int,
-    platform_name: str,
 ) -> str | None:
     """Return ``ptt_down``, ``toggle``, or ``None`` for a key press."""
     effective_key = _QT_SHIFTED_VARIANTS.get(key, key) if shift_pressed else key
@@ -65,7 +63,7 @@ def hotkey_action_for_keypress(
     if effective_key != ptt_key and effective_key != toggle_key:
         return None
 
-    if platform_name == "darwin" and ptt_key == toggle_key and effective_key == ptt_key:
+    if ptt_key == toggle_key and effective_key == ptt_key:
         return "toggle" if shift_pressed else "ptt_down"
 
     if effective_key == toggle_key:
@@ -100,7 +98,6 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(980, 640)
         self.resize(1180, 760)
 
-        theme.apply_dark_titlebar(self)
         self.setStyleSheet(theme.application_stylesheet())
 
         central = QWidget()
@@ -242,7 +239,7 @@ class MainWindow(QMainWindow):
         self._qt_toggle_key = resolve_qt_key(toggle_key)
         self._ptt_key_armed = False
         toggle_hint = toggle_key
-        if sys.platform == "darwin" and ptt_key == toggle_key and len(toggle_key) == 1:
+        if ptt_key == toggle_key and len(toggle_key) == 1:
             toggle_hint = f"Shift+{toggle_key}"
         self.status_widget.set_hotkeys(ptt_key, toggle_hint)
         logger.info(
@@ -257,7 +254,6 @@ class MainWindow(QMainWindow):
             shift_pressed=shift,
             ptt_key=self._qt_ptt_key,
             toggle_key=self._qt_toggle_key,
-            platform_name=sys.platform,
         )
         if action is None:
             return False

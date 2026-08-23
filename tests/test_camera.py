@@ -138,7 +138,7 @@ class TestCameraStartStop:
         mock_cap.read.return_value = (False, None)
         mock_vc_cls.return_value = mock_cap
 
-        cam = Camera()
+        cam = Camera(device_index=0)
         cam.start()
         cam.start()
         assert mock_vc_cls.call_count == 1

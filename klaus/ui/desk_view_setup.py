@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -109,9 +108,6 @@ def _manual_desk_view_setup(parent: QWidget | None) -> None:
 
 def _launch_native_desk_view(parent: QWidget | None = None) -> bool:
     """Launch Apple's Desk View app through AVFoundation when available."""
-    if sys.platform != "darwin":
-        return False
-
     try:
         import AVFoundation
 
@@ -141,8 +137,6 @@ def _launch_native_desk_view(parent: QWidget | None = None) -> bool:
 
 def _open_photo_booth() -> bool:
     """Open Photo Booth so macOS activates its Video menu."""
-    if sys.platform != "darwin":
-        return False
     try:
         subprocess.Popen(
             ["/usr/bin/open", "-a", "Photo Booth"],

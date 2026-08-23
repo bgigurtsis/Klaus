@@ -1,7 +1,6 @@
 import io
 import logging
 import re
-import sys
 import threading
 import queue
 import wave
@@ -59,7 +58,7 @@ class TextToSpeech:
         with self._stream_lock:
             if self._stream is not None and not self._stream.closed:
                 return self._stream
-            latency = "high" if sys.platform == "darwin" else "low"
+            latency = "high"
             self._stream = sd.OutputStream(
                 samplerate=rate,
                 channels=channels,

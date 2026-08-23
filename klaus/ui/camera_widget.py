@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QListView, QVBoxLayout, QWidget
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
@@ -48,23 +46,21 @@ class CameraWidget(QWidget):
         header.addWidget(self._status_badge)
         layout.addLayout(header)
 
-        self._source_combo: QComboBox | None = None
-        if sys.platform == "darwin":
-            self._source_combo = QComboBox()
-            self._source_combo.setObjectName("reading-source-combo")
-            self._source_combo.setFixedHeight(38)
-            source_view = QListView()
-            source_view.setObjectName("reading-source-menu")
-            source_view.setMouseTracking(True)
-            source_view.setUniformItemSizes(True)
-            self._source_combo.setView(source_view)
-            self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
-            self._source_combo.addItem(
-                "Active window  ·  PDF",
-                ACTIVE_READING_WINDOW_SOURCE_INDEX,
-            )
-            self._source_combo.activated.connect(self._on_source_activated)
-            layout.addWidget(self._source_combo)
+        self._source_combo = QComboBox()
+        self._source_combo.setObjectName("reading-source-combo")
+        self._source_combo.setFixedHeight(38)
+        source_view = QListView()
+        source_view.setObjectName("reading-source-menu")
+        source_view.setMouseTracking(True)
+        source_view.setUniformItemSizes(True)
+        self._source_combo.setView(source_view)
+        self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
+        self._source_combo.addItem(
+            "Active window  ·  PDF",
+            ACTIVE_READING_WINDOW_SOURCE_INDEX,
+        )
+        self._source_combo.activated.connect(self._on_source_activated)
+        layout.addWidget(self._source_combo)
 
         self._video_label = QLabel()
         self._video_label.setObjectName("camera-preview")

@@ -21,8 +21,6 @@ def _should_disable_global_hotkeys() -> bool:
     importing pynput loads pyobjc extensions that trigger intermittent
     segfaults in the ctypes layer on this platform combination.
     """
-    if sys.platform != "darwin":
-        return False
     if os.environ.get("KLAUS_FORCE_GLOBAL_HOTKEYS") == "1":
         return False
 
@@ -63,7 +61,7 @@ def _resolve_pynput_key(key_name: str) -> object:
             return KeyCode.from_char(key_name)
         raise ValueError(f"Unknown hotkey: {key_name!r}")
 
-from klaus.stt import SpeechToText  # noqa: E402  (before PyQt6: moonshine.dll must load first)
+from klaus.stt import SpeechToText  # noqa: E402
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -103,7 +101,6 @@ def _resolve_shifted_key(key: Key | KeyCode | None, shift_active: bool) -> Key |
 
 def _hotkey_action_for_press(
     *,
-    platform_name: str,
     key: Key | KeyCode | None,
     ptt_key: Key | KeyCode,
     toggle_key: Key | KeyCode,
@@ -117,7 +114,7 @@ def _hotkey_action_for_press(
     if effective != ptt_key and effective != toggle_key:
         return None
 
-    if platform_name == "darwin" and ptt_key == toggle_key and effective == ptt_key:
+    if ptt_key == toggle_key and effective == ptt_key:
         return "toggle" if shift_active else "ptt_down"
 
     if effective == toggle_key:
@@ -308,7 +305,7 @@ class KlausApp:
         logger.info("Klaus starting")
 
         _skip_pyobjc = _should_disable_global_hotkeys()
-        if sys.platform == "darwin" and not _skip_pyobjc:
+        if not _skip_pyobjc:
             import ctypes, ctypes.util
             from Foundation import NSBundle, NSProcessInfo
             _libc = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -334,7 +331,7 @@ class KlausApp:
         _icon_path = Path(__file__).resolve().parent / "ui" / "icon.png"
         if _icon_path.is_file():
             app.setWindowIcon(QIcon(str(_icon_path)))
-            if sys.platform == "darwin" and not _skip_pyobjc:
+            if not _skip_pyobjc:
                 from AppKit import NSApplication, NSImage
                 ns_app = NSApplication.sharedApplication()
                 ns_image = NSImage.alloc().initByReferencingFile_(str(_icon_path))
@@ -351,7 +348,6 @@ class KlausApp:
         if not config.is_setup_complete() or not config.OPENAI_API_KEY:
             from klaus.ui.setup_wizard import SetupWizard
             wizard = SetupWizard()
-            theme.apply_dark_titlebar(wizard)
             wizard.show()
             app.exec()
             config.reload()
@@ -503,13 +499,12 @@ class KlausApp:
                 platform.mac_ver()[0] or "unknown",
                 platform.python_version(),
             )
-            if sys.platform == "darwin":
-                logger.info(
-                    "macOS: F-keys trigger system actions by default "
-                    "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
-                    "keys as standard function keys' in System Settings > Keyboard, "
-                    "or set a different key in ~/.klaus/config.toml (toggle_key)."
-                )
+            logger.info(
+                "macOS: F-keys trigger system actions by default "
+                "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
+                "keys as standard function keys' in System Settings > Keyboard, "
+                "or set a different key in ~/.klaus/config.toml (toggle_key)."
+            )
             return
 
         ptt_key = self._ptt_pynput_key
@@ -523,7 +518,6 @@ class KlausApp:
                 return
 
             action = _hotkey_action_for_press(
-                platform_name=sys.platform,
                 key=key,
                 ptt_key=ptt_key,
                 toggle_key=toggle_key,
@@ -561,13 +555,12 @@ class KlausApp:
                 exc,
             )
 
-        if sys.platform == "darwin":
-            logger.info(
-                "macOS: F-keys trigger system actions by default "
-                "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
-                "keys as standard function keys' in System Settings > Keyboard, "
-                "or set a different key in ~/.klaus/config.toml (toggle_key)."
-            )
+        logger.info(
+            "macOS: F-keys trigger system actions by default "
+            "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
+            "keys as standard function keys' in System Settings > Keyboard, "
+            "or set a different key in ~/.klaus/config.toml (toggle_key)."
+        )
 
     def _setup_input_mode(self) -> None:
         """Activate the current input mode and deactivate the other."""
@@ -1054,9 +1047,6 @@ class KlausApp:
             active_camera_index=self._active_camera_index,
             active_mic_device=self._active_mic_device,
         )
-        from klaus.ui import theme
-        theme.apply_dark_titlebar(dlg)
-
         def on_camera_device_changed(new_index: int) -> None:
             _, effective_index = self._apply_camera_device_live(new_index)
             dlg.set_camera_selection(effective_index)

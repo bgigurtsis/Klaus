@@ -69,7 +69,6 @@ def test_force_override_allows_global_hotkeys_on_macos_26(monkeypatch) -> None:
 
 def test_listener_plain_section_is_ptt_on_macos_shared_key() -> None:
     action = _hotkey_action_for_press(
-        platform_name="darwin",
         key="§",
         ptt_key="§",
         toggle_key="§",
@@ -80,7 +79,6 @@ def test_listener_plain_section_is_ptt_on_macos_shared_key() -> None:
 
 def test_listener_shift_section_is_toggle_on_macos_shared_key() -> None:
     action = _hotkey_action_for_press(
-        platform_name="darwin",
         key="§",
         ptt_key="§",
         toggle_key="§",
@@ -103,7 +101,6 @@ def test_qt_plain_section_is_ptt_on_macos_shared_key() -> None:
         shift_pressed=False,
         ptt_key=167,
         toggle_key=167,
-        platform_name="darwin",
     )
     assert action == "ptt_down"
 
@@ -114,7 +111,6 @@ def test_qt_shift_section_is_toggle_on_macos_shared_key() -> None:
         shift_pressed=True,
         ptt_key=167,
         toggle_key=167,
-        platform_name="darwin",
     )
     assert action == "toggle"
 
@@ -125,7 +121,6 @@ def test_qt_distinct_toggle_key_keeps_normal_toggle_behavior() -> None:
         shift_pressed=False,
         ptt_key=113,  # q
         toggle_key=114,  # r
-        platform_name="linux",
     )
     assert action == "toggle"
 

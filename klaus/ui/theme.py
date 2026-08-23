@@ -7,10 +7,8 @@ change.
 
 from __future__ import annotations
 
-import ctypes
 import logging
 from pathlib import Path
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -838,32 +836,6 @@ def role_color(role: str) -> str:
 def role_label(role: str) -> str:
     """Return the display name for a given role."""
     return "You" if role == "user" else "Klaus"
-
-
-# ---------------------------------------------------------------------------
-# Windows dark title bar (DWM API)
-# ---------------------------------------------------------------------------
-
-def apply_dark_titlebar(window) -> None:
-    """Force the native Windows title bar to use dark mode.
-
-    Uses DwmSetWindowAttribute with DWMWA_USE_IMMERSIVE_DARK_MODE (attr 20).
-    No-op on non-Windows platforms.
-    """
-    if sys.platform != "win32":
-        return
-    try:
-        hwnd = int(window.winId())
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        value = ctypes.c_int(1)
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_USE_IMMERSIVE_DARK_MODE,
-            ctypes.byref(value),
-            ctypes.sizeof(value),
-        )
-    except Exception:
-        logger.debug("Failed to apply dark title bar", exc_info=True)
 
 
 def load_fonts() -> None:

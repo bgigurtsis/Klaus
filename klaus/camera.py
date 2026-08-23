@@ -1,7 +1,6 @@
 import base64
 import logging
 import os
-import sys
 import threading
 import time
 from io import BytesIO
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
 
-_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+_BACKEND = cv2.CAP_ANY
 
 
 def enumerate_cameras(max_index: int = 10) -> list[dict]:

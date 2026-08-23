@@ -34,8 +34,8 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 - **Smart query routing** -- a local router decides whether each question needs an image, history, memory, or notes
 - **Obsidian notes** -- dictate notes hands-free; Klaus writes them directly to your Obsidian vault
 - **Conversation memory** -- SQLite-backed session history with persistent knowledge profile
-- **Secure API key storage** -- Apple Keychain on macOS (auto-migrates legacy plaintext keys); `config.toml` fallback on Windows
-- **Cross-platform** -- macOS and Windows with platform-specific optimizations (AVFoundation camera names, DWM dark title bar, etc.)
+- **Secure API key storage** -- Apple Keychain auto-migrates legacy plaintext keys from `config.toml`
+- **Native macOS integration** -- AVFoundation camera names, Desk View capture, active-window capture, and selected PDF text
 
 ## Requirements
 
@@ -49,15 +49,12 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 
 ### Software
 
-**Homebrew (macOS)** and **pipx (Windows)** handle all dependencies automatically -- no manual installs needed beyond the commands in [Quick Start](#quick-start).
+Homebrew handles all dependencies automatically. No manual installs are needed beyond the commands in [Quick Start](#quick-start).
 
 <details>
 <summary>Building from source</summary>
 
-| Platform | Prerequisites |
-|----------|--------------|
-| macOS | Python 3.11-3.13, PortAudio (`brew install python@3.13 portaudio`) |
-| Windows | Python 3.11-3.13, [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) for `webrtcvad` wheel compilation |
+Building from source requires macOS, Python 3.11-3.13, and PortAudio (`brew install python@3.13 portaudio`).
 
 </details>
 
@@ -79,28 +76,13 @@ Klaus requires an OpenAI key. Tavily and Anthropic keys enable optional features
 
 Existing plaintext keys in `config.toml` are automatically migrated to Keychain on first launch.
 
-**Key storage on Windows** -- keys are stored in `~/.klaus/config.toml`.
-
 ## Quick Start
 
-**macOS (Homebrew):**
+**Homebrew:**
 
 ```
 brew tap bgigurtsis/klaus
 brew install klaus
-klaus
-```
-
-**Windows (pipx):**
-
-```
-pip install pipx && pipx ensurepath
-```
-
-Restart your terminal, then:
-
-```
-pipx install klaus-assistant
 klaus
 ```
 
@@ -112,9 +94,7 @@ On first launch, the setup wizard can guide you through API keys, reading source
 
 ### Updating
 
-**macOS:** `brew upgrade klaus`
-
-**Windows:** `pipx upgrade klaus-assistant`
+`brew upgrade klaus`
 
 ### From Source
 
@@ -169,7 +149,7 @@ Klaus supports two input modes:
 - **Voice-activated** (default) -- start speaking and Klaus detects your voice automatically via WebRTC VAD. After a brief silence, it finalizes your question and starts processing.
 - **Push-to-talk** -- hold the PTT key (default `F2`) to record, release to send.
 
-Toggle between modes with the toggle key (default `§` on macOS, `F3` on Windows) or use the mode button in the UI.
+Toggle between modes with `Shift+§` or use the mode button in the UI.
 
 When you finish speaking, Klaus may collect selected text or a reading-window image according to the question route. GPT Realtime can answer from that context, and it may search the web through Tavily when needed. Its response can start playing before the full answer finishes. The optional `legacy` engine sends the same context through Claude and OpenAI TTS.
 
@@ -192,7 +172,7 @@ Settings live in `~/.klaus/config.toml` (created on first run). Edit any line to
 | Setting | Default | Notes |
 |---------|---------|-------|
 | `hotkey` | `F2` | Push-to-talk key |
-| `toggle_key` | `§` (macOS) / `F3` (Windows) | Toggle between voice-activated and push-to-talk |
+| `toggle_key` | `§` | Toggle between voice-activated and push-to-talk with Shift held |
 | `input_mode` | `voice_activation` | Or `push_to_talk` |
 | `voice` | `cedar` | Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin |
 | `voice_engine` | `realtime` | `realtime` for GPT speech-to-speech or `legacy` for Claude plus OpenAI TTS |
@@ -290,7 +270,7 @@ The default voice engine keeps one Realtime conversation per reading session. Kl
 ## Data Storage
 
 - **Config:** `~/.klaus/config.toml`
-- **API keys:** Apple Keychain on macOS; `~/.klaus/config.toml` on Windows
+- **API keys:** Apple Keychain, with legacy `config.toml` fallback if Keychain access fails
 - **Database:** `~/.klaus/klaus.db` (sessions, exchanges, knowledge profile)
 - **Images:** not stored; only a short hash of each page capture is kept
 - **Reset:** delete `~/.klaus/klaus.db` to clear all sessions and start fresh

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import threading
 from dataclasses import dataclass
 
@@ -144,8 +143,6 @@ def _select_window(
 
 
 def _copy_window_infos() -> list[dict]:
-    if sys.platform != "darwin":
-        return []
     try:
         import Quartz
 
@@ -245,8 +242,6 @@ class MacOSReadingSource:
         self._lock = threading.Lock()
 
     def start(self) -> None:
-        if sys.platform != "darwin":
-            raise RuntimeError("Window reading sources require macOS.")
         try:
             import Quartz
 

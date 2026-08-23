@@ -1,11 +1,8 @@
-import ctypes
 import io
 import inspect
 import logging
-import sys
 import time
 import wave
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -13,27 +10,6 @@ import numpy as np
 import klaus.config as config
 
 logger = logging.getLogger(__name__)
-
-
-def _preload_native_lib() -> None:
-    """Pre-load moonshine.dll before PyQt6 to avoid WinError 1114 on Windows.
-
-    PyQt6 loads DLLs that conflict with moonshine's native library if it hasn't
-    been loaded first.  Calling this at import time (before PyQt6) sidesteps the
-    issue entirely.
-    """
-    if sys.platform != "win32":
-        return
-    try:
-        import moonshine_voice
-        dll = Path(moonshine_voice.__file__).parent / "moonshine.dll"
-        if dll.exists():
-            ctypes.CDLL(str(dll))
-    except Exception:
-        pass
-
-
-_preload_native_lib()
 
 
 class SpeechToText:
