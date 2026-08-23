@@ -170,6 +170,33 @@ class ChatWidget(QWidget):
     def _init_ui(self) -> None:
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        masthead = QWidget()
+        masthead.setObjectName("conversation-header")
+        masthead.setFixedHeight(58)
+        masthead_layout = QHBoxLayout(masthead)
+        masthead_layout.setContentsMargins(24, 0, 24, 0)
+
+        title_column = QVBoxLayout()
+        title_column.setSpacing(1)
+        heading = QLabel("Conversation")
+        heading.setObjectName("conversation-heading")
+        title_column.addWidget(heading)
+        subtitle = QLabel("Klaus uses the reading context shown at left")
+        subtitle.setObjectName("conversation-subtitle")
+        title_column.addWidget(subtitle)
+        masthead_layout.addLayout(title_column)
+        masthead_layout.addStretch()
+
+        badge = QLabel("●  VOICE READY")
+        badge.setObjectName("conversation-badge")
+        badge.setFixedHeight(28)
+        masthead_layout.addWidget(
+            badge,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        outer.addWidget(masthead)
 
         self._scroll = QScrollArea()
         self._scroll.setObjectName("chat-scroll")
@@ -180,9 +207,9 @@ class ChatWidget(QWidget):
 
         self._container = QWidget()
         self._layout = QVBoxLayout(self._container)
-        self._layout.setContentsMargins(24, 20, 24, 20)
-        self._layout.setSpacing(14)
-        self._layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        self._layout.setContentsMargins(28, 24, 28, 28)
+        self._layout.setSpacing(16)
+        self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self._empty_state = self._build_empty_state()
         self._layout.addWidget(
@@ -310,16 +337,16 @@ class ChatWidget(QWidget):
 
     def _build_empty_state(self) -> QWidget:
         state = QWidget()
-        state.setMinimumWidth(520)
-        state.setMaximumWidth(620)
+        state.setMinimumWidth(560)
+        state.setMaximumWidth(720)
         layout = QVBoxLayout(state)
-        layout.setContentsMargins(28, 48, 28, 48)
-        layout.setSpacing(12)
+        layout.setContentsMargins(32, 70, 32, 48)
+        layout.setSpacing(14)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         orb = QLabel("K")
         orb.setObjectName("chat-empty-orb")
-        orb.setFixedSize(54, 54)
+        orb.setFixedSize(64, 64)
         orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(orb, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -329,8 +356,8 @@ class ChatWidget(QWidget):
         layout.addWidget(heading)
 
         self._empty_label = QLabel(
-            "Klaus can see your selected reading context and answer out loud. "
-            "Start speaking whenever you are ready."
+            "Talk through any paper, PDF, or book. Klaus follows your reading "
+            "context and answers in a natural voice."
         )
         self._empty_label.setObjectName("chat-empty-subtitle")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -339,16 +366,20 @@ class ChatWidget(QWidget):
         self._empty_label.setMinimumHeight(46)
         layout.addWidget(self._empty_label)
 
-        layout.addSpacing(6)
+        layout.addSpacing(8)
+        prompts = QHBoxLayout()
+        prompts.setSpacing(10)
         for example in (
-            "“What does this paragraph mean?”",
-            "“Define that term on the right.”",
-            "“Save the key idea to my notes.”",
+            "Explain this\nparagraph",
+            "Define the\nkey term",
+            "Save this to\nmy notes",
         ):
             label = QLabel(example)
             label.setObjectName("chat-example")
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
+            label.setMinimumWidth(150)
+            prompts.addWidget(label)
+        layout.addLayout(prompts)
         return state
 
     @staticmethod

@@ -50,9 +50,9 @@ class CameraWidget(QWidget):
         self._source_combo: QComboBox | None = None
         if sys.platform == "darwin":
             self._source_combo = QComboBox()
-            self._source_combo.addItem("Desk View: paper", DESK_VIEW_SOURCE_INDEX)
+            self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
             self._source_combo.addItem(
-                "Active window: PDF",
+                "Active window  ·  PDF",
                 ACTIVE_READING_WINDOW_SOURCE_INDEX,
             )
             self._source_combo.activated.connect(self._on_source_activated)
@@ -61,9 +61,9 @@ class CameraWidget(QWidget):
         self._video_label = QLabel()
         self._video_label.setObjectName("camera-preview")
         self._video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._video_label.setMinimumSize(280, 168)
-        self._video_label.setMaximumHeight(220)
-        self._video_label.setText("No reading context\nChoose a source above")
+        self._video_label.setMinimumSize(270, 160)
+        self._video_label.setMaximumHeight(204)
+        self._video_label.setText("No reading context\nSelect a source to begin")
         layout.addWidget(self._video_label)
         self.setMaximumWidth(self.PREVIEW_WIDTH)
 

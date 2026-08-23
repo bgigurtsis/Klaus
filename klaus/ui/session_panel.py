@@ -79,12 +79,12 @@ class SessionPanel(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(4, 0, 4, 0)
 
-        title = QLabel("READING SESSIONS")
+        title = QLabel("YOUR LIBRARY")
         title.setObjectName("session-panel-title")
         header.addWidget(title)
         header.addStretch()
 
-        new_btn = QPushButton("+ New")
+        new_btn = QPushButton("＋  New")
         new_btn.setObjectName("session-new-btn")
         new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         new_btn.setFixedHeight(32)
@@ -116,7 +116,7 @@ class SessionPanel(QWidget):
         for s in sessions:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, s["id"])
-            item.setSizeHint(QSize(0, 56))
+            item.setSizeHint(QSize(0, 60))
 
             meta_parts = []
             if "exchange_count" in s:

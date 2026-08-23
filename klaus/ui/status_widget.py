@@ -84,12 +84,12 @@ class StatusWidget(QWidget):
         self.setFixedHeight(theme.STATUS_BAR_HEIGHT)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(18, 12, 18, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(14)
 
         self._orb = QLabel()
         self._orb.setObjectName("klaus-state-orb")
-        self._orb.setFixedSize(40, 40)
+        self._orb.setFixedSize(44, 44)
         self._orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._orb)
 
@@ -116,7 +116,7 @@ class StatusWidget(QWidget):
 
         self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
         self._mode_btn.setObjectName("klaus-mode-btn")
-        self._mode_btn.setFixedHeight(40)
+        self._mode_btn.setFixedHeight(38)
         self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mode_btn.setToolTip("Switch voice input mode")
         self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
@@ -124,7 +124,7 @@ class StatusWidget(QWidget):
 
         self._stop_btn = QPushButton("Interrupt")
         self._stop_btn.setObjectName("klaus-stop-btn")
-        self._stop_btn.setFixedHeight(40)
+        self._stop_btn.setFixedHeight(38)
         self._stop_btn.setMinimumWidth(108)
         self._stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._stop_btn.setToolTip("Stop this answer now")
@@ -153,7 +153,7 @@ class StatusWidget(QWidget):
         self._orb.setText(symbol)
         self._orb.setStyleSheet(
             f"color: {color}; background: {theme.SURFACE_RAISED}; "
-            f"border: 1px solid {color}; border-radius: 20px;"
+            f"border: 1px solid {color}; border-radius: 22px;"
         )
 
     def set_state(self, state: str) -> None:

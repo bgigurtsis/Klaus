@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSplitter,
-    QFrame,
 )
 from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
@@ -98,8 +97,8 @@ class MainWindow(QMainWindow):
         self._qt_toggle_key: int = Qt.Key.Key_F3
         self._ptt_key_armed = False
         self.setWindowTitle("Klaus")
-        self.setMinimumSize(900, 600)
-        self.resize(1100, 700)
+        self.setMinimumSize(980, 640)
+        self.resize(1180, 760)
 
         theme.apply_dark_titlebar(self)
         self.setStyleSheet(theme.application_stylesheet())
@@ -115,12 +114,12 @@ class MainWindow(QMainWindow):
         header.setObjectName("klaus-header")
         header.setFixedHeight(theme.HEADER_HEIGHT)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 14, 0)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(18, 0, 18, 0)
+        header_layout.setSpacing(10)
 
         brand_mark = QLabel("K")
         brand_mark.setObjectName("klaus-brand-mark")
-        brand_mark.setFixedSize(34, 34)
+        brand_mark.setFixedSize(38, 38)
         brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(brand_mark)
 
@@ -129,20 +128,22 @@ class MainWindow(QMainWindow):
         title = QLabel("Klaus")
         title.setObjectName("klaus-title")
         brand_column.addWidget(title)
-        brand_subtitle = QLabel("Voice research companion")
+        brand_subtitle = QLabel("RESEARCH COPILOT")
         brand_subtitle.setObjectName("klaus-brand-subtitle")
         brand_column.addWidget(brand_subtitle)
         header_layout.addLayout(brand_column)
 
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.VLine)
-        divider.setStyleSheet(f"color: {theme.BORDER_DEFAULT};")
-        divider.setFixedHeight(28)
-        header_layout.addWidget(divider)
+        header_layout.addSpacing(18)
 
-        self._session_title_label = QLabel("")
+        session_column = QVBoxLayout()
+        session_column.setSpacing(1)
+        breadcrumb = QLabel("WORKSPACE  /  ACTIVE SESSION")
+        breadcrumb.setObjectName("klaus-breadcrumb")
+        session_column.addWidget(breadcrumb)
+        self._session_title_label = QLabel("Untitled reading session")
         self._session_title_label.setObjectName("klaus-session-title")
-        header_layout.addWidget(self._session_title_label)
+        session_column.addWidget(self._session_title_label)
+        header_layout.addLayout(session_column)
 
         header_layout.addStretch()
 
@@ -176,8 +177,8 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_panel.setObjectName("klaus-sidebar")
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(12, 12, 12, 10)
-        left_layout.setSpacing(12)
+        left_layout.setContentsMargins(16, 16, 16, 12)
+        left_layout.setSpacing(16)
 
         self.camera_widget = CameraWidget()
         left_layout.addWidget(self.camera_widget)
@@ -198,7 +199,7 @@ class MainWindow(QMainWindow):
         self.chat_widget.replay_requested.connect(self.replay_requested.emit)
         splitter.addWidget(self.chat_widget)
 
-        splitter.setSizes([320, 780])
+        splitter.setSizes([318, 862])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
 

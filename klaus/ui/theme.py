@@ -21,27 +21,27 @@ _FONTS_DIR = Path(__file__).parent / "fonts"
 # ---------------------------------------------------------------------------
 
 # Base layers (darkest to lightest)
-BG = "#0b0c0f"
-SURFACE = "#111318"
-SURFACE_RAISED = "#171a21"
-SURFACE_OVERLAY = "#1f232c"
-SIDEBAR = "#0f1116"
+BG = "#080b10"
+SURFACE = "#0e1219"
+SURFACE_RAISED = "#141a23"
+SURFACE_OVERLAY = "#1b2330"
+SIDEBAR = "#0b0f15"
 
 # Borders
-BORDER_MUTED = "#20242d"
-BORDER_DEFAULT = "#2a303b"
-BORDER_EMPHASIS = "#4b5568"
+BORDER_MUTED = "#1b2430"
+BORDER_DEFAULT = "#283342"
+BORDER_EMPHASIS = "#526177"
 
 # Text
-TEXT_PRIMARY = "#f0f2f7"
-TEXT_SECONDARY = "#aab1bf"
-TEXT_MUTED = "#6f7889"
+TEXT_PRIMARY = "#f5f7fb"
+TEXT_SECONDARY = "#aeb8c8"
+TEXT_MUTED = "#748095"
 
 # Accents
-USER_ACCENT = "#8b8cf8"
-USER_BG = "#191b2c"
-KLAUS_ACCENT = "#69d79c"
-KLAUS_BG = "#121a18"
+USER_ACCENT = "#9b8cff"
+USER_BG = "#1a1830"
+KLAUS_ACCENT = "#64dfad"
+KLAUS_BG = "#10231d"
 
 LISTENING_COLOR = "#ff6b7a"
 THINKING_COLOR = "#f6b85f"
@@ -73,14 +73,14 @@ FONT_SIZE_HEADING = 20
 # Dimensions
 # ---------------------------------------------------------------------------
 
-HEADER_HEIGHT = 64
-STATUS_BAR_HEIGHT = 92
-CARD_PADDING_H = 18
-CARD_PADDING_V = 14
-CARD_RADIUS = 14
+HEADER_HEIGHT = 72
+STATUS_BAR_HEIGHT = 84
+CARD_PADDING_H = 20
+CARD_PADDING_V = 16
+CARD_RADIUS = 16
 RADIUS_SM = 8
 RADIUS_MD = 12
-CAMERA_PREVIEW_WIDTH = 304
+CAMERA_PREVIEW_WIDTH = 286
 
 # ---------------------------------------------------------------------------
 # Application-wide QSS
@@ -96,6 +96,13 @@ QMainWindow, QWidget {{
     color: {TEXT_PRIMARY};
     font-family: {FONT_FAMILY};
     font-size: {FONT_SIZE_BODY}px;
+}}
+QToolTip {{
+    background-color: {SURFACE_OVERLAY};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 6px;
+    padding: 6px 8px;
 }}
 
 /* ===== Scrollbar ===== */
@@ -126,7 +133,7 @@ QComboBox {{
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: {RADIUS_SM}px;
-    padding: 5px 10px;
+    padding: 7px 11px;
     font-size: {FONT_SIZE_SMALL}px;
     min-width: 180px;
 }}
@@ -173,28 +180,29 @@ QPushButton:hover {{
 
 /* ===== Header ===== */
 #klaus-header {{
-    background-color: {SURFACE};
+    background-color: {BG};
     border-bottom: 1px solid {BORDER_MUTED};
 }}
 #klaus-title {{
     color: {TEXT_PRIMARY};
     font-size: {FONT_SIZE_HEADING}px;
     font-weight: bold;
-    letter-spacing: 0.5px;
+    letter-spacing: -0.2px;
     background: transparent;
     border: none;
 }}
 #klaus-session-title {{
-    color: {TEXT_SECONDARY};
-    font-size: {FONT_SIZE_BODY}px;
-    font-weight: 600;
+    color: {TEXT_PRIMARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 650;
     background: transparent;
     border: none;
 }}
 #klaus-brand-mark {{
-    color: #0b0c0f;
+    color: #06120e;
     background: {KLAUS_ACCENT};
-    border-radius: 10px;
+    border: 1px solid #85ebc4;
+    border-radius: 11px;
     font-size: 16px;
     font-weight: 800;
 }}
@@ -204,11 +212,18 @@ QPushButton:hover {{
     background: transparent;
     border: none;
 }}
-#klaus-model-pill {{
-    color: {TEXT_SECONDARY};
+#klaus-breadcrumb {{
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_CAPTION}px;
     background: transparent;
     border: none;
-    padding: 0 6px;
+}}
+#klaus-model-pill {{
+    color: {TEXT_SECONDARY};
+    background: {SURFACE_RAISED};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 12px;
+    padding: 3px 10px;
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #klaus-settings-btn {{
@@ -232,13 +247,14 @@ QSplitter::handle {{
 }}
 #klaus-sidebar {{
     background: {SIDEBAR};
+    border-right: 1px solid {BORDER_MUTED};
 }}
 
 /* ===== Camera preview ===== */
 #camera-preview {{
-    background-color: {BG};
+    background-color: #06090d;
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 12px;
+    border-radius: 14px;
     color: {TEXT_MUTED};
 }}
 #reading-context-title {{
@@ -252,8 +268,8 @@ QSplitter::handle {{
     color: {KLAUS_ACCENT};
     background: {KLAUS_BG};
     border: 1px solid {KLAUS_BTN_BORDER};
-    border-radius: 8px;
-    padding: 3px 7px;
+    border-radius: 9px;
+    padding: 3px 8px;
     font-size: 11px;
 }}
 
@@ -267,16 +283,16 @@ QSplitter::handle {{
     border: none;
 }}
 #session-new-btn {{
-    color: {TEXT_SECONDARY};
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
+    color: #0a1511;
+    background: {KLAUS_ACCENT};
+    border: 1px solid {KLAUS_ACCENT};
     border-radius: 8px;
     padding: 6px 10px;
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #session-new-btn:hover {{
-    background-color: {SURFACE_OVERLAY};
-    border-color: {BORDER_EMPHASIS};
+    background-color: #83e9c1;
+    border-color: #83e9c1;
 }}
 #session-list {{
     background: transparent;
@@ -288,12 +304,12 @@ QSplitter::handle {{
     border: none;
     border: 1px solid transparent;
     border-radius: 10px;
-    padding: 7px;
-    margin: 2px 0;
+    padding: 8px;
+    margin: 3px 0;
 }}
 #session-list::item:selected {{
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
+    background: {SURFACE_OVERLAY};
+    border: 1px solid #354256;
 }}
 #session-list::item:hover:!selected {{
     background: {SURFACE};
@@ -338,6 +354,33 @@ QMenu::item:selected {{
     border: none;
     background: transparent;
 }}
+#conversation-header {{
+    background: {BG};
+    border-bottom: 1px solid {BORDER_MUTED};
+}}
+#conversation-heading {{
+    color: {TEXT_PRIMARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}}
+#conversation-subtitle {{
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_CAPTION}px;
+    background: transparent;
+    border: none;
+}}
+#conversation-badge {{
+    color: {KLAUS_ACCENT};
+    background: {KLAUS_BG};
+    border: 1px solid #255541;
+    border-radius: 10px;
+    padding: 3px 9px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+}}
 
 /* ===== Chat empty state ===== */
 #chat-empty {{
@@ -347,7 +390,7 @@ QMenu::item:selected {{
 }}
 #chat-empty-heading {{
     color: {TEXT_PRIMARY};
-    font-size: {FONT_SIZE_HEADING + 5}px;
+    font-size: {FONT_SIZE_HEADING + 8}px;
     font-weight: 700;
     background: transparent;
     border: none;
@@ -362,17 +405,17 @@ QMenu::item:selected {{
     color: {KLAUS_ACCENT};
     background: {KLAUS_BG};
     border: 1px solid {KLAUS_BTN_BORDER};
-    border-radius: 27px;
-    font-size: 24px;
+    border-radius: 32px;
+    font-size: 27px;
     font-weight: 700;
 }}
 #chat-example {{
     color: {TEXT_SECONDARY};
     background: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 10px;
-    padding: 8px 12px;
-    font-size: {FONT_SIZE_SMALL}px;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: {FONT_SIZE_CAPTION}px;
 }}
 
 /* ===== Chat status message ===== */
@@ -387,12 +430,12 @@ QLabel#chat-status-msg {{
 /* ===== MessageCard (role-based via dynamic property) ===== */
 MessageCard[role="user"] {{
     background-color: {USER_BG};
-    border: 1px solid #292d4a;
+    border: 1px solid #39345f;
     border-radius: {CARD_RADIUS}px;
 }}
 MessageCard[role="assistant"] {{
     background-color: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
+    border: 1px solid #2a3646;
     border-radius: {CARD_RADIUS}px;
 }}
 
@@ -449,7 +492,7 @@ QPushButton#card-accent-btn:hover {{
 
 /* ===== Status bar ===== */
 #klaus-status-bar {{
-    background-color: {SURFACE};
+    background-color: {BG};
     border-top: 1px solid {BORDER_MUTED};
 }}
 #klaus-state-label {{
@@ -462,7 +505,7 @@ QPushButton#card-accent-btn:hover {{
     background: transparent;
 }}
 #klaus-state-orb {{
-    background: {SURFACE_RAISED};
+    background: {KLAUS_BG};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: 20px;
     font-size: 18px;
@@ -471,7 +514,7 @@ QPushButton#card-accent-btn:hover {{
     color: {TEXT_SECONDARY};
     background-color: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: {RADIUS_MD}px;
+    border-radius: 10px;
     padding: 8px 14px;
     font-size: {FONT_SIZE_SMALL}px;
     font-weight: 600;
@@ -485,7 +528,7 @@ QPushButton#card-accent-btn:hover {{
     color: #fff;
     background-color: {STOP_BG};
     border: 1px solid {STOP_BORDER};
-    border-radius: {RADIUS_MD}px;
+    border-radius: 10px;
     padding: 9px 18px;
     font-size: {FONT_SIZE_SMALL}px;
     font-weight: 700;
