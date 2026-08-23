@@ -115,10 +115,10 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Allow interrupting Klaus by speaking while it talks (voice mode only).
 # Disable on open-speaker setups if playback bleed triggers false interrupts.
 # barge_in_enabled = true
-# Minimum sustained speech (ms) required to trigger a barge-in (default: 300)
-# barge_in_min_voiced_ms = 300
+# Minimum sustained speech (ms) required to trigger a barge-in (default: 120)
+# barge_in_min_voiced_ms = 120
 # Loudness margin (dB) above measured playback bleed required for barge-in
-# barge_in_rms_margin_dbfs = 12.0
+# barge_in_rms_margin_dbfs = 4.0
 
 # Play short audio cues on capture/cancel state changes.
 # earcons_enabled = true
@@ -358,8 +358,8 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("tts_streaming", "tts_streaming", True, _as_bool),
     _SettingSpec("tts_first_clause_split", "tts_first_clause_split", True, _as_bool),
     _SettingSpec("barge_in_enabled", "barge_in_enabled", True, _as_bool),
-    _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 300, _as_int),
-    _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 12.0, _as_float),
+    _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 120, _as_int),
+    _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 4.0, _as_float),
     _SettingSpec("earcons_enabled", "earcons_enabled", True, _as_bool),
     _SettingSpec("definition_model", "definition_model", "claude-haiku-4-5", _as_str),
     _SettingSpec("enable_query_router", "enable_query_router", True, _as_bool),

@@ -204,6 +204,9 @@ Settings live in `~/.klaus/config.toml` (created on first run). Edit any line to
 | `vad_sensitivity` | `3` | 0-3, higher = more aggressive noise filtering |
 | `vad_silence_timeout` | `1.0` | Seconds of silence before voice activation finalizes |
 | `vad_start_trigger_ms` | `90` | Sustained voiced time required before listening starts |
+| `barge_in_enabled` | `true` | Let normal speech interrupt an answer |
+| `barge_in_min_voiced_ms` | `120` | Sustained speech required before interruption |
+| `barge_in_rms_margin_dbfs` | `4.0` | Loudness required above calibrated playback bleed |
 | `stt_moonshine_model` | `medium` | Options: `tiny`, `small`, `medium` |
 | `stt_moonshine_language` | `en` | Moonshine language code |
 | `log_level` | `INFO` | DEBUG, INFO, WARNING, ERROR |

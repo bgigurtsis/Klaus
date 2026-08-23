@@ -158,6 +158,14 @@ def test_voice_engine_parser_keeps_realtime_as_safe_default():
     assert config._as_voice_engine("unknown", "realtime") == "realtime"
 
 
+def test_barge_in_defaults_to_conversational_sensitivity():
+    settings = config._settings_from_config({})
+
+    assert settings.barge_in_enabled is True
+    assert settings.barge_in_min_voiced_ms == 120
+    assert settings.barge_in_rms_margin_dbfs == 4.0
+
+
 class TestSetDeviceIndexes:
     def test_set_camera_index_updates_runtime_and_file(self, config_dir):
         config.set_camera_index(7, persist=True)

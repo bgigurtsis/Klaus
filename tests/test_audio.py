@@ -270,6 +270,26 @@ class TestBargeInGate:
         assert rec._gated is False
         assert isinstance(barge[0], np.ndarray)
 
+    def test_default_gate_accepts_normal_interjection_quickly(self):
+        barge: list[np.ndarray] = []
+        rec = _make_vad_recorder(
+            on_barge_in=barge.append,
+            min_rms_dbfs=-60.0,
+        )
+        rec._gate_vad = MagicMock()
+        rec._gate_vad.is_speech.return_value = True
+        rec.enter_gated_mode()
+        playback = np.full(FRAME_SIZE, 100, dtype=np.int16)
+        speech = np.full(FRAME_SIZE, 200, dtype=np.int16)
+
+        for _ in range(5):
+            rec._process_gate_frame(playback)
+        for _ in range(4):
+            rec._process_gate_frame(speech)
+
+        assert len(barge) == 1
+        assert len(barge[0]) <= FRAME_SIZE * 7
+
     def test_playback_bleed_does_not_trigger(self):
         barge: list[np.ndarray] = []
         rec = self._gated_recorder(barge)

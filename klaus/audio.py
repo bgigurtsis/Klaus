@@ -120,8 +120,8 @@ class VoiceActivatedRecorder:
         min_rms_dbfs: float = -45.0,
         min_voiced_run_frames: int = 6,
         start_trigger_ms: int = 90,
-        barge_in_min_voiced_ms: int = 300,
-        barge_in_rms_margin_dbfs: float = 12.0,
+        barge_in_min_voiced_ms: int = 120,
+        barge_in_rms_margin_dbfs: float = 4.0,
         device: int | None = None,
     ):
         self._on_speech_start = on_speech_start
@@ -168,12 +168,16 @@ class VoiceActivatedRecorder:
         else:
             self._frames_for_early = 0
 
-        # Barge-in gate: strict speech detection while Klaus is speaking.
+        # Barge-in gate: responsive speech detection while Klaus is speaking.
         self._gated = False
-        self._gate_vad = webrtcvad.Vad(3)
-        self._gate_run_needed = max(1, barge_in_min_voiced_ms // FRAME_DURATION_MS)
+        self._gate_vad = webrtcvad.Vad(min(self._sensitivity, 2))
+        self._gate_run_needed = max(
+            1,
+            math.ceil(barge_in_min_voiced_ms / FRAME_DURATION_MS),
+        )
         self._gate_rms_margin = float(barge_in_rms_margin_dbfs)
-        self._gate_calib_frames = 10  # ~300ms of playback bleed calibration
+        self._gate_calib_frames = 5  # ~150ms of playback bleed calibration
+        self._gate_seed_prefix_frames = 3  # keep ~90ms before detected speech
         self._gate_calib: list[float] = []
         self._gate_floor_dbfs = self._min_rms_dbfs
         self._gate_run = 0
@@ -409,7 +413,8 @@ class VoiceActivatedRecorder:
         if self._gate_run >= self._gate_run_needed:
             self._gated = False
             self._gate_run = 0
-            seed = np.concatenate(list(self._gate_frames))
+            seed_frame_count = self._gate_run_needed + self._gate_seed_prefix_frames
+            seed = np.concatenate(list(self._gate_frames)[-seed_frame_count:])
             self._gate_frames.clear()
             logger.info("Barge-in detected (%.1fs of gated audio buffered)",
                         len(seed) / self._sample_rate)
