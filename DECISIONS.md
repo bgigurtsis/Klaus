@@ -23,3 +23,16 @@ that work lands.
 
 `theme.py` is at ~926 lines, over the 800-line module ceiling. Next change to
 it should split the QSS string (e.g. `theme_qss.py`) from the tokens/helpers.
+
+## 2026-08-23 — Chat thread capped at a centered 860px column
+
+The chat feed now lays messages out in a centered column
+(`_COLUMN_MAX_WIDTH = 860` in `klaus/ui/chat_widget.py`) instead of letting
+user and assistant cards hug opposite edges of a wide window. Qt gotcha worth
+remembering: a widget between two `addStretch(1)` calls gets only its size
+hint unless it carries a larger stretch factor itself — both the column and
+the cards use `stretch=1000` so they fill up to their width caps before the
+alignment stretches absorb the overflow. Known residue: `_sync_content_height`
+pins each row's minimum height to a size hint measured mid-layout, which can
+leave extra air inside assistant cards after resizes; left alone because that
+mechanism is the recent scroll-clipping fix.
