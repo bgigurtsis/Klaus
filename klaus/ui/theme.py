@@ -21,27 +21,27 @@ _FONTS_DIR = Path(__file__).parent / "fonts"
 # ---------------------------------------------------------------------------
 
 # Base layers (darkest to lightest)
-BG = "#ffffff"
-SURFACE = "#fafaf9"
-SURFACE_RAISED = "#f4f4f2"
-SURFACE_OVERLAY = "#ecece9"
-SIDEBAR = "#f7f7f5"
+BG = "#1e1e1c"
+SURFACE = "#232321"
+SURFACE_RAISED = "#2b2b28"
+SURFACE_OVERLAY = "#343431"
+SIDEBAR = "#181816"
 
 # Borders
-BORDER_MUTED = "#ecece8"
-BORDER_DEFAULT = "#deded9"
-BORDER_EMPHASIS = "#b9b9b2"
+BORDER_MUTED = "#2b2b28"
+BORDER_DEFAULT = "#3c3c38"
+BORDER_EMPHASIS = "#5b5b55"
 
 # Text
-TEXT_PRIMARY = "#20201e"
-TEXT_SECONDARY = "#5f5f5a"
-TEXT_MUTED = "#8a8a83"
+TEXT_PRIMARY = "#f0f0ec"
+TEXT_SECONDARY = "#b8b8b1"
+TEXT_MUTED = "#81817a"
 
 # Accents
-USER_ACCENT = "#7c68d9"
-USER_BG = "#f4f4f2"
-KLAUS_ACCENT = "#20201e"
-KLAUS_BG = "#ededeb"
+USER_ACCENT = "#aa9cf1"
+USER_BG = "#2c2a35"
+KLAUS_ACCENT = "#f0f0ec"
+KLAUS_BG = "#2b2b28"
 
 LISTENING_COLOR = "#e25466"
 THINKING_COLOR = "#b7791f"
@@ -55,8 +55,8 @@ STOP_BORDER = "#dc2626"
 STOP_HOVER_BG = "#dc2626"
 
 # Klaus card accent buttons
-KLAUS_BTN_BORDER = "#d3d3ce"
-KLAUS_BTN_HOVER_BG = "#e7e7e3"
+KLAUS_BTN_BORDER = "#454540"
+KLAUS_BTN_HOVER_BG = "#353531"
 
 # ---------------------------------------------------------------------------
 # Fonts
@@ -199,7 +199,7 @@ QPushButton:hover {{
     border: none;
 }}
 #klaus-brand-mark {{
-    color: #ffffff;
+    color: {BG};
     background: {KLAUS_ACCENT};
     border: 1px solid {KLAUS_ACCENT};
     border-radius: 9px;
@@ -289,7 +289,7 @@ QSplitter::handle {{
     border: none;
 }}
 #session-new-btn {{
-    color: #ffffff;
+    color: {BG};
     background: {KLAUS_ACCENT};
     border: 1px solid {KLAUS_ACCENT};
     border-radius: 8px;
@@ -297,8 +297,8 @@ QSplitter::handle {{
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #session-new-btn:hover {{
-    background-color: #3a3a37;
-    border-color: #3a3a37;
+    background-color: #ffffff;
+    border-color: #ffffff;
 }}
 #session-list {{
     background: transparent;
@@ -665,7 +665,7 @@ QInputDialog QLabel {{
 }}
 #wizard-primary-btn {{
     background-color: {KLAUS_ACCENT};
-    color: #fff;
+    color: {BG};
     border: none;
     border-radius: {RADIUS_SM}px;
     padding: 10px 24px;
@@ -673,7 +673,7 @@ QInputDialog QLabel {{
     font-weight: 600;
 }}
 #wizard-primary-btn:hover {{
-    background-color: #3a3a37;
+    background-color: #ffffff;
 }}
 #wizard-link-btn {{
     color: {USER_ACCENT};
@@ -700,7 +700,7 @@ QInputDialog QLabel {{
 }}
 #wizard-next-btn {{
     background-color: {KLAUS_ACCENT};
-    color: #fff;
+    color: {BG};
     border: none;
     border-radius: {RADIUS_SM}px;
     padding: 8px 24px;
@@ -708,7 +708,7 @@ QInputDialog QLabel {{
     font-weight: 600;
 }}
 #wizard-next-btn:hover {{
-    background-color: #3a3a37;
+    background-color: #ffffff;
 }}
 #wizard-next-btn:disabled {{
     background-color: {SURFACE_RAISED};
