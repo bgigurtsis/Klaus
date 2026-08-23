@@ -88,6 +88,20 @@ Klaus stores API keys in Apple Keychain. It stores settings and conversation his
 
 Provider use may incur charges. Read the [privacy notes](https://github.com/bgigurtsis/Klaus/blob/main/PRIVACY.md) before you connect accounts or private notes.
 
+## Realtime cost estimate
+
+Klaus currently uses `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI estimates approximately 600 input-audio tokens per minute and 1,200 output-audio tokens per minute in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs).
+
+The estimates below cover raw audio only. They assume each question lasts 30 seconds and each answer lasts 60 seconds, unless noted otherwise. They exclude text context, captured page images, web search, and other provider charges, which can increase the bill.
+
+| Usage pattern | Monthly use | Audio input | Audio output | Estimated monthly cost |
+|---|---|---:|---:|---:|
+| Occasional reference | 20 questions per month | 10 min | 20 min | $1.73 |
+| Regular study | 3 questions on each of 20 days | 30 min | 60 min | $5.18 |
+| Heavy reading | 10 questions on each of 20 days | 100 min | 200 min | $17.28 |
+
+The estimate uses $0.0192 per minute of user speech and $0.0768 per minute of Klaus speech. Longer answers can raise costs faster than longer questions. Later turns in one Realtime conversation can also include prior context, although cached input costs less.
+
 ## Settings
 
 Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.klaus/config.toml`.
