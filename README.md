@@ -13,6 +13,7 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
+- [First Launch](#first-launch)
 - [Reading Sources](#reading-sources)
 - [Usage](#usage)
 - [Latency and Cost](#latency-and-cost)
@@ -32,7 +33,7 @@ Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshi
 - **Native speech-to-speech output** -- GPT Realtime can stream audio and its transcript as the answer forms
 - **Legacy voice fallback** -- Claude with OpenAI TTS remains available through one config setting
 - **Smart query routing** -- a local router decides whether each question needs an image, history, memory, or notes
-- **Obsidian notes** -- dictate notes hands-free; Klaus writes them directly to your Obsidian vault
+- **Obsidian skill** -- Klaus can search and read existing notes, follow their Markdown style, add wikilinks, and append sourced notes without overwriting existing text
 - **Conversation memory** -- SQLite-backed session history with persistent knowledge profile
 - **Secure API key storage** -- Apple Keychain auto-migrates legacy plaintext keys from `config.toml`
 - **Native macOS integration** -- AVFoundation camera names, Desk View capture, active-window capture, and selected PDF text
@@ -86,7 +87,7 @@ brew install klaus
 klaus
 ```
 
-On first launch, the setup wizard can guide you through API keys, reading source, microphone, and offline speech setup.
+On first launch, the setup wizard can show the main study loop before guiding you through API keys, reading source, microphone, offline speech, and Obsidian setup.
 
 > **macOS permissions:** macOS may request Accessibility for global hotkeys and selected PDF text. It may also request Screen Recording so Klaus can capture Desk View or a PDF window. You can deny Accessibility and use the in-app buttons, though selected-text capture may then use the window-image fallback.
 
@@ -116,6 +117,17 @@ open "$HOME/Applications/Klaus.app"
 
 The app uses the checkout's `.venv`, so rerun the installer if you move the
 checkout. Launch errors are written to `~/Library/Logs/Klaus/Klaus.log`.
+
+## First Launch
+
+The opening screen can show four ways to use Klaus before setup starts:
+
+- Choose Desk View for paper, or keep a PDF window frontmost and select exact text when useful.
+- Speak in hands-free mode, or hold the push-to-talk key. Speak over an answer to interrupt it.
+- Ask Klaus to check current facts when Tavily is configured. Reading sessions may keep their questions and answers.
+- Choose an Obsidian vault. Then name a note when you ask Klaus to save something.
+
+The last setup screen can show the active push-to-talk and mode-switch keys. You can change every setup choice later in **Settings**.
 
 ## Reading Sources
 
@@ -157,7 +169,17 @@ When you finish speaking, Klaus may collect selected text or a reading-window im
 
 Start speaking while Klaus answers. Klaus stops playback after it confirms your voice, cancels the server response, and removes unheard audio from the Realtime conversation. Your follow-up can then refer to the part you heard. You can also select **Interrupt** in the voice dock while Klaus thinks or speaks.
 
-**Obsidian integration** -- if you've configured a vault path (in the setup wizard or settings), you can ask Klaus to take notes as you speak. Ensure that you specify which markdown file you want it to put the notes in. It will then write markdown files directly to your Obsidian vault.
+### Obsidian skill
+
+Choose your vault root in the setup wizard or **Settings**. Then use requests such as:
+
+- "Save this to Research/Agent Notes.md."
+- "Find my entropy notes and add this quote with the page number."
+- "Read Research/Agent Notes.md, then add this without duplicating anything."
+
+Klaus can search note paths and text before choosing a file. It can read an existing note before appending content. The bundled Obsidian skill can tell Klaus to preserve local style, use wikilinks only for clear connections, and tie exact quotes to visible source locations.
+
+Klaus will accept only vault-relative note paths. It will append to existing files without overwriting their current text.
 
 ## Latency and Cost
 
@@ -261,7 +283,9 @@ The default voice engine keeps one Realtime conversation per reading session. Kl
 | `stt.py` | Moonshine Voice local speech-to-text |
 | `tts.py` | Shared PCM playback plus OpenAI TTS for the legacy engine |
 | `search.py` | Tavily web search tool for Realtime and Claude |
-| `notes.py` | Obsidian note tools for Realtime and Claude |
+| `notes.py` | Vault-bounded Obsidian search, read, select, and append tools |
+| `skill_loader.py` | Loads bundled model skills from the installed package |
+| `skills/obsidian/` | Obsidian note workflow and skill metadata |
 | `memory.py` | SQLite persistence (sessions, exchanges, knowledge profile) |
 | `secrets_store.py` | Apple Keychain integration via keyring |
 | `device_catalog.py` | Shared camera/mic enumeration and labeling |

@@ -11,7 +11,13 @@ import anthropic
 
 import klaus.config as config
 from klaus.config import CLAUDE_MODEL
-from klaus.notes import NotesManager, SAVE_NOTE_TOOL, SET_NOTES_FILE_TOOL
+from klaus.notes import (
+    NotesManager,
+    READ_NOTE_TOOL,
+    SAVE_NOTE_TOOL,
+    SEARCH_NOTES_TOOL,
+    SET_NOTES_FILE_TOOL,
+)
 from klaus.query_router import (
     QueryRouter,
     RouteDecision,
@@ -95,7 +101,9 @@ class Brain:
     def _rebuild_tools(self) -> None:
         self._tools = [TOOL_DEFINITION]
         if self._notes is not None:
-            self._tools.extend([SET_NOTES_FILE_TOOL, SAVE_NOTE_TOOL])
+            self._tools.extend(
+                [SEARCH_NOTES_TOOL, READ_NOTE_TOOL, SET_NOTES_FILE_TOOL, SAVE_NOTE_TOOL]
+            )
 
     def decide_route(self, question: str) -> RouteDecision:
         """Classify the question into a context routing policy."""
@@ -445,6 +453,30 @@ class Brain:
                 file_path = block.input.get("file_path", "")
                 logger.info("Claude requested set_notes_file: '%s'", file_path)
                 result_text = self._notes.set_file(file_path)
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_text,
+                    }
+                )
+
+            elif block.name == "search_notes" and self._notes:
+                query = block.input.get("query", "")
+                logger.info("Claude requested search_notes: '%s'", query)
+                result_text = self._notes.search_notes(query)
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_text,
+                    }
+                )
+
+            elif block.name == "read_note" and self._notes:
+                file_path = block.input.get("file_path", "")
+                logger.info("Claude requested read_note: '%s'", file_path)
+                result_text = self._notes.read_note(file_path)
                 results.append(
                     {
                         "type": "tool_result",

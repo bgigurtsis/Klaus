@@ -1,0 +1,4 @@
+interface:
+  display_name: "Obsidian"
+  short_description: "Create linked, useful notes in Obsidian"
+  default_prompt: "Use $obsidian to save and connect these reading notes in my vault."

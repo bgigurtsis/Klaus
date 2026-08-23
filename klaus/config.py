@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from klaus import secrets_store
+from klaus.skill_loader import load_skill_instructions
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -386,7 +387,11 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
 )
 
 
-def _build_system_prompt(user_background: str) -> str:
+def _build_system_prompt(
+    user_background: str,
+    *,
+    obsidian_enabled: bool = False,
+) -> str:
     """Assemble the system prompt, injecting user background when available."""
     intro = (
         "You are Klaus, a concise, knowledgeable and articulate research companion. "
@@ -396,7 +401,10 @@ def _build_system_prompt(user_background: str) -> str:
     )
     if user_background:
         intro += " " + user_background.strip()
-    return intro + "\n\n" + _SYSTEM_PROMPT_BODY
+    prompt = intro + "\n\n" + _SYSTEM_PROMPT_BODY
+    if obsidian_enabled:
+        prompt += "\n\nBundled Obsidian skill:\n\n" + load_skill_instructions("obsidian")
+    return prompt
 
 
 _SYSTEM_PROMPT_BODY = """\
@@ -659,7 +667,10 @@ def _settings_from_config(user_config: dict) -> RuntimeSettings:
     values["openai_api_key"] = resolved_api_keys["openai"]
     values["tavily_api_key"] = resolved_api_keys["tavily"]
     values["user_background"] = user_background
-    values["system_prompt"] = _build_system_prompt(user_background)
+    values["system_prompt"] = _build_system_prompt(
+        user_background,
+        obsidian_enabled=bool(values["obsidian_vault_path"]),
+    )
     return RuntimeSettings(**values)
 
 

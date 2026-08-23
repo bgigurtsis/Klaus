@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -305,8 +306,8 @@ class SetupWizard(QMainWindow):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Ask questions out loud while you read. Klaus listens, sees your reading "
-            "context, and answers naturally in one live voice conversation."
+            "Klaus can keep you on the page while you ask, check, and save ideas. "
+            "Use this short loop to get started."
         )
         subtitle.setObjectName("wizard-welcome-subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -315,32 +316,48 @@ class SetupWizard(QMainWindow):
 
         card_specs = [
             (
-                "How It Works",
-                "Speak naturally about a paper, book, or PDF. GPT Realtime hears the "
-                "question, uses the page context, and answers out loud.",
+                "Read Any Page",
+                "Choose Desk View for paper, or keep a PDF window frontmost. Klaus can "
+                "use selected PDF text before it falls back to a window image.",
             ),
             (
-                "Getting Better Answers",
-                "Klaus keeps the first answer short so follow-ups stay quick. Ask for "
-                "more detail or point to the exact passage when you need it.",
+                "Ask by Voice",
+                "Speak in hands-free mode, or hold the push-to-talk key. Start speaking "
+                "over an answer to interrupt it and ask a follow-up.",
             ),
             (
-                "Interrupt Anytime",
-                "Start speaking while Klaus answers and it will stop the current answer. "
-                "Your next question continues from the point you heard.",
+                "Check and Remember",
+                "Klaus can search current facts when Tavily is configured. Each reading "
+                "session may keep its questions, answers, and working context.",
+            ),
+            (
+                "Save to Obsidian",
+                "Choose your vault during setup. Then say which note to use, such as "
+                '"Save this to Research/Agent Notes.md."',
             ),
         ]
 
-        cards_col = QVBoxLayout()
-        cards_col.setContentsMargins(0, 2, 0, 0)
-        cards_col.setSpacing(12)
-        for card_title, card_body in card_specs:
-            cards_col.addWidget(self._build_welcome_card(card_title, card_body))
-        layout.addLayout(cards_col)
+        cards_grid = QGridLayout()
+        cards_grid.setContentsMargins(0, 2, 0, 0)
+        cards_grid.setHorizontalSpacing(12)
+        cards_grid.setVerticalSpacing(12)
+        for index, (card_title, card_body) in enumerate(card_specs):
+            cards_grid.addWidget(
+                self._build_welcome_card(card_title, card_body),
+                index // 2,
+                index % 2,
+            )
+        cards_grid.setColumnStretch(0, 1)
+        cards_grid.setColumnStretch(1, 1)
+        layout.addLayout(cards_grid)
 
-        footer = QLabel("You can change any setup choices later in Settings.")
+        footer = QLabel(
+            "Point to the passage, ask one question, then follow up. "
+            "You can change every setup choice later in Settings."
+        )
         footer.setObjectName("wizard-welcome-footer")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer.setWordWrap(True)
         layout.addWidget(footer)
 
         layout.addSpacing(6)
@@ -903,11 +920,13 @@ class SetupWizard(QMainWindow):
         if config.PUSH_TO_TALK_KEY == config.TOGGLE_KEY and len(config.TOGGLE_KEY) == 1:
             toggle_hint = f"Shift+{config.TOGGLE_KEY}"
         instructions = QLabel(
-            f"Just start speaking, or hold {config.PUSH_TO_TALK_KEY} "
-            "to use push-to-talk.\n"
-            f"Press {toggle_hint} to switch modes."
+            "Speak to ask in hands-free mode.\n"
+            f"Hold {config.PUSH_TO_TALK_KEY} for push-to-talk. "
+            f"Press {toggle_hint} to switch modes.\n"
+            "Choose a reading source on the left. Name a vault note when you want to save."
         )
         instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        instructions.setWordWrap(True)
         instructions.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_BODY}px; "
             "background: transparent; border: none;"

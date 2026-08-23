@@ -17,7 +17,13 @@ import websocket
 
 import klaus.config as config
 from klaus.brain import AskCancelled, Exchange, _extract_sentences
-from klaus.notes import NotesManager, SAVE_NOTE_TOOL, SET_NOTES_FILE_TOOL
+from klaus.notes import (
+    NotesManager,
+    READ_NOTE_TOOL,
+    SAVE_NOTE_TOOL,
+    SEARCH_NOTES_TOOL,
+    SET_NOTES_FILE_TOOL,
+)
 from klaus.query_router import RouteDecision, default_route_decision, local_route_decision
 from klaus.search import TOOL_DEFINITION, WebSearch
 from klaus.tts import PCM_SAMPLE_RATE, TextToSpeech
@@ -98,7 +104,12 @@ class RealtimeBrain:
             tools.append(_as_realtime_tool(TOOL_DEFINITION))
         if self._notes is not None and self._notes.base_path not in ("", "."):
             tools.extend(
-                [_as_realtime_tool(SET_NOTES_FILE_TOOL), _as_realtime_tool(SAVE_NOTE_TOOL)]
+                [
+                    _as_realtime_tool(SEARCH_NOTES_TOOL),
+                    _as_realtime_tool(READ_NOTE_TOOL),
+                    _as_realtime_tool(SET_NOTES_FILE_TOOL),
+                    _as_realtime_tool(SAVE_NOTE_TOOL),
+                ]
             )
         return tools
 
@@ -465,6 +476,10 @@ class RealtimeBrain:
             return result
         if name == "set_notes_file" and self._notes is not None:
             return self._notes.set_file(str(arguments.get("file_path", "")))
+        if name == "search_notes" and self._notes is not None:
+            return self._notes.search_notes(str(arguments.get("query", "")))
+        if name == "read_note" and self._notes is not None:
+            return self._notes.read_note(str(arguments.get("file_path", "")))
         if name == "save_note" and self._notes is not None:
             return self._notes.save_note(str(arguments.get("content", "")))
         return json.dumps({"error": f"Unknown or unavailable tool: {name}"})
