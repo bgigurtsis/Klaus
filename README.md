@@ -40,7 +40,9 @@ python3.13 -m venv .venv-klaus
 .venv-klaus/bin/klaus
 ```
 
-The first-launch guide sets up your API key, reading source, microphone, local speech model, and optional Obsidian vault.
+### First time launch
+
+The first time launch guide sets up your API key, reading source, microphone, local speech model, and optional Obsidian vault.
 
 Klaus may ask for these macOS permissions:
 

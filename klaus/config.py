@@ -47,9 +47,16 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Microphone device index (default: -1, uses system default)
 # mic_index = -1
 
-# Realtime voice (default: cedar)
-# Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin
-# voice = "cedar"
+# Live conversation model (default: Gemini Live)
+# Options: gemini-3.1-flash-live-preview, gpt-realtime-2.1, gpt-realtime-2.1-mini
+# live_model = "gemini-3.1-flash-live-preview"
+
+# Reasoning effort (default: low)
+# Options: low, medium, high. Higher settings may take longer and cost more.
+# reasoning_effort = "low"
+
+# Live voice. Gemini defaults to Kore. GPT Realtime defaults to cedar.
+# voice = "Kore"
 
 # Input mode (default: voice_activation)
 # Options: voice_activation, push_to_talk
@@ -164,19 +171,42 @@ if _config_load_error is not None:
 
 load_dotenv()
 
-REALTIME_MODEL = "gpt-realtime-2.1"
+GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"
+OPENAI_LIVE_MODELS = ("gpt-realtime-2.1", "gpt-realtime-2.1-mini")
+LIVE_MODELS: dict[str, dict[str, str]] = {
+    GEMINI_LIVE_MODEL: {
+        "provider": "gemini",
+        "label": "Gemini Live",
+        "description": "Gemini Live with Google Search",
+    },
+    "gpt-realtime-2.1": {
+        "provider": "openai",
+        "label": "GPT Live 2.1",
+        "description": "GPT Realtime 2.1",
+    },
+    "gpt-realtime-2.1-mini": {
+        "provider": "openai",
+        "label": "GPT Live 2.1 mini",
+        "description": "GPT Realtime 2.1 mini",
+    },
+}
+DEFAULT_LIVE_MODEL = GEMINI_LIVE_MODEL
 _DEFAULT_PTT_KEY = "§"
 _DEFAULT_TOGGLE_KEY = "§"
 
-API_KEY_SLUGS: tuple[str, ...] = ("openai",)
+API_KEY_SLUGS: tuple[str, ...] = ("gemini", "openai")
 _API_KEY_ENV_VARS: dict[str, str] = {
+    "gemini": "GEMINI_API_KEY",
     "openai": "OPENAI_API_KEY",
 }
 
 
 @dataclass(frozen=True)
 class RuntimeSettings:
+    gemini_api_key: str
     openai_api_key: str
+    live_model: str
+    reasoning_effort: str
     obsidian_vault_path: str
     push_to_talk_key: str
     toggle_key: str
@@ -245,13 +275,25 @@ def _as_bool(value: object, default: bool) -> bool:
     return default
 
 
+def _as_live_model(value: object, default: str) -> str:
+    candidate = _as_str(value, default)
+    return candidate if candidate in LIVE_MODELS else default
+
+
+def _as_reasoning_effort(value: object, default: str) -> str:
+    candidate = _as_str(value, default).lower()
+    return candidate if candidate in {"low", "medium", "high"} else default
+
+
 _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
+    _SettingSpec("live_model", "live_model", DEFAULT_LIVE_MODEL, _as_live_model),
+    _SettingSpec("reasoning_effort", "reasoning_effort", "low", _as_reasoning_effort),
     _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
     _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
     _SettingSpec("camera_device_index", "camera_index", -2, _as_int),
     _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
-    _SettingSpec("voice", "voice", "cedar", _as_str),
+    _SettingSpec("voice", "voice", "Kore", _as_str),
     _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
     _SettingSpec("vad_sensitivity", "vad_sensitivity", 3, _as_int),
     _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.0, _as_float),
@@ -404,7 +446,10 @@ _api_key_sources: dict[str, str] = {slug: "missing" for slug in API_KEY_SLUGS}
 _runtime_settings: RuntimeSettings
 
 # Set by _apply_runtime_settings.
+GEMINI_API_KEY: str
 OPENAI_API_KEY: str
+LIVE_MODEL: str
+REASONING_EFFORT: str
 OBSIDIAN_VAULT_PATH: str
 PUSH_TO_TALK_KEY: str
 TOGGLE_KEY: str
@@ -432,7 +477,10 @@ SYSTEM_PROMPT: str
 
 
 _RUNTIME_EXPORTS: dict[str, str] = {
+    "GEMINI_API_KEY": "gemini_api_key",
     "OPENAI_API_KEY": "openai_api_key",
+    "LIVE_MODEL": "live_model",
+    "REASONING_EFFORT": "reasoning_effort",
     "OBSIDIAN_VAULT_PATH": "obsidian_vault_path",
     "PUSH_TO_TALK_KEY": "push_to_talk_key",
     "TOGGLE_KEY": "toggle_key",
@@ -501,6 +549,7 @@ def _settings_from_config(user_config: dict) -> RuntimeSettings:
             raw = os.getenv(spec.env_var, "")
         values[spec.runtime_field] = spec.coerce(raw, spec.default)
 
+    values["gemini_api_key"] = resolved_api_keys["gemini"]
     values["openai_api_key"] = resolved_api_keys["openai"]
     values["user_background"] = user_background
     values["system_prompt"] = _build_system_prompt(
@@ -514,6 +563,7 @@ def _apply_runtime_settings(settings: RuntimeSettings) -> None:
     global _api_keys
 
     _api_keys = {
+        "gemini": settings.gemini_api_key,
         "openai": settings.openai_api_key,
     }
     module_globals = globals()
@@ -523,7 +573,8 @@ def _apply_runtime_settings(settings: RuntimeSettings) -> None:
 
 def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> None:
     _log.info(
-        "API key: OpenAI=%s",
+        "API keys: Gemini=%s | OpenAI=%s",
+        "set" if settings.gemini_api_key else "missing",
         "set" if settings.openai_api_key else "missing",
     )
     if settings.obsidian_vault_path:
@@ -533,9 +584,11 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
 
     _log.info(
         (
-            "%s settings: hotkey=%s | camera=%d | voice=%s | input_mode=%s | log_level=%s"
+            "%s settings: model=%s | effort=%s | hotkey=%s | camera=%d | voice=%s | input_mode=%s | log_level=%s"
         ),
         prefix,
+        settings.live_model,
+        settings.reasoning_effort,
         settings.push_to_talk_key,
         settings.camera_device_index,
         settings.voice,
@@ -570,6 +623,23 @@ def get_runtime_settings() -> RuntimeSettings:
 
 def get_api_key_sources() -> dict[str, str]:
     return dict(_api_key_sources)
+
+
+def live_model_details(model: str | None = None) -> dict[str, str]:
+    """Return metadata for a supported live model."""
+    return LIVE_MODELS[model or LIVE_MODEL]
+
+
+def active_api_key_slug(settings: RuntimeSettings | None = None) -> str:
+    """Return the provider key that the selected live model needs."""
+    selected = settings or get_runtime_settings()
+    return LIVE_MODELS[selected.live_model]["provider"]
+
+
+def has_active_api_key(settings: RuntimeSettings | None = None) -> bool:
+    """Return whether the selected live model has an available API key."""
+    selected = settings or get_runtime_settings()
+    return bool(getattr(selected, f"{active_api_key_slug(selected)}_api_key"))
 
 
 # ---------------------------------------------------------------------------
@@ -622,6 +692,21 @@ def clear_api_key(slug: str) -> None:
 def save_api_key(openai: str) -> None:
     """Persist the OpenAI API key in Apple Keychain."""
     set_api_key("openai", openai)
+
+
+def save_live_model(model: str) -> None:
+    """Persist the selected Gemini Live or GPT Live model."""
+    if model not in LIVE_MODELS:
+        raise ValueError(f"Unknown live model: {model!r}")
+    _set_top_level_value("live_model", f'"{model}"')
+
+
+def save_reasoning_effort(effort: str) -> None:
+    """Persist the selected live-model reasoning effort."""
+    normalized = effort.strip().lower()
+    if normalized not in {"low", "medium", "high"}:
+        raise ValueError(f"Unknown reasoning effort: {effort!r}")
+    _set_top_level_value("reasoning_effort", f'"{normalized}"')
 
 
 def _set_top_level_value(key: str, value: str) -> None:

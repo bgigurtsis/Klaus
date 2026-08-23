@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 KEY_PATTERNS: list[tuple[str, str, str, int]] = [
+    ("Gemini", "gemini", "AIza", 20),
     ("OpenAI", "openai", "sk-", 20),
 ]
 
-# GPT Realtime powers the core experience.
-REQUIRED_API_KEY_SLUGS: frozenset[str] = frozenset({"openai"})
-
 KEY_URLS = {
+    "gemini": "https://aistudio.google.com/app/apikey",
     "openai": "https://platform.openai.com/api-keys",
 }
 
