@@ -182,7 +182,7 @@ class Signals(QObject):
     mode_changed = pyqtSignal(str)
     transcription_ready = pyqtSignal(str, float, bytes)  # text, timestamp, thumbnail_bytes
     response_ready = pyqtSignal(str, float, str)  # text, timestamp, exchange_id
-    assistant_sentence = pyqtSignal(str)  # streamed sentence for live chat display
+    assistant_text_delta = pyqtSignal(str)  # live transcript fragment for chat display
     turn_cancelled = pyqtSignal()
     error = pyqtSignal(str)
     exchange_count_updated = pyqtSignal(int)
@@ -393,7 +393,7 @@ class KlausApp:
         sig.state_changed.connect(self._on_state_changed)
         sig.transcription_ready.connect(self._on_transcription_ready)
         sig.response_ready.connect(self._on_response_ready)
-        sig.assistant_sentence.connect(self._on_assistant_sentence)
+        sig.assistant_text_delta.connect(self._on_assistant_text_delta)
         sig.turn_cancelled.connect(self._on_turn_cancelled_ui)
         sig.error.connect(self._on_error)
         sig.exchange_count_updated.connect(self._window.status_widget.set_exchange_count)
@@ -876,7 +876,7 @@ class KlausApp:
                 on_sessions_changed=self._signals.sessions_changed.emit,
                 on_exchange_count_updated=self._update_exchange_count,
                 on_speaking_started=self._on_pipeline_speaking_started,
-                on_assistant_sentence=self._signals.assistant_sentence.emit,
+                on_assistant_text_delta=self._signals.assistant_text_delta.emit,
                 on_cancelled=self._on_pipeline_cancelled,
             )
             self._question_pipeline.run(
@@ -927,8 +927,8 @@ class KlausApp:
         )
 
     @_safe_slot
-    def _on_assistant_sentence(self, text: str) -> None:
-        """Append a streamed sentence to the live assistant card."""
+    def _on_assistant_text_delta(self, text: str) -> None:
+        """Append a live transcript fragment to the assistant card."""
         self._window.chat_widget.append_assistant_stream(text)
 
     @_safe_slot

@@ -22,7 +22,7 @@ from klaus.notes import (
     SET_NOTES_FILE_TOOL,
 )
 from klaus.query_router import RouteDecision, default_route_decision, local_route_decision
-from klaus.realtime import AskCancelled, Exchange, _extract_sentences, wav_to_pcm24k
+from klaus.realtime import AskCancelled, Exchange, wav_to_pcm24k
 
 logger = logging.getLogger(__name__)
 _RESPONSE_TIMEOUT_SECONDS = 30.0
@@ -111,7 +111,7 @@ class GeminiLiveBrain:
         image_base64: str | None = None,
         reading_text: str | None = None,
         notes_context: str | None = None,
-        on_sentence: Callable[[str], None] | None = None,
+        on_text_delta: Callable[[str], None] | None = None,
         on_speaking_started: Callable[[], None] | None = None,
         on_first_audio: Callable[[], None] | None = None,
         route_decision: RouteDecision | None = None,
@@ -132,7 +132,7 @@ class GeminiLiveBrain:
                     image_base64=image_base64 if route.use_image else None,
                     reading_text=reading_text if route.use_image else None,
                     instructions=self._turn_instructions(route, notes_context),
-                    on_sentence=on_sentence,
+                    on_text_delta=on_text_delta,
                     on_speaking_started=on_speaking_started,
                     on_first_audio=on_first_audio,
                     external_cancel_event=cancel_event,
@@ -171,7 +171,7 @@ class GeminiLiveBrain:
                     image_base64=None,
                     reading_text=None,
                     instructions=config.SYSTEM_PROMPT,
-                    on_sentence=None,
+                    on_text_delta=None,
                     on_speaking_started=None,
                     on_first_audio=None,
                     external_cancel_event=None,
@@ -185,7 +185,7 @@ class GeminiLiveBrain:
         image_base64: str | None,
         reading_text: str | None,
         instructions: str,
-        on_sentence: Callable[[str], None] | None,
+        on_text_delta: Callable[[str], None] | None,
         on_speaking_started: Callable[[], None] | None,
         on_first_audio: Callable[[], None] | None,
         external_cancel_event: threading.Event | None,
@@ -231,7 +231,6 @@ class GeminiLiveBrain:
         playback_thread.start()
         self._response_active = True
         transcript = ""
-        transcript_buffer = ""
 
         try:
             try:
@@ -266,13 +265,8 @@ class GeminiLiveBrain:
                                 delta = str(getattr(output, "text", "") or "")
                                 if delta:
                                     transcript += delta
-                                    transcript_buffer += delta
-                                    sentences, transcript_buffer = _extract_sentences(
-                                        transcript_buffer
-                                    )
-                                    if on_sentence:
-                                        for sentence in sentences:
-                                            on_sentence(sentence)
+                                    if on_text_delta:
+                                        on_text_delta(delta)
                                 model_turn = getattr(server_content, "model_turn", None)
                                 for part in getattr(model_turn, "parts", []) or []:
                                     inline_data = getattr(part, "inline_data", None)
@@ -327,9 +321,6 @@ class GeminiLiveBrain:
 
         if self._cancelled(external_cancel_event):
             raise AskCancelled()
-        final_fragment = transcript_buffer.strip()
-        if final_fragment and on_sentence:
-            on_sentence(final_fragment)
         answer = transcript.strip()
         if not answer:
             raise RuntimeError("Gemini Live response finished without a transcript")

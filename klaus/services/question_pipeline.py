@@ -19,7 +19,7 @@ class TurnTimings:
     start: float = field(default_factory=time.perf_counter)
     transcript_ready: float | None = None
     route_ready: float | None = None
-    first_sentence: float | None = None
+    first_text_delta: float | None = None
     first_audio: float | None = None
     turn_done: float | None = None
 
@@ -32,7 +32,7 @@ class TurnTimings:
         return (
             f"transcript={self._delta_ms(self.transcript_ready)}ms "
             f"route={self._delta_ms(self.route_ready)}ms "
-            f"first_sentence={self._delta_ms(self.first_sentence)}ms "
+            f"first_text_delta={self._delta_ms(self.first_text_delta)}ms "
             f"first_audio={self._delta_ms(self.first_audio)}ms "
             f"done={self._delta_ms(self.turn_done)}ms"
         )
@@ -55,7 +55,7 @@ class PipelineHooks:
     on_sessions_changed: Callable[[], None]
     on_exchange_count_updated: Callable[[], None]
     on_speaking_started: Callable[[], None]
-    on_assistant_sentence: Callable[[str], None] | None = None
+    on_assistant_text_delta: Callable[[str], None] | None = None
     on_cancelled: Callable[[], None] | None = None
 
 
@@ -167,15 +167,15 @@ class QuestionPipeline:
         timings: TurnTimings,
     ) -> None:
         """Run one native speech-to-speech Realtime turn."""
-        first_sentence = False
+        received_text = False
 
-        def on_sentence(text: str) -> None:
-            nonlocal first_sentence
-            if not first_sentence:
-                first_sentence = True
-                timings.first_sentence = time.perf_counter()
-            if hooks.on_assistant_sentence:
-                hooks.on_assistant_sentence(text)
+        def on_text_delta(text: str) -> None:
+            nonlocal received_text
+            if not received_text:
+                received_text = True
+                timings.first_text_delta = time.perf_counter()
+            if hooks.on_assistant_text_delta:
+                hooks.on_assistant_text_delta(text)
 
         def on_first_audio() -> None:
             timings.first_audio = time.perf_counter()
@@ -193,7 +193,7 @@ class QuestionPipeline:
                 image_base64=image_b64,
                 reading_text=reading_text,
                 notes_context=notes_context,
-                on_sentence=on_sentence,
+                on_text_delta=on_text_delta,
                 on_speaking_started=hooks.on_speaking_started,
                 on_first_audio=on_first_audio,
                 route_decision=route_decision,

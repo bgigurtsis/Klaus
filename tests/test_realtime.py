@@ -171,7 +171,11 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
             },
             {
                 "type": "response.output_audio_transcript.delta",
-                "delta": "A useful answer.",
+                "delta": "A useful",
+            },
+            {
+                "type": "response.output_audio_transcript.delta",
+                "delta": " answer.",
             },
             {
                 "type": "response.done",
@@ -192,7 +196,7 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
         settings=_settings(),
         websocket_factory=websocket_factory,
     )
-    sentences: list[str] = []
+    text_deltas: list[str] = []
     speaking: list[bool] = []
 
     exchange = brain.ask_audio(
@@ -200,7 +204,7 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
         question="Explain this passage",
         image_base64="unused-image",
         reading_text="Exact selected passage",
-        on_sentence=sentences.append,
+        on_text_delta=text_deltas.append,
         on_speaking_started=lambda: speaking.append(True),
         route_decision=_route(),
     )
@@ -209,7 +213,7 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
     assert factory_calls[0][1]["header"] == ["Authorization: Bearer test-key"]
     assert exchange.assistant_text == "A useful answer."
     assert exchange.user_text == "Explain this passage"
-    assert sentences == ["A useful answer."]
+    assert text_deltas == ["A useful", " answer."]
     assert speaking == [True]
     assert np.array_equal(audio_output.chunks[0], np.array([10, 20, 30], dtype=np.int16))
 

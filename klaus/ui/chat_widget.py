@@ -150,8 +150,7 @@ class MessageCard(QFrame):
         self._body.setText(text)
 
     def append_text(self, text: str) -> None:
-        combined = f"{self._text} {text}".strip() if self._text else text
-        self.set_text(combined)
+        self.set_text(self._text + text)
 
     def set_exchange_id(self, exchange_id: str) -> None:
         self._exchange_id = exchange_id
@@ -279,9 +278,9 @@ class ChatWidget(QWidget):
         logger.debug("Added %s message", role)
 
     def append_assistant_stream(self, text: str) -> None:
-        """Append a streamed sentence to the live assistant card.
+        """Append a streamed transcript fragment to the live assistant card.
 
-        Creates the card on the first sentence of a response.
+        Creates the card on the first fragment of a response.
         """
         if self._streaming_card is None:
             was_near_bottom = self._is_near_bottom()

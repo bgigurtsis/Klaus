@@ -39,7 +39,8 @@ def test_voice_dock_explains_each_input_mode(qt_app) -> None:
 
 def test_interrupted_stream_stays_visible_and_marked(qt_app) -> None:
     chat = ChatWidget()
-    chat.append_assistant_stream("The answer starts here.")
+    chat.append_assistant_stream("The answer")
+    chat.append_assistant_stream(" starts here.")
     card = chat._streaming_card
 
     chat.abort_assistant_stream()
@@ -48,3 +49,14 @@ def test_interrupted_stream_stays_visible_and_marked(qt_app) -> None:
     assert card._body.text() == "The answer starts here."
     assert card._status_label.text() == "Interrupted"
     assert card._status_label.isHidden() is False
+
+
+def test_streamed_text_preserves_provider_fragment_boundaries(qt_app) -> None:
+    chat = ChatWidget()
+
+    chat.append_assistant_stream("Stream")
+    chat.append_assistant_stream("ing text")
+    chat.append_assistant_stream(" as it arrives.")
+
+    assert chat._streaming_card is not None
+    assert chat._streaming_card._body.text() == "Streaming text as it arrives."

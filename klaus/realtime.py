@@ -50,16 +50,6 @@ class Exchange:
     notes_file_changed: bool = False
 
 
-def _extract_sentences(buf: str) -> tuple[list[str], str]:
-    """Split complete sentences from an in-progress transcript."""
-    import re
-
-    parts = re.split(r"(?<=[.!?])\s+", buf)
-    if len(parts) <= 1:
-        return [], buf
-    return [part.strip() for part in parts[:-1] if part.strip()], parts[-1]
-
-
 def wav_to_pcm24k(wav_bytes: bytes) -> bytes:
     """Convert a PCM WAV recording to mono 24 kHz signed 16-bit PCM."""
     with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
@@ -189,7 +179,7 @@ class RealtimeBrain:
         image_base64: str | None = None,
         reading_text: str | None = None,
         notes_context: str | None = None,
-        on_sentence: Callable[[str], None] | None = None,
+        on_text_delta: Callable[[str], None] | None = None,
         on_speaking_started: Callable[[], None] | None = None,
         on_first_audio: Callable[[], None] | None = None,
         route_decision: RouteDecision | None = None,
@@ -272,7 +262,6 @@ class RealtimeBrain:
             playback_thread.start()
 
             transcript = ""
-            transcript_buffer = ""
             cancelled = False
             cancel_deadline: float | None = None
             try:
@@ -310,11 +299,8 @@ class RealtimeBrain:
                     elif event_type == "response.output_audio_transcript.delta":
                         delta = str(event.get("delta", ""))
                         transcript += delta
-                        transcript_buffer += delta
-                        sentences, transcript_buffer = _extract_sentences(transcript_buffer)
-                        if on_sentence:
-                            for sentence in sentences:
-                                on_sentence(sentence)
+                        if delta and on_text_delta:
+                            on_text_delta(delta)
                     elif event_type == "response.output_audio_transcript.done":
                         final = str(event.get("transcript", "")).strip()
                         if final:
@@ -382,9 +368,6 @@ class RealtimeBrain:
             if cancelled:
                 raise AskCancelled()
 
-            final_fragment = transcript_buffer.strip()
-            if final_fragment and on_sentence:
-                on_sentence(final_fragment)
             answer = transcript.strip()
             if not answer:
                 raise RuntimeError("Realtime response finished without a transcript")
