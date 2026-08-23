@@ -228,6 +228,9 @@ class QuestionPipeline:
                 assistant_text=exchange.assistant_text,
                 image_base64=exchange.image_base64,
                 searches=exchange.searches,
+                note_file_path=(
+                    self._notes.current_path if exchange.notes_file_changed else None
+                ),
             )
             exchange_id = record.id
 
@@ -315,6 +318,9 @@ class QuestionPipeline:
                 assistant_text=exchange.assistant_text,
                 image_base64=exchange.image_base64,
                 searches=exchange.searches,
+                note_file_path=(
+                    self._notes.current_path if exchange.notes_file_changed else None
+                ),
             )
             exchange_id = record.id
 

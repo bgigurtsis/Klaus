@@ -107,6 +107,19 @@ class NotesManager:
         return str(self._base)
 
     @property
+    def current_path(self) -> str | None:
+        """Return the absolute path for the active notes file."""
+        if not self.current_file or not self._base or not self._base.parts:
+            return None
+        base = self._base.expanduser().resolve()
+        full = (base / self.current_file).resolve()
+        try:
+            full.relative_to(base)
+        except ValueError:
+            return None
+        return str(full)
+
+    @property
     def changed(self) -> bool:
         """True if the notes file was changed since the last reset."""
         return self._changed

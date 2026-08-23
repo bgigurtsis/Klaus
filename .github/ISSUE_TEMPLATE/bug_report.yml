@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem in Klaus.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include API keys, private notes, transcripts, or page images.
+  - type: input
+    id: version
+    attributes:
+      label: Klaus version
+      placeholder: 0.3.3
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: 15.6
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open Klaus.
+        2. Choose a reading source.
+        3. Ask a question.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Remove keys, note paths, transcripts, and personal data.
+      render: shell

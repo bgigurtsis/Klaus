@@ -734,6 +734,7 @@ class KlausApp:
                 text=ex.assistant_text,
                 timestamp=ex.created_at,
                 exchange_id=ex.id,
+                note_file_path=ex.note_file_path,
             )
 
     @_safe_slot
@@ -943,13 +944,18 @@ class KlausApp:
 
     @_safe_slot
     def _on_response_ready(self, text: str, timestamp: float, exchange_id: str) -> None:
-        if self._window.chat_widget.finalize_assistant_stream(text, exchange_id):
+        record = self._memory.get_exchange(exchange_id) if exchange_id else None
+        note_file_path = record.note_file_path if record else None
+        if self._window.chat_widget.finalize_assistant_stream(
+            text, exchange_id, note_file_path,
+        ):
             return
         self._window.chat_widget.add_message(
             role="assistant",
             text=text,
             timestamp=timestamp,
             exchange_id=exchange_id,
+            note_file_path=note_file_path,
         )
 
     @_safe_slot

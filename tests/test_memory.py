@@ -110,6 +110,20 @@ class TestExchanges:
         assert len(stored) == 1
         assert stored[0]["query"] == "p-value meaning"
 
+    def test_exchange_persists_note_file_link(self, mem, tmp_path):
+        session = mem.create_session("Paper")
+        note_path = str(tmp_path / "Research Notes.md")
+        record = mem.save_exchange(
+            session.id,
+            "Save this",
+            "Saved.",
+            note_file_path=note_path,
+        )
+
+        assert record.note_file_path == note_path
+        assert mem.get_exchange(record.id).note_file_path == note_path
+        assert mem.get_exchanges(session.id)[0].note_file_path == note_path
+
     def test_count_exchanges_total(self, mem):
         s1 = mem.create_session("Paper 1")
         s2 = mem.create_session("Paper 2")

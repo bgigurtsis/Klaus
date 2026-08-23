@@ -32,6 +32,7 @@ class ExchangeRecord:
     image_hash: str | None
     searches_json: str
     created_at: float
+    note_file_path: str | None = None
 
 
 class Memory:
@@ -80,6 +81,7 @@ class Memory:
                 ON knowledge_profile(topic);
         """)
         self._migrate_sessions_notes_file()
+        self._migrate_exchanges_note_file_path()
         self._conn.commit()
 
     def _migrate_sessions_notes_file(self) -> None:
@@ -91,6 +93,16 @@ class Memory:
         if "notes_file" not in cols:
             self._conn.execute("ALTER TABLE sessions ADD COLUMN notes_file TEXT")
             logger.info("Migrated sessions table: added notes_file column")
+
+    def _migrate_exchanges_note_file_path(self) -> None:
+        """Add the note link target to exchanges created by note actions."""
+        cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(exchanges)").fetchall()
+        ]
+        if "note_file_path" not in cols:
+            self._conn.execute("ALTER TABLE exchanges ADD COLUMN note_file_path TEXT")
+            logger.info("Migrated exchanges table: added note_file_path column")
 
     # -- Sessions --
 
@@ -165,6 +177,7 @@ class Memory:
         assistant_text: str,
         image_base64: str | None = None,
         searches: list[dict] | None = None,
+        note_file_path: str | None = None,
     ) -> ExchangeRecord:
         now = time.time()
         image_hash = None
@@ -179,11 +192,13 @@ class Memory:
             image_hash=image_hash,
             searches_json=json.dumps(searches or []),
             created_at=now,
+            note_file_path=note_file_path,
         )
         self._conn.execute(
             """INSERT INTO exchanges
-               (id, session_id, user_text, assistant_text, image_hash, searches_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (id, session_id, user_text, assistant_text, image_hash, searches_json,
+                created_at, note_file_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 record.id,
                 record.session_id,
@@ -192,6 +207,7 @@ class Memory:
                 record.image_hash,
                 record.searches_json,
                 record.created_at,
+                record.note_file_path,
             ),
         )
         self._conn.execute(
@@ -216,9 +232,28 @@ class Memory:
                 image_hash=r["image_hash"],
                 searches_json=r["searches_json"],
                 created_at=r["created_at"],
+                note_file_path=r["note_file_path"],
             )
             for r in rows
         ]
+
+    def get_exchange(self, exchange_id: str) -> ExchangeRecord | None:
+        """Return one exchange by ID."""
+        row = self._conn.execute(
+            "SELECT * FROM exchanges WHERE id = ?", (exchange_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return ExchangeRecord(
+            id=row["id"],
+            session_id=row["session_id"],
+            user_text=row["user_text"],
+            assistant_text=row["assistant_text"],
+            image_hash=row["image_hash"],
+            searches_json=row["searches_json"],
+            created_at=row["created_at"],
+            note_file_path=row["note_file_path"],
+        )
 
     def count_exchanges(self, session_id: str | None = None) -> int:
         if session_id:

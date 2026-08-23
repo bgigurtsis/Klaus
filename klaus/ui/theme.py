@@ -277,6 +277,19 @@ QPushButton:hover {{
     background: {SURFACE_OVERLAY};
     border-color: {BORDER_EMPHASIS};
 }}
+#klaus-sidebar-btn {{
+    color: {TEXT_SECONDARY};
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 0;
+    font-size: 18px;
+}}
+#klaus-sidebar-btn:hover {{
+    color: {TEXT_PRIMARY};
+    background: {SURFACE_OVERLAY};
+    border-color: {BORDER_EMPHASIS};
+}}
 
 /* ===== Splitter ===== */
 QSplitter::handle {{
@@ -515,6 +528,15 @@ QLabel#card-timestamp {{
 QLabel#card-body {{
     color: {TEXT_PRIMARY};
     font-size: {FONT_SIZE_BODY}px;
+}}
+
+QLabel#card-note-link {{
+    color: {USER_ACCENT};
+    font-size: {FONT_SIZE_SMALL}px;
+    padding-top: 4px;
+}}
+QLabel#card-note-link a {{
+    color: {USER_ACCENT};
 }}
 
 /* Card thumbnail */

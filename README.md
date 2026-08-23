@@ -1,304 +1,131 @@
-# Klaus
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bgigurtsis/Klaus/main/klaus/ui/icon.png" width="320" alt="Klaus, a scholarly lobster reading a research paper">
+</p>
 
-**Voice-powered research assistant for paper and PDFs on macOS.**
+<h1 align="center">Klaus</h1>
 
-Klaus can answer questions about what you are reading without taking you away from the page. It may read physical paper through Apple's Desk View. It can also read the active PDF window on your Mac. For PDFs, Klaus can use exact selected text when macOS exposes it. It may use a window image otherwise.
+<p align="center">
+  <strong>A voice assistant for reading papers and PDFs on macOS.</strong>
+</p>
 
-The experience is tuned for fast study loops: read, ask, clarify, continue. Klaus searches the web when it's unsure about a claim, remembers context across turns, and can write notes directly to your Obsidian vault on request.
+<p align="center">
+  <a href="https://github.com/bgigurtsis/Klaus/actions/workflows/ci.yml"><img src="https://github.com/bgigurtsis/Klaus/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://pypi.org/project/klaus-assistant/"><img src="https://img.shields.io/pypi/v/klaus-assistant" alt="PyPI version"></a>
+  <img src="https://img.shields.io/badge/macOS-12%2B-111111" alt="macOS 12 or later">
+  <a href="https://github.com/bgigurtsis/Klaus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-6f55a5" alt="MIT License"></a>
+</p>
 
-Under the hood, WebRTC voice-activity detection (or push-to-talk) feeds [Moonshine](https://github.com/usefulsensors/moonshine) Medium, a local speech-to-text model. This model is downloaded on first use. A local query router decides what context each question needs. The primary voice engine sends the recorded question and reading context to `gpt-realtime-2.1` over one persistent WebSocket conversation. An optional `legacy` engine can instead use `claude-sonnet-5` with streamed OpenAI `gpt-4o-mini-tts` output.
+Klaus can answer spoken questions about the page in front of you. It may read papers through Apple Desk View. It can also use selected text or an image from the active PDF window. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian.
 
-## Table of Contents
+## Quick setup
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Quick Start](#quick-start)
-- [First Launch](#first-launch)
-- [Reading Sources](#reading-sources)
-- [Usage](#usage)
-- [Latency and Cost](#latency-and-cost)
-- [Configuration](#configuration)
-- [Architecture](#architecture)
-- [Data Flow](#data-flow)
-- [Module Layout](#module-layout)
-- [Data Storage](#data-storage)
-- [License](#license)
+You need macOS 12 or later, a microphone, and an [OpenAI API key](https://platform.openai.com/api-keys).
 
-## Features
-
-- **Two reading workflows** -- Klaus can read physical paper through Desk View or PDFs through the active macOS window
-- **Text-first PDF context** -- Klaus can prefer selected PDF text, with a window image as fallback
-- **Web search** -- Tavily search can verify a claim when GPT Realtime needs current information
-- **Voice input** -- voice activation can require a sustained voiced signal before recording, while push-to-talk may remain available; speech-to-text runs locally via [Moonshine](https://github.com/usefulsensors/moonshine) Medium
-- **Native speech-to-speech output** -- GPT Realtime can stream audio and its transcript as the answer forms
-- **Legacy voice fallback** -- Claude with OpenAI TTS remains available through one config setting
-- **Smart query routing** -- a local router decides whether each question needs an image, history, memory, or notes
-- **Obsidian skill** -- Klaus can search and read existing notes, follow their Markdown style, add wikilinks, and append sourced notes without overwriting existing text
-- **Conversation memory** -- SQLite-backed session history with persistent knowledge profile
-- **Secure API key storage** -- Apple Keychain auto-migrates legacy plaintext keys from `config.toml`
-- **Native macOS integration** -- AVFoundation camera names, Desk View capture, active-window capture, and selected PDF text
-
-## Requirements
-
-### Hardware
-
-| Component | Details |
-|-----------|---------|
-| Camera | An iPhone that supports Desk View may handle physical paper; PDFs need no camera |
-| Microphone | Built-in or external; selected during setup |
-| Audio output | Built-in or external; used for spoken answers |
-
-### Software
-
-Homebrew handles all dependencies automatically. No manual installs are needed beyond the commands in [Quick Start](#quick-start).
-
-<details>
-<summary>Building from source</summary>
-
-Building from source requires macOS, Python 3.11-3.13, and PortAudio (`brew install python@3.13 portaudio`).
-
-</details>
-
-### API Keys
-
-Klaus requires an OpenAI key. Tavily and Anthropic keys enable optional features. The setup wizard asks for them on first launch. On macOS, Klaus stores these keys in Apple Keychain.
-
-| Provider | Purpose | Get a key |
-|----------|---------|-----------|
-| OpenAI | Required. Live speech, page reasoning, and spoken answers | [platform.openai.com](https://platform.openai.com/api-keys) |
-| Tavily | Optional. Web search | [app.tavily.com](https://app.tavily.com/home) |
-| Anthropic | Optional. Legacy Claude voice engine | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-
-**Key storage on macOS** -- keys are stored in **Apple Keychain**. Klaus resolves each key in this order:
-
-1. Environment variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `TAVILY_API_KEY`)
-2. Apple Keychain
-3. Legacy `~/.klaus/config.toml` `[api_keys]` section (fallback if Keychain is unavailable)
-
-Existing plaintext keys in `config.toml` are automatically migrated to Keychain on first launch.
-
-## Quick Start
-
-**Homebrew:**
-
-```
+```sh
 brew tap bgigurtsis/klaus
 brew install klaus
 klaus
 ```
 
-On first launch, the setup wizard can show the main study loop before guiding you through API keys, reading source, microphone, offline speech, and Obsidian setup.
+The first-launch guide sets up your API keys, reading source, microphone, local speech model, and optional Obsidian vault.
 
-> **macOS permissions:** macOS may request Accessibility for global hotkeys and selected PDF text. It may also request Screen Recording so Klaus can capture Desk View or a PDF window. You can deny Accessibility and use the in-app buttons, though selected-text capture may then use the window-image fallback.
+Klaus may ask for these macOS permissions:
 
-> **macOS 26:** `pynput` global hotkeys can crash across supported Python versions. Klaus automatically disables global hotkeys and keeps in-app hotkeys active.
+- **Microphone** for spoken questions.
+- **Screen Recording** for Desk View and PDF window images.
+- **Accessibility** for global hotkeys and selected PDF text.
 
-### Updating
+You can deny Accessibility and use the buttons in Klaus. PDF questions may then use a window image instead of selected text.
 
-`brew upgrade klaus`
+## What Klaus can do
 
-### From Source
+- Read papers through Apple Desk View.
+- Read selected text or capture the active PDF window.
+- Answer through one live GPT Realtime voice conversation.
+- Stop an answer when you start speaking.
+- Search the web through Tavily when current information matters.
+- Search, read, and append notes inside a configured Obsidian vault.
+- Keep local reading sessions and conversation history.
 
-```
+## Use Klaus
+
+### Read a paper
+
+1. Open Apple Desk View.
+2. Choose **Desk View: paper** in Klaus.
+3. Frame the page and ask a question.
+
+### Read a PDF
+
+1. Open the PDF in Preview, a browser, or another macOS app.
+2. Choose **Active window: PDF** in Klaus.
+3. Keep the PDF window in front.
+4. Select text when you want Klaus to use an exact passage.
+
+### Control the conversation
+
+Klaus starts in hands-free mode. Hold `§` for push-to-talk. Press `Shift+§` to switch modes. Start speaking over an answer to interrupt it.
+
+### Save an Obsidian note
+
+Choose a vault during setup or in **Settings**. Then say where Klaus should save the note:
+
+> Save this to Research/Agent Notes.md.
+
+Klaus accepts only paths inside that vault. It appends to existing notes instead of replacing them.
+
+## API keys and data
+
+| Provider | Required | Used for |
+|---|---:|---|
+| [OpenAI](https://platform.openai.com/api-keys) | Yes | Live voice, page reasoning, and spoken answers |
+| [Tavily](https://app.tavily.com/home) | No | Web search |
+| [Anthropic](https://console.anthropic.com/settings/keys) | No | Legacy Claude voice engine |
+
+Klaus stores API keys in Apple Keychain. It stores settings and conversation history under `~/.klaus/`. It does not store captured page images in its database.
+
+Provider use may incur charges. Read the [privacy notes](https://github.com/bgigurtsis/Klaus/blob/main/PRIVACY.md) before you connect accounts or private notes.
+
+## Settings
+
+Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.klaus/config.toml`.
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `voice_engine` | `realtime` | Use GPT Realtime or the `legacy` Claude and OpenAI TTS path |
+| `camera_index` | `0` | Use Desk View with `-2`, active PDF with `-3`, or audio only with `-1` |
+| `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
+| `stt_moonshine_model` | `medium` | Choose the local speech model size |
+| `log_level` | `INFO` | Set log detail |
+
+## Build from source
+
+Install Python 3.11 through 3.13 and PortAudio first.
+
+```sh
+brew install python@3.13 portaudio
 git clone https://github.com/bgigurtsis/Klaus.git
 cd Klaus
-python3.12 -m venv .venv
-.venv/bin/pip install -e .
+python3.13 -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest -q
 .venv/bin/klaus
 ```
 
-To add Klaus to Finder and Spotlight on macOS, create a virtual environment in
-the checkout, then run:
+To add the development build to Finder and Spotlight:
 
-```
+```sh
 ./scripts/install-macos-app.sh
 open "$HOME/Applications/Klaus.app"
 ```
 
-The app uses the checkout's `.venv`, so rerun the installer if you move the
-checkout. Launch errors are written to `~/Library/Logs/Klaus/Klaus.log`.
+The app points to this checkout. Rerun the installer after you move the repository.
 
-## First Launch
+## Project
 
-The opening screen can show four ways to use Klaus before setup starts:
+- Read the [contribution guide](https://github.com/bgigurtsis/Klaus/blob/main/CONTRIBUTING.md) before you open a pull request.
+- Follow the [security policy](https://github.com/bgigurtsis/Klaus/blob/main/SECURITY.md) to report suspected vulnerabilities.
+- Klaus uses the [MIT License](https://github.com/bgigurtsis/Klaus/blob/main/LICENSE).
+- The bundled Inter fonts retain the [SIL Open Font License](https://github.com/bgigurtsis/Klaus/blob/main/klaus/ui/fonts/LICENSE.txt).
 
-- Choose Desk View for paper, or keep a PDF window frontmost and select exact text when useful.
-- Speak in hands-free mode, or hold the push-to-talk key. Speak over an answer to interrupt it.
-- Ask Klaus to check current facts when Tavily is configured. Reading sessions may keep their questions and answers.
-- Choose an Obsidian vault. Then name a note when you ask Klaus to save something.
-
-The last setup screen can show the active push-to-talk and mode-switch keys. You can change every setup choice later in **Settings**.
-
-## Reading Sources
-
-Klaus can expose two first-class macOS workflows from the selector above the live preview or from **Settings > Reading**.
-
-### Physical paper through Desk View
-
-1. Open Apple's Desk View app.
-2. Place the paper in the Desk View reading area.
-3. Use bright, even light so small text can stay sharp.
-4. Choose **Desk View: paper** in Klaus.
-5. Ask a question while you point at or read the relevant passage.
-
-Klaus may capture the Desk View window itself, so it does not need a separate document camera. Desk View quality can depend on page size, lighting, camera distance, and the iPhone model.
-
-### PDFs in a macOS app
-
-1. Open the PDF in Preview, a browser, or another reading app.
-2. Choose **Active window: PDF** in Klaus.
-3. Keep the PDF window frontmost while you read.
-4. Select a passage when you want exact text context, then ask your question.
-
-Klaus can prefer selected text when the app exposes it through macOS Accessibility. It may capture the active window when no usable selection exists.
-
-Existing configs may still use physical camera indices. Klaus can auto-rotate those camera frames according to `camera_rotation` in `~/.klaus/config.toml`.
-
-## Usage
-
-Klaus supports two input modes:
-
-- **Voice-activated** (default) -- start speaking and Klaus detects your voice automatically via WebRTC VAD. After a brief silence, it finalizes your question and starts processing.
-- **Push-to-talk** -- hold the PTT key (default `F2`) to record, release to send.
-
-Toggle between modes with `Shift+§` or use the mode button in the UI.
-
-When you finish speaking, Klaus may collect selected text or a reading-window image according to the question route. GPT Realtime can answer from that context, and it may search the web through Tavily when needed. Its response can start playing before the full answer finishes. The optional `legacy` engine sends the same context through Claude and OpenAI TTS.
-
-### Interrupt an answer
-
-Start speaking while Klaus answers. Klaus stops playback after it confirms your voice, cancels the server response, and removes unheard audio from the Realtime conversation. Your follow-up can then refer to the part you heard. You can also select **Interrupt** in the voice dock while Klaus thinks or speaks.
-
-### Obsidian skill
-
-Choose your vault root in the setup wizard or **Settings**. Then use requests such as:
-
-- "Save this to Research/Agent Notes.md."
-- "Find my entropy notes and add this quote with the page number."
-- "Read Research/Agent Notes.md, then add this without duplicating anything."
-
-Klaus can search note paths and text before choosing a file. It can read an existing note before appending content. The bundled Obsidian skill can tell Klaus to preserve local style, use wikilinks only for clear connections, and tie exact quotes to visible source locations.
-
-Klaus will accept only vault-relative note paths. It will append to existing files without overwriting their current text.
-
-## Latency and Cost
-
-Klaus can log transcript, route, first-sentence, first-audio, and completion timing for each turn. Actual latency may depend on the Mac, network, source size, route, and provider load.
-
-Moonshine transcription can run on the Mac without an STT API charge. GPT Realtime may incur OpenAI audio, text, and image charges. The `legacy` engine may incur Anthropic and OpenAI TTS charges instead. Each provider calculates charges from its current pricing and the context sent for each turn.
-
-## Configuration
-
-Settings live in `~/.klaus/config.toml` (created on first run). Edit any line to override defaults:
-
-| Setting | Default | Notes |
-|---------|---------|-------|
-| `hotkey` | `F2` | Push-to-talk key |
-| `toggle_key` | `§` | Toggle between voice-activated and push-to-talk with Shift held |
-| `input_mode` | `voice_activation` | Or `push_to_talk` |
-| `voice` | `cedar` | Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin |
-| `voice_engine` | `realtime` | `realtime` for GPT speech-to-speech or `legacy` for Claude plus OpenAI TTS |
-| `tts_speed` | `1.0` | 0.25 to 4.0 |
-| `camera_index` | `0` | `-2` for Desk View, `-3` for active PDF window, `-1` for audio only, or a camera index |
-| `mic_index` | `-1` | `-1` uses system default microphone |
-| `camera_rotation` | `auto` | `auto`, `none`, `90`, `180`, `270` |
-| `camera_width` / `camera_height` | `1920` / `1080` | Camera resolution |
-| `vad_sensitivity` | `3` | 0-3, higher = more aggressive noise filtering |
-| `vad_silence_timeout` | `1.0` | Seconds of silence before voice activation finalizes |
-| `vad_start_trigger_ms` | `90` | Sustained voiced time required before listening starts |
-| `barge_in_enabled` | `true` | Let normal speech interrupt an answer |
-| `barge_in_min_voiced_ms` | `120` | Sustained speech required before interruption |
-| `barge_in_rms_margin_dbfs` | `4.0` | Loudness required above calibrated playback bleed |
-| `stt_moonshine_model` | `medium` | Options: `tiny`, `small`, `medium` |
-| `stt_moonshine_language` | `en` | Moonshine language code |
-| `log_level` | `INFO` | DEBUG, INFO, WARNING, ERROR |
-
-Optional: set `obsidian_vault_path` in `config.toml` (or `OBSIDIAN_VAULT_PATH` in `.env`) for Obsidian note integration.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Mic --> VAD[WebRTC VAD]
-    VAD --> STT[Moonshine Medium]
-    VAD --> AudioTurn[Recorded Question]
-    DeskView[Desk View] --> Capture[Window Image]
-    PDF[Active PDF Window] --> Selection[Selected Text]
-    PDF --> Capture
-    Camera[Optional Physical Camera] --> Capture
-    STT --> Router[Query Router]
-    Router --> Realtime[GPT Realtime]
-    AudioTurn --> Realtime
-    Capture --> Realtime
-    Selection --> Realtime
-    Realtime --> Output[Audio Output]
-    Realtime <--> Tavily[Web Search]
-    Realtime <--> Obsidian[Notes]
-    Realtime --> SQLite[Memory]
-    Realtime --> ChatUI[Chat UI]
-```
-
-Speech-to-text can run locally through [Moonshine](https://github.com/usefulsensors/moonshine) Medium. Voice activation may combine WebRTC VAD with sustained-start, voiced-ratio, RMS, and contiguous-run gates before audio reaches transcription.
-
-The query router classifies each transcript before answer generation. The Realtime engine uses local rules, which avoid a second model request. The legacy engine may use Claude Haiku for an uncertain route. The route controls whether Klaus sends image, history, memory, or notes context. It also applies per-turn sentence caps.
-
-## Data Flow
-
-Lifecycle of a single question, from microphone to Audio Output:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant VAD as WebRTC VAD
-    participant STT as Moonshine STT
-    participant Router as Query Router
-    participant Realtime as GPT Realtime
-    participant Audio Output
-
-    User->>VAD: Speak question
-    VAD->>STT: Voiced audio frames
-    STT->>Router: Transcript text
-    Router->>Router: Classify intent (local heuristics)
-    VAD->>Realtime: Recorded question
-    Router->>Realtime: Context policy
-    Note over Realtime: Attach selected text or image<br/>and notes per route policy
-    Realtime-->>Audio Output: PCM chunks (playback starts)
-    Realtime-->>Audio Output: Remaining answer audio
-```
-
-The default voice engine keeps one Realtime conversation per reading session. Klaus streams each response into its audio output as PCM chunks. The VAD mic stream can stay open behind a playback-bleed gate, so the user may interrupt Klaus. The `legacy` engine streams Claude text through OpenAI TTS.
-
-## Module Layout
-
-| Module | Role |
-|--------|------|
-| `main.py` | Entry point; wires all components, hotkey listener, Qt signal bridge |
-| `config.py` | Config via TOML + .env, models, voice settings, system prompt |
-| `brain.py` | Optional legacy Claude vision, tool use, history, and streaming |
-| `realtime.py` | GPT Realtime WebSocket conversation, audio streaming, tool calls, and interruption truncation |
-| `query_router.py` | Local GPT Realtime routing plus the optional legacy LLM fallback |
-| `audio.py` | Push-to-talk recorder, VAD recorder, audio player |
-| `camera.py` | Shared background capture for cameras and macOS reading windows |
-| `macos_reading_source.py` | Desk View capture, active-window capture, and selected PDF text |
-| `stt.py` | Moonshine Voice local speech-to-text |
-| `tts.py` | Shared PCM playback plus OpenAI TTS for the legacy engine |
-| `search.py` | Tavily web search tool for Realtime and Claude |
-| `notes.py` | Vault-bounded Obsidian search, read, select, and append tools |
-| `skill_loader.py` | Loads bundled model skills from the installed package |
-| `skills/obsidian/` | Obsidian note workflow and skill metadata |
-| `memory.py` | SQLite persistence (sessions, exchanges, knowledge profile) |
-| `secrets_store.py` | Apple Keychain integration via keyring |
-| `device_catalog.py` | Shared camera/mic enumeration and labeling |
-| `ui/` | PyQt6 GUI (main window, camera, chat, sessions, status, theme, setup wizard, settings) |
-
-## Data Storage
-
-- **Config:** `~/.klaus/config.toml`
-- **API keys:** Apple Keychain, with legacy `config.toml` fallback if Keychain access fails
-- **Database:** `~/.klaus/klaus.db` (sessions, exchanges, knowledge profile)
-- **Images:** not stored; only a short hash of each page capture is kept
-- **Reset:** delete `~/.klaus/klaus.db` to clear all sessions and start fresh
-
-## License
-
-[MIT](https://opensource.org/licenses/MIT)
+Klaus is alpha software. Features and stored data formats may change between releases.

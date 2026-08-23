@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
         self._qt_toggle_key: int = Qt.Key.Key_F3
         self._ptt_key_armed = False
         self.setWindowTitle("Klaus")
-        self.setMinimumSize(980, 640)
+        self.setMinimumSize(680, 520)
         self.resize(1180, 760)
 
         self.setStyleSheet(theme.application_stylesheet())
@@ -112,6 +112,9 @@ class MainWindow(QMainWindow):
         # Left panel: camera + session list
         left_panel = QWidget()
         left_panel.setObjectName("klaus-sidebar")
+        left_panel.setMinimumWidth(250)
+        left_panel.setMaximumWidth(340)
+        self._left_panel = left_panel
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(14)
@@ -157,6 +160,7 @@ class MainWindow(QMainWindow):
         # Right panel: active thread + voice composer
         right_panel = QWidget()
         right_panel.setObjectName("klaus-thread")
+        right_panel.setMinimumWidth(360)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
@@ -166,6 +170,13 @@ class MainWindow(QMainWindow):
         thread_header.setFixedHeight(theme.HEADER_HEIGHT)
         thread_header_layout = QHBoxLayout(thread_header)
         thread_header_layout.setContentsMargins(24, 0, 22, 0)
+
+        self._sidebar_btn = QPushButton("☰")
+        self._sidebar_btn.setObjectName("klaus-sidebar-btn")
+        self._sidebar_btn.setFixedSize(32, 32)
+        self._sidebar_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sidebar_btn.clicked.connect(self._toggle_sidebar)
+        thread_header_layout.addWidget(self._sidebar_btn)
 
         self._session_title_label = QLabel("Untitled reading session")
         self._session_title_label.setObjectName("klaus-session-title")
@@ -201,12 +212,41 @@ class MainWindow(QMainWindow):
         splitter.setSizes([318, 862])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(True)
+        self._splitter = splitter
+        self._compact_mode = False
+        self._update_sidebar_button()
 
         main_layout.addWidget(splitter, stretch=1)
 
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
+
+    def resizeEvent(self, event) -> None:
+        """Collapse the sidebar when the window crosses the compact breakpoint."""
+        compact = event.size().width() < 900
+        if compact != self._compact_mode:
+            self._compact_mode = compact
+            self._set_sidebar_visible(not compact)
+        super().resizeEvent(event)
+
+    def _toggle_sidebar(self) -> None:
+        self._set_sidebar_visible(self._left_panel.isHidden())
+
+    def _set_sidebar_visible(self, visible: bool) -> None:
+        self._left_panel.setVisible(visible)
+        if visible:
+            width = min(300, max(250, self.width() // 3))
+            self._splitter.setSizes([width, max(360, self.width() - width)])
+        self._update_sidebar_button()
+
+    def _update_sidebar_button(self) -> None:
+        visible = not self._left_panel.isHidden()
+        self._sidebar_btn.setToolTip("Hide library" if visible else "Show library")
+        self._sidebar_btn.setAccessibleName(
+            "Hide library sidebar" if visible else "Show library sidebar"
+        )
 
     # -- Session management --
 

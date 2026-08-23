@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import (
+    QWidget,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from klaus.ui import theme
@@ -88,11 +97,13 @@ class StatusWidget(QWidget):
 
         composer = QFrame()
         composer.setObjectName("klaus-voice-composer")
-        composer.setMinimumWidth(580)
+        composer.setMinimumWidth(0)
         composer.setMaximumWidth(840)
-        layout = QHBoxLayout(composer)
-        layout.setContentsMargins(14, 10, 12, 10)
-        layout.setSpacing(12)
+        self._composer = composer
+        self._composer_layout = QGridLayout(composer)
+        self._composer_layout.setContentsMargins(14, 10, 12, 10)
+        self._composer_layout.setHorizontalSpacing(12)
+        self._composer_layout.setVerticalSpacing(8)
         outer.addStretch()
         outer.addWidget(composer, stretch=1)
         outer.addStretch()
@@ -101,9 +112,13 @@ class StatusWidget(QWidget):
         self._orb.setObjectName("klaus-state-orb")
         self._orb.setFixedSize(38, 38)
         self._orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._orb)
+        self._state_group = QWidget()
+        self._state_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
 
-        state_column = QVBoxLayout()
+        state_column = QVBoxLayout(self._state_group)
+        state_column.setContentsMargins(0, 0, 0, 0)
         state_column.setSpacing(3)
 
         self._state_label = QLabel()
@@ -113,21 +128,20 @@ class StatusWidget(QWidget):
         self._detail_label = QLabel()
         self._detail_label.setObjectName("klaus-state-detail")
         state_column.addWidget(self._detail_label)
-        layout.addLayout(state_column)
-
-        layout.addStretch()
-
-        hotkey_cluster = QHBoxLayout()
+        self._hotkey_group = QWidget()
+        hotkey_cluster = QHBoxLayout(self._hotkey_group)
+        hotkey_cluster.setContentsMargins(0, 0, 0, 0)
         hotkey_cluster.setSpacing(7)
         self._hotkey_keycap = QLabel(self._toggle_key)
         self._hotkey_keycap.setObjectName("klaus-hotkey-keycap")
         self._hotkey_keycap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hotkey_keycap.setMinimumWidth(52)
+        self._hotkey_keycap.setMaximumWidth(110)
         hotkey_cluster.addWidget(self._hotkey_keycap)
 
         self._hotkey_label = QLabel(self._HOTKEY_HINTS.get(self._mode, ""))
         self._hotkey_label.setObjectName("klaus-hotkey-hint")
         hotkey_cluster.addWidget(self._hotkey_label)
-        layout.addLayout(hotkey_cluster)
 
         self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
         self._mode_btn.setObjectName("klaus-mode-btn")
@@ -135,7 +149,6 @@ class StatusWidget(QWidget):
         self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mode_btn.setToolTip("Switch voice input mode")
         self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
-        layout.addWidget(self._mode_btn)
 
         self._stop_btn = QPushButton("Interrupt")
         self._stop_btn.setObjectName("klaus-stop-btn")
@@ -145,12 +158,60 @@ class StatusWidget(QWidget):
         self._stop_btn.setToolTip("Stop this answer now")
         self._stop_btn.clicked.connect(self.stop_clicked.emit)
         self._stop_btn.setVisible(False)
-        layout.addWidget(self._stop_btn)
 
         self._stats_label = QLabel("0 answers")
         self._stats_label.setObjectName("klaus-stats")
-        layout.addWidget(self._stats_label)
+        self._compact_layout: bool | None = None
+        self._apply_responsive_layout(force=True)
         self._apply_state_label("idle")
+
+    def resizeEvent(self, event) -> None:
+        self._apply_responsive_layout()
+        super().resizeEvent(event)
+
+    def _apply_responsive_layout(self, force: bool = False) -> None:
+        """Reflow the voice controls before they can clip."""
+        compact = self.width() < 760
+        if not force and compact == self._compact_layout:
+            self._apply_compact_visibility()
+            return
+        self._compact_layout = compact
+        layout = self._composer_layout
+        for widget in (
+            self._orb,
+            self._state_group,
+            self._hotkey_group,
+            self._mode_btn,
+            self._stop_btn,
+            self._stats_label,
+        ):
+            layout.removeWidget(widget)
+
+        if compact:
+            self.setFixedHeight(138)
+            layout.addWidget(self._orb, 0, 0)
+            layout.addWidget(self._state_group, 0, 1, 1, 3)
+            layout.addWidget(self._hotkey_group, 1, 0, 1, 2)
+            layout.addWidget(self._mode_btn, 1, 2)
+            layout.addWidget(self._stop_btn, 1, 3)
+            layout.addWidget(self._stats_label, 1, 4)
+            layout.setColumnStretch(1, 1)
+        else:
+            self.setFixedHeight(theme.STATUS_BAR_HEIGHT)
+            layout.addWidget(self._orb, 0, 0)
+            layout.addWidget(self._state_group, 0, 1)
+            layout.addWidget(self._hotkey_group, 0, 2)
+            layout.addWidget(self._mode_btn, 0, 3)
+            layout.addWidget(self._stop_btn, 0, 4)
+            layout.addWidget(self._stats_label, 0, 5)
+            layout.setColumnStretch(1, 1)
+        self._apply_compact_visibility()
+
+    def _apply_compact_visibility(self) -> None:
+        width = self.width()
+        self._detail_label.setVisible(width >= 470)
+        self._hotkey_label.setVisible(width >= 540)
+        self._stats_label.setVisible(width >= 620)
 
     def _apply_state_label(self, state: str) -> None:
         entry = self._STATES.get(state, self._STATES["idle"])

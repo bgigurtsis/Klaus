@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import logging
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -14,11 +16,13 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QFrame,
     QApplication,
+    QBoxLayout,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QTimer
 from PyQt6.QtGui import QPixmap
 
 from klaus.ui import theme
+from klaus.ui.file_links import reveal_file_in_browser
 from klaus.ui.shared.relative_time import format_relative_time_with_tooltip
 
 logger = logging.getLogger(__name__)
@@ -38,6 +42,7 @@ class MessageCard(QFrame):
         timestamp: float | None = None,
         thumbnail_bytes: bytes | None = None,
         exchange_id: str = "",
+        note_file_path: str | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -124,6 +129,18 @@ class MessageCard(QFrame):
         layout.addWidget(body)
         self._body = body
 
+        self._note_link = QLabel()
+        self._note_link.setObjectName("card-note-link")
+        self._note_link.setTextFormat(Qt.TextFormat.RichText)
+        self._note_link.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        )
+        self._note_link.setOpenExternalLinks(False)
+        self._note_link.linkActivated.connect(self._open_note_link)
+        layout.addWidget(self._note_link)
+        self.set_note_file(note_file_path)
+
         self.setMaximumWidth(620 if is_user else 740)
         self.setMinimumWidth(280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -138,6 +155,27 @@ class MessageCard(QFrame):
 
     def set_exchange_id(self, exchange_id: str) -> None:
         self._exchange_id = exchange_id
+
+    def set_note_file(self, path: str | None) -> None:
+        """Show a link that reveals a changed Obsidian note."""
+        if not path:
+            self._note_link.clear()
+            self._note_link.setVisible(False)
+            return
+        file_name = Path(path).name
+        url = QUrl.fromLocalFile(path).toString()
+        self._note_link.setText(
+            f'<a style="color:{theme.USER_ACCENT}; text-decoration:none;" '
+            f'href="{html.escape(url, quote=True)}">'
+            f'Open {html.escape(file_name)} in Finder</a>'
+        )
+        self._note_link.setVisible(True)
+
+    @staticmethod
+    def _open_note_link(url: str) -> None:
+        path = QUrl(url).toLocalFile()
+        if path:
+            reveal_file_in_browser(path)
 
     def mark_interrupted(self) -> None:
         self._status_label.setText("Interrupted")
@@ -215,6 +253,7 @@ class ChatWidget(QWidget):
         timestamp: float | None = None,
         thumbnail_bytes: bytes | None = None,
         exchange_id: str = "",
+        note_file_path: str | None = None,
     ) -> None:
         was_near_bottom = self._is_near_bottom()
         self._hide_empty()
@@ -225,6 +264,7 @@ class ChatWidget(QWidget):
             timestamp=timestamp,
             thumbnail_bytes=thumbnail_bytes,
             exchange_id=exchange_id,
+            note_file_path=note_file_path,
             parent=self._container,
         )
         card.replay_requested.connect(self.replay_requested.emit)
@@ -255,7 +295,12 @@ class ChatWidget(QWidget):
         else:
             self._streaming_card.append_text(text)
 
-    def finalize_assistant_stream(self, text: str, exchange_id: str) -> bool:
+    def finalize_assistant_stream(
+        self,
+        text: str,
+        exchange_id: str,
+        note_file_path: str | None = None,
+    ) -> bool:
         """Replace the streaming card's text with the final response.
 
         Returns True if a streaming card was finalized, False if there was
@@ -267,6 +312,7 @@ class ChatWidget(QWidget):
             return False
         card.set_text(text)
         card.set_exchange_id(exchange_id)
+        card.set_note_file(note_file_path)
         return True
 
     def abort_assistant_stream(self) -> None:
@@ -311,7 +357,7 @@ class ChatWidget(QWidget):
 
     def _build_empty_state(self) -> QWidget:
         state = QWidget()
-        state.setMinimumWidth(520)
+        state.setMinimumWidth(0)
         state.setMaximumWidth(680)
         layout = QVBoxLayout(state)
         layout.setContentsMargins(32, 96, 32, 40)
@@ -327,6 +373,7 @@ class ChatWidget(QWidget):
         heading = QLabel("What are you reading?")
         heading.setObjectName("chat-empty-heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        heading.setWordWrap(True)
         layout.addWidget(heading)
 
         self._empty_label = QLabel(
@@ -340,8 +387,8 @@ class ChatWidget(QWidget):
         layout.addWidget(self._empty_label)
 
         layout.addSpacing(8)
-        prompts = QHBoxLayout()
-        prompts.setSpacing(10)
+        self._prompts = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._prompts.setSpacing(10)
         for example in (
             "Explain this\nparagraph",
             "Define the\nkey term",
@@ -350,10 +397,23 @@ class ChatWidget(QWidget):
             label = QLabel(example)
             label.setObjectName("chat-example")
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setMinimumWidth(150)
-            prompts.addWidget(label)
-        layout.addLayout(prompts)
+            label.setMinimumWidth(0)
+            self._prompts.addWidget(label)
+        layout.addLayout(self._prompts)
         return state
+
+    def resizeEvent(self, event) -> None:
+        """Reduce margins and stack examples when the thread narrows."""
+        compact = event.size().width() < 620
+        margin = 16 if compact else 32
+        self._layout.setContentsMargins(margin, 20, margin, 20)
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if event.size().width() < 500
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self._prompts.setDirection(direction)
+        super().resizeEvent(event)
 
     @staticmethod
     def _card_row(card: MessageCard, role: str) -> QWidget:
