@@ -36,3 +36,16 @@ alignment stretches absorb the overflow. Known residue: `_sync_content_height`
 pins each row's minimum height to a size hint measured mid-layout, which can
 leave extra air inside assistant cards after resizes; left alone because that
 mechanism is the recent scroll-clipping fix.
+
+## 2026-08-23 — Ad-hoc re-signing silently breaks TCC grants
+
+The "allowed but still banned" Screen Recording bug: `install-macos-app.sh`
+ad-hoc signs Klaus.app, and an ad-hoc identity is a hash of the exact binary —
+every reinstall creates a new identity, so the existing TCC grant row shows ON
+in System Settings while no longer matching the running app. The installer now
+writes a build-stamp (hash of launcher.c, Info.plist, icon, source root) and
+skips the reinstall entirely when nothing changed, and warns about re-granting
+when it does re-sign. Rejected for now: reworking launcher.c from execv to
+fork+waitpid so the bundle stays the responsible process — more invasive, and
+the stamp fix removes the common trigger. Revisit if grants still break, or
+sign with a stable self-signed certificate instead.
