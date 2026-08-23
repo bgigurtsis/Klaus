@@ -970,8 +970,15 @@ class KlausApp:
                 return
 
     def _replay_audio(self, text: str) -> None:
+        self._cancel_event = threading.Event()
+        self._barge_in_seed = None
         self._speaking = True
-        if self._input_mode == "voice_activation":
+        barge_in_active = (
+            self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED
+        )
+        if barge_in_active:
+            self._vad_recorder.enter_gated_mode()
+        elif self._input_mode == "voice_activation":
             self._vad_recorder.pause()
         self._signals.state_changed.emit("speaking")
         try:
@@ -982,7 +989,13 @@ class KlausApp:
         finally:
             self._speaking = False
             if self._input_mode == "voice_activation":
+                self._vad_recorder.exit_gated_mode()
+                self._vad_recorder.resume_stream()
                 self._vad_recorder.resume()
+                seed = self._barge_in_seed
+                self._barge_in_seed = None
+                if seed is not None:
+                    self._vad_recorder.prime_with_seed(seed)
             self._signals.state_changed.emit("idle")
 
     @_safe_slot
