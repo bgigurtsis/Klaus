@@ -344,7 +344,7 @@ class KlausApp:
         from klaus.ui import theme
         theme.load_fonts()
         from PyQt6.QtGui import QFont
-        app_font = QFont("Inter")
+        app_font = QFont(theme.FONT_FAMILY_NAME)
         app_font.setPixelSize(theme.FONT_SIZE_BODY)
         app.setFont(app_font)
 

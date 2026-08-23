@@ -53,7 +53,7 @@ def test_photo_booth_fallback_opens_camera_app(mock_popen) -> None:
     assert mock_popen.call_args.args[0] == ["/usr/bin/open", "-a", "Photo Booth"]
 
 
-@patch("klaus.ui.desk_view_setup.QMessageBox.information")
+@patch("klaus.ui.desk_view_setup._show_desk_view_instructions")
 @patch("klaus.ui.desk_view_setup._open_photo_booth", return_value=True)
 @patch("klaus.ui.desk_view_setup._launch_native_desk_view", return_value=False)
 def test_fallback_explains_how_to_enable_desk_view(
@@ -63,10 +63,12 @@ def test_fallback_explains_how_to_enable_desk_view(
 ) -> None:
     launch_desk_view_setup()
 
-    message = mock_information.call_args.args[2]
-    assert "Video icon" in message
-    assert "Choose Desk View" in message
-    assert "Start Desk View" in message
+    intro = mock_information.call_args.args[2]
+    steps = mock_information.call_args.args[3]
+    assert "Photo Booth is opening" in intro
+    assert any("Video icon" in step for step in steps)
+    assert any("Choose Desk View" in step for step in steps)
+    assert any("Start Desk View" in step for step in steps)
 
 
 @patch("klaus.ui.camera_widget.launch_desk_view_setup")

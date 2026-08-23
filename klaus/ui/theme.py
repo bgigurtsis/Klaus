@@ -63,8 +63,8 @@ KLAUS_BTN_HOVER_BG = "#353531"
 # Fonts
 # ---------------------------------------------------------------------------
 
-_PLATFORM_FALLBACK = '"Segoe UI"' if sys.platform == "win32" else '".AppleSystemUIFont"'
-FONT_FAMILY = f'"Inter", {_PLATFORM_FALLBACK}'
+FONT_FAMILY_NAME = "Helvetica Neue"
+FONT_FAMILY = f'"{FONT_FAMILY_NAME}"'
 FONT_SIZE_BODY = 15
 FONT_SIZE_SMALL = 13
 FONT_SIZE_CAPTION = 12
@@ -667,6 +667,48 @@ QMessageBox QLabel {{
     color: {TEXT_PRIMARY};
     background: transparent;
 }}
+#desk-view-dialog {{
+    background-color: {SURFACE};
+}}
+#desk-view-title {{
+    color: {TEXT_PRIMARY};
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+    background: transparent;
+}}
+#desk-view-intro {{
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_BODY}px;
+    font-weight: 400;
+    background: transparent;
+}}
+#desk-view-step-number {{
+    color: {TEXT_PRIMARY};
+    background-color: {SURFACE_OVERLAY};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 12px;
+    font-size: {FONT_SIZE_CAPTION}px;
+    font-weight: 500;
+}}
+#desk-view-step-text {{
+    color: {TEXT_PRIMARY};
+    font-size: {FONT_SIZE_BODY + 1}px;
+    font-weight: 400;
+    background: transparent;
+}}
+#desk-view-confirm-button {{
+    color: {BG};
+    background-color: {TEXT_PRIMARY};
+    border: none;
+    border-radius: 9px;
+    padding: 9px 18px;
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 500;
+}}
+#desk-view-confirm-button:hover {{
+    background-color: #ffffff;
+}}
 QInputDialog {{
     background-color: {SURFACE};
 }}
@@ -825,11 +867,11 @@ def apply_dark_titlebar(window) -> None:
 
 
 def load_fonts() -> None:
-    """Register bundled Inter font files with Qt's font database.
+    """Register any bundled font files with Qt's font database.
 
     Call once before creating any widgets (typically in main.py after
     QApplication is constructed). If the fonts directory or files are missing,
-    Qt will fall back to the next family in FONT_FAMILY.
+    Qt will use the installed Helvetica Neue family.
     """
     if not _FONTS_DIR.is_dir():
         logger.debug("Fonts directory not found: %s", _FONTS_DIR)
@@ -837,10 +879,15 @@ def load_fonts() -> None:
 
     from PyQt6.QtGui import QFontDatabase
 
-    for ttf in sorted(_FONTS_DIR.glob("*.ttf")):
-        font_id = QFontDatabase.addApplicationFont(str(ttf))
+    font_files = sorted(
+        path
+        for path in _FONTS_DIR.iterdir()
+        if path.suffix.lower() in {".otf", ".ttc", ".ttf"}
+    )
+    for font_path in font_files:
+        font_id = QFontDatabase.addApplicationFont(str(font_path))
         if font_id < 0:
-            logger.warning("Failed to load font: %s", ttf.name)
+            logger.warning("Failed to load font: %s", font_path.name)
         else:
             families = QFontDatabase.applicationFontFamilies(font_id)
-            logger.debug("Loaded font %s -> %s", ttf.name, families)
+            logger.debug("Loaded font %s -> %s", font_path.name, families)
