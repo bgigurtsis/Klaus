@@ -12,8 +12,7 @@ from klaus.main import KlausApp
 def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "voice_activation"
-    app._brain = MagicMock(handles_audio=True)
-    app._tts = MagicMock()
+    app._brain = MagicMock()
     app._vad_recorder = MagicMock()
     app._signals = MagicMock()
     seed = np.array([1, 2, 3], dtype=np.int16)
@@ -25,7 +24,6 @@ def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
         KlausApp._replay_audio(app, "Repeat this answer.")
 
     app._brain.speak_text.assert_called_once_with("Repeat this answer.")
-    app._tts.speak.assert_not_called()
     app._vad_recorder.enter_gated_mode.assert_called_once()
     app._vad_recorder.pause.assert_not_called()
     app._vad_recorder.exit_gated_mode.assert_called_once()
@@ -37,8 +35,7 @@ def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
 def test_realtime_replay_pauses_voice_detection_when_interruption_is_disabled() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "voice_activation"
-    app._brain = MagicMock(handles_audio=True)
-    app._tts = MagicMock()
+    app._brain = MagicMock()
     app._vad_recorder = MagicMock()
     app._signals = MagicMock()
 

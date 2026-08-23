@@ -56,7 +56,6 @@ You can deny Accessibility and use the buttons in Klaus. Questions about an acti
 - Read selected text or capture the active window.
 - Answer through one live GPT Realtime voice conversation.
 - Stop an answer when you start speaking.
-- Search the web when Tavily is configured.
 - Search, read, and append notes inside a configured Obsidian vault.
 - Keep local reading sessions and conversation history.
 
@@ -94,8 +93,6 @@ Klaus accepts only paths inside that vault. It appends to existing notes instead
 | Provider | Required | Used for |
 |---|---:|---|
 | [OpenAI](https://platform.openai.com/api-keys) | Yes | Live voice, page reasoning, and spoken answers |
-| [Tavily](https://app.tavily.com/home) | No | Web search |
-| [Anthropic](https://console.anthropic.com/settings/keys) | No | Legacy Claude voice engine |
 
 Klaus stores API keys in Apple Keychain. It stores settings and conversation history under `~/.klaus/`. It does not store captured page images in its database.
 
@@ -105,7 +102,7 @@ Provider use may incur charges. Read the [privacy notes](https://github.com/bgig
 
 Klaus currently uses `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI bills user audio at one token per 100 milliseconds and assistant audio at one token per 50 milliseconds in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs). That works out to about 600 input-audio tokens and 1,200 output-audio tokens per minute.
 
-The estimates below cover raw audio only. They assume each question lasts 30 seconds and each answer lasts 60 seconds, unless noted otherwise. They exclude text context, captured page images, web search, and other provider charges, which can increase the bill.
+The estimates below cover raw audio only. They assume each question lasts 30 seconds and each answer lasts 60 seconds, unless noted otherwise. They exclude text context and captured page images, which can increase the bill.
 
 | Usage pattern | Monthly use | Audio input | Audio output | Audio-only baseline |
 |---|---|---:|---:|---:|
@@ -121,8 +118,8 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 
 | Setting | Default | Purpose |
 |---|---:|---|
-| `voice_engine` | `realtime` | Use GPT Realtime or the `legacy` Claude and OpenAI TTS path |
-| `camera_index` | `0` | Use Desk View with `-2`, the active window with `-3`, or audio only with `-1` |
+| `voice` | `cedar` | Choose the GPT Realtime voice |
+| `camera_index` | `-2` | Use Desk View with `-2`, the active window with `-3`, or audio only with `-1` |
 | `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
 | `log_level` | `INFO` | Set log detail |
 

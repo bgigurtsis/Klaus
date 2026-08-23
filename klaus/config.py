@@ -40,34 +40,16 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Toggle input mode hotkey (default: §; press Shift+§ to toggle)
 # toggle_key = "§"
 
-# Reading source index (default: 0)
+# Reading source index (default: -2)
 # macOS: -2 uses Desk View; -3 uses the active reading window; -1 disables capture.
-# Non-negative values use physical camera devices.
-# camera_index = 0
+# camera_index = -2
 
 # Microphone device index (default: -1, uses system default)
 # mic_index = -1
 
-# Camera resolution (default: 1920x1080)
-# camera_width = 1920
-# camera_height = 1080
-
-# Camera rotation (default: auto)
-# "auto" rotates portrait frames to landscape; "none" disables rotation.
-# Fixed angles: "90", "180", "270"
-# camera_rotation = "auto"
-
-# TTS voice (default: cedar)
+# Realtime voice (default: cedar)
 # Options: coral, nova, alloy, ash, ballad, echo, fable, onyx, sage, shimmer, verse, cedar, marin
 # voice = "cedar"
-
-# Voice engine (default: realtime)
-# "realtime" uses one GPT Realtime speech-to-speech session for each reading session.
-# "legacy" keeps the Claude -> OpenAI TTS pipeline as a fallback.
-# voice_engine = "realtime"
-
-# TTS playback speed 0.25-4.0 (default: 1.0)
-# tts_speed = 1.0
 
 # Input mode (default: voice_activation)
 # Options: voice_activation, push_to_talk
@@ -106,12 +88,6 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Moonshine language code (default: "en")
 # stt_moonshine_language = "en"
 
-# Stream TTS audio (PCM chunks) instead of waiting for full per-sentence WAVs.
-# tts_streaming = true
-
-# Start speaking at the first clause boundary of a response (lower latency).
-# tts_first_clause_split = true
-
 # Allow interrupting Klaus by speaking while it talks (voice mode only).
 # Disable on open-speaker setups if playback bleed triggers false interrupts.
 # barge_in_enabled = true
@@ -123,33 +99,8 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Play short audio cues on capture/cancel state changes.
 # earcons_enabled = true
 
-# Model used for standalone definition turns (fast, capped at two sentences).
-# definition_model = "claude-haiku-4-5"
-
 # Optional: describe your background so Klaus can tailor explanations.
 # user_background = ""
-
-# Enable intelligent query routing (default: true)
-# enable_query_router = true
-#
-# Router model for ambiguous intent classification
-# router_model = "claude-haiku-4-5"
-#
-# Router timeout in milliseconds (default: 350)
-# router_timeout_ms = 350
-#
-# Router max output tokens (default: 80)
-# router_max_tokens = 80
-#
-# Local router confidence threshold (default: 0.78)
-# router_local_confidence_threshold = 0.78
-#
-# Local router score margin threshold (default: 0.18)
-# router_local_margin_threshold = 0.18
-#
-# LLM router confidence threshold (default: 0.60)
-# router_llm_confidence_threshold = 0.60
-#
 # Optional: path to your Obsidian vault folder for the notes feature.
 # obsidian_vault_path = ""
 
@@ -157,11 +108,6 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Options: DEBUG, INFO, WARNING, ERROR
 # log_level = "INFO"
 
-# Legacy API key fallback (used when Keychain is unavailable on macOS)
-[api_keys]
-# anthropic = ""
-# openai = ""
-# tavily = ""
 """
 
 # ---------------------------------------------------------------------------
@@ -218,42 +164,25 @@ if _config_load_error is not None:
 
 load_dotenv()
 
-CLAUDE_MODEL = "claude-sonnet-5"
-TTS_MODEL = "gpt-4o-mini-tts"
 REALTIME_MODEL = "gpt-realtime-2.1"
 _DEFAULT_PTT_KEY = "§"
 _DEFAULT_TOGGLE_KEY = "§"
 
-API_KEY_SLUGS: tuple[str, ...] = ("anthropic", "openai", "tavily")
+API_KEY_SLUGS: tuple[str, ...] = ("openai",)
 _API_KEY_ENV_VARS: dict[str, str] = {
-    "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
-    "tavily": "TAVILY_API_KEY",
 }
-
-TTS_VOICE_INSTRUCTIONS = (
-    "Speak at a natural conversational pace, not slow or deliberate. "
-    "You are a sharp colleague giving a quick answer across a desk. "
-    "Be direct and matter-of-fact, not performative. No vocal fry, no uptalk."
-)
 
 
 @dataclass(frozen=True)
 class RuntimeSettings:
-    anthropic_api_key: str
     openai_api_key: str
-    tavily_api_key: str
     obsidian_vault_path: str
     push_to_talk_key: str
     toggle_key: str
     camera_device_index: int
-    camera_frame_width: int
-    camera_frame_height: int
-    camera_rotation: str
     mic_device_index: int
-    tts_voice: str
-    voice_engine: str
-    tts_speed: float
+    voice: str
     input_mode: str
     vad_sensitivity: int
     vad_silence_timeout: float
@@ -266,21 +195,11 @@ class RuntimeSettings:
     vad_start_trigger_ms: int
     stt_moonshine_model: str
     stt_moonshine_language: str
-    tts_streaming: bool
-    tts_first_clause_split: bool
     barge_in_enabled: bool
     barge_in_min_voiced_ms: int
     barge_in_rms_margin_dbfs: float
     earcons_enabled: bool
-    definition_model: str
     user_background: str
-    enable_query_router: bool
-    router_model: str
-    router_timeout_ms: int
-    router_max_tokens: int
-    router_local_confidence_threshold: float
-    router_local_margin_threshold: float
-    router_llm_confidence_threshold: float
     system_prompt: str
 
 
@@ -326,23 +245,13 @@ def _as_bool(value: object, default: bool) -> bool:
     return default
 
 
-def _as_voice_engine(value: object, default: str) -> str:
-    engine = _as_str(value, default).lower()
-    return engine if engine in {"realtime", "legacy"} else default
-
-
 _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
     _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
-    _SettingSpec("camera_device_index", "camera_index", 0, _as_int),
-    _SettingSpec("camera_frame_width", "camera_width", 1920, _as_int),
-    _SettingSpec("camera_frame_height", "camera_height", 1080, _as_int),
-    _SettingSpec("camera_rotation", "camera_rotation", "auto", _as_str),
+    _SettingSpec("camera_device_index", "camera_index", -2, _as_int),
     _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
-    _SettingSpec("tts_voice", "voice", "cedar", _as_str),
-    _SettingSpec("voice_engine", "voice_engine", "realtime", _as_voice_engine),
-    _SettingSpec("tts_speed", "tts_speed", 1.0, _as_float),
+    _SettingSpec("voice", "voice", "cedar", _as_str),
     _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
     _SettingSpec("vad_sensitivity", "vad_sensitivity", 3, _as_int),
     _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.0, _as_float),
@@ -355,35 +264,10 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("vad_start_trigger_ms", "vad_start_trigger_ms", 90, _as_int),
     _SettingSpec("stt_moonshine_model", "stt_moonshine_model", "medium", _as_str),
     _SettingSpec("stt_moonshine_language", "stt_moonshine_language", "en", _as_str),
-    _SettingSpec("tts_streaming", "tts_streaming", True, _as_bool),
-    _SettingSpec("tts_first_clause_split", "tts_first_clause_split", True, _as_bool),
     _SettingSpec("barge_in_enabled", "barge_in_enabled", True, _as_bool),
     _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 120, _as_int),
     _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 4.0, _as_float),
     _SettingSpec("earcons_enabled", "earcons_enabled", True, _as_bool),
-    _SettingSpec("definition_model", "definition_model", "claude-haiku-4-5", _as_str),
-    _SettingSpec("enable_query_router", "enable_query_router", True, _as_bool),
-    _SettingSpec("router_model", "router_model", "claude-haiku-4-5", _as_str),
-    _SettingSpec("router_timeout_ms", "router_timeout_ms", 350, _as_int),
-    _SettingSpec("router_max_tokens", "router_max_tokens", 80, _as_int),
-    _SettingSpec(
-        "router_local_confidence_threshold",
-        "router_local_confidence_threshold",
-        0.78,
-        _as_float,
-    ),
-    _SettingSpec(
-        "router_local_margin_threshold",
-        "router_local_margin_threshold",
-        0.18,
-        _as_float,
-    ),
-    _SettingSpec(
-        "router_llm_confidence_threshold",
-        "router_llm_confidence_threshold",
-        0.60,
-        _as_float,
-    ),
 )
 
 
@@ -473,11 +357,8 @@ specific parts of the document so they can follow along.
 bridge rather than a full primer.
 - When a paper makes a claim, help the user evaluate it critically: \
 what's the evidence, what are the assumptions, where might it be weak.
-- If you are unsure about something, say so. Do not be sycophantic or biased. Use \
-web search to verify claims, look up referenced papers or authors, \
-check definitions, or find additional context when your own knowledge \
-is insufficient or uncertain. It is always better to search and give \
-an accurate answer than to guess.
+- If you are unsure about something, say so. Do not guess when the available \
+context cannot support an accurate answer.
 
 Voice style rules (you are spoken aloud, so these matter even more than \
 in text):
@@ -523,20 +404,13 @@ _api_key_sources: dict[str, str] = {slug: "missing" for slug in API_KEY_SLUGS}
 _runtime_settings: RuntimeSettings
 
 # Set by _apply_runtime_settings.
-ANTHROPIC_API_KEY: str
 OPENAI_API_KEY: str
-TAVILY_API_KEY: str
 OBSIDIAN_VAULT_PATH: str
 PUSH_TO_TALK_KEY: str
 TOGGLE_KEY: str
 CAMERA_DEVICE_INDEX: int
-CAMERA_FRAME_WIDTH: int
-CAMERA_FRAME_HEIGHT: int
-CAMERA_ROTATION: str
 MIC_DEVICE_INDEX: int
-TTS_VOICE: str
-VOICE_ENGINE: str
-TTS_SPEED: float
+VOICE: str
 INPUT_MODE: str
 VAD_SENSITIVITY: int
 VAD_SILENCE_TIMEOUT: float
@@ -549,39 +423,22 @@ VAD_MIN_VOICED_RUN_FRAMES: int
 VAD_START_TRIGGER_MS: int
 STT_MOONSHINE_MODEL: str
 STT_MOONSHINE_LANGUAGE: str
-TTS_STREAMING: bool
-TTS_FIRST_CLAUSE_SPLIT: bool
 BARGE_IN_ENABLED: bool
 BARGE_IN_MIN_VOICED_MS: int
 BARGE_IN_RMS_MARGIN_DBFS: float
 EARCONS_ENABLED: bool
-DEFINITION_MODEL: str
 USER_BACKGROUND: str
-ENABLE_QUERY_ROUTER: bool
-ROUTER_MODEL: str
-ROUTER_TIMEOUT_MS: int
-ROUTER_MAX_TOKENS: int
-ROUTER_LOCAL_CONFIDENCE_THRESHOLD: float
-ROUTER_LOCAL_MARGIN_THRESHOLD: float
-ROUTER_LLM_CONFIDENCE_THRESHOLD: float
 SYSTEM_PROMPT: str
 
 
 _RUNTIME_EXPORTS: dict[str, str] = {
-    "ANTHROPIC_API_KEY": "anthropic_api_key",
     "OPENAI_API_KEY": "openai_api_key",
-    "TAVILY_API_KEY": "tavily_api_key",
     "OBSIDIAN_VAULT_PATH": "obsidian_vault_path",
     "PUSH_TO_TALK_KEY": "push_to_talk_key",
     "TOGGLE_KEY": "toggle_key",
     "CAMERA_DEVICE_INDEX": "camera_device_index",
-    "CAMERA_FRAME_WIDTH": "camera_frame_width",
-    "CAMERA_FRAME_HEIGHT": "camera_frame_height",
-    "CAMERA_ROTATION": "camera_rotation",
     "MIC_DEVICE_INDEX": "mic_device_index",
-    "TTS_VOICE": "tts_voice",
-    "VOICE_ENGINE": "voice_engine",
-    "TTS_SPEED": "tts_speed",
+    "VOICE": "voice",
     "INPUT_MODE": "input_mode",
     "VAD_SENSITIVITY": "vad_sensitivity",
     "VAD_SILENCE_TIMEOUT": "vad_silence_timeout",
@@ -594,33 +451,16 @@ _RUNTIME_EXPORTS: dict[str, str] = {
     "VAD_START_TRIGGER_MS": "vad_start_trigger_ms",
     "STT_MOONSHINE_MODEL": "stt_moonshine_model",
     "STT_MOONSHINE_LANGUAGE": "stt_moonshine_language",
-    "TTS_STREAMING": "tts_streaming",
-    "TTS_FIRST_CLAUSE_SPLIT": "tts_first_clause_split",
     "BARGE_IN_ENABLED": "barge_in_enabled",
     "BARGE_IN_MIN_VOICED_MS": "barge_in_min_voiced_ms",
     "BARGE_IN_RMS_MARGIN_DBFS": "barge_in_rms_margin_dbfs",
     "EARCONS_ENABLED": "earcons_enabled",
-    "DEFINITION_MODEL": "definition_model",
     "USER_BACKGROUND": "user_background",
-    "ENABLE_QUERY_ROUTER": "enable_query_router",
-    "ROUTER_MODEL": "router_model",
-    "ROUTER_TIMEOUT_MS": "router_timeout_ms",
-    "ROUTER_MAX_TOKENS": "router_max_tokens",
-    "ROUTER_LOCAL_CONFIDENCE_THRESHOLD": "router_local_confidence_threshold",
-    "ROUTER_LOCAL_MARGIN_THRESHOLD": "router_local_margin_threshold",
-    "ROUTER_LLM_CONFIDENCE_THRESHOLD": "router_llm_confidence_threshold",
     "SYSTEM_PROMPT": "system_prompt",
 }
 
 
-def _legacy_api_keys_from_config(user_config: dict) -> dict[str, str]:
-    legacy = user_config.get("api_keys", {})
-    if not isinstance(legacy, dict):
-        return {slug: "" for slug in API_KEY_SLUGS}
-    return {slug: _as_str(legacy.get(slug, ""), "") for slug in API_KEY_SLUGS}
-
-
-def _resolve_api_key(slug: str, legacy_value: str) -> tuple[str, str]:
+def _resolve_api_key(slug: str) -> tuple[str, str]:
     env_name = _API_KEY_ENV_VARS[slug]
     env_value = _as_str(os.getenv(env_name, ""), "")
     if env_value:
@@ -630,7 +470,7 @@ def _resolve_api_key(slug: str, legacy_value: str) -> tuple[str, str]:
         keychain_value = _as_str(secrets_store.get_api_key(slug), "")
     except secrets_store.SecretsStoreError as exc:
         _log.warning(
-            "Keychain read failed for %s; falling back to config if present. error=%s",
+            "Keychain read failed for %s. error=%s",
             slug,
             exc,
         )
@@ -638,19 +478,16 @@ def _resolve_api_key(slug: str, legacy_value: str) -> tuple[str, str]:
         if keychain_value:
             return keychain_value, "keychain"
 
-    if legacy_value:
-        return legacy_value, "config"
     return "", "missing"
 
 
 def _settings_from_config(user_config: dict) -> RuntimeSettings:
     global _api_key_sources
 
-    legacy_api_keys = _legacy_api_keys_from_config(user_config)
     resolved_api_keys: dict[str, str] = {}
     api_key_sources: dict[str, str] = {}
     for slug in API_KEY_SLUGS:
-        value, source = _resolve_api_key(slug, legacy_api_keys[slug])
+        value, source = _resolve_api_key(slug)
         resolved_api_keys[slug] = value
         api_key_sources[slug] = source
 
@@ -664,9 +501,7 @@ def _settings_from_config(user_config: dict) -> RuntimeSettings:
             raw = os.getenv(spec.env_var, "")
         values[spec.runtime_field] = spec.coerce(raw, spec.default)
 
-    values["anthropic_api_key"] = resolved_api_keys["anthropic"]
     values["openai_api_key"] = resolved_api_keys["openai"]
-    values["tavily_api_key"] = resolved_api_keys["tavily"]
     values["user_background"] = user_background
     values["system_prompt"] = _build_system_prompt(
         user_background,
@@ -679,9 +514,7 @@ def _apply_runtime_settings(settings: RuntimeSettings) -> None:
     global _api_keys
 
     _api_keys = {
-        "anthropic": settings.anthropic_api_key,
         "openai": settings.openai_api_key,
-        "tavily": settings.tavily_api_key,
     }
     module_globals = globals()
     for export_name, field_name in _RUNTIME_EXPORTS.items():
@@ -690,10 +523,8 @@ def _apply_runtime_settings(settings: RuntimeSettings) -> None:
 
 def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> None:
     _log.info(
-        "API keys: Anthropic=%s | OpenAI=%s | Tavily=%s",
-        "set" if settings.anthropic_api_key else "missing",
+        "API key: OpenAI=%s",
         "set" if settings.openai_api_key else "missing",
-        "set" if settings.tavily_api_key else "missing",
     )
     if settings.obsidian_vault_path:
         _log.info("Obsidian vault path: %s", settings.obsidian_vault_path)
@@ -702,17 +533,12 @@ def _log_runtime_settings(settings: RuntimeSettings, prefix: str = "Loaded") -> 
 
     _log.info(
         (
-            "%s settings: hotkey=%s | camera=%d (%dx%d) | voice_engine=%s | voice=%s "
-            "(speed=%.2f) | input_mode=%s | log_level=%s"
+            "%s settings: hotkey=%s | camera=%d | voice=%s | input_mode=%s | log_level=%s"
         ),
         prefix,
         settings.push_to_talk_key,
         settings.camera_device_index,
-        settings.camera_frame_width,
-        settings.camera_frame_height,
-        settings.voice_engine,
-        settings.tts_voice,
-        settings.tts_speed,
+        settings.voice,
         settings.input_mode,
         _log_level_name,
     )
@@ -776,71 +602,16 @@ def _escape_toml_basic_string(value: str) -> str:
     )
 
 
-_API_KEYS_SECTION_RE = re.compile(r"\[api_keys\].*?(?=\n\[|\Z)", re.DOTALL)
-
-
-def _write_legacy_api_keys(anthropic: str, openai: str, tavily: str) -> None:
-    """Write API keys to the legacy [api_keys] section of config.toml."""
-    safe_anthropic = _escape_toml_basic_string(anthropic)
-    safe_openai = _escape_toml_basic_string(openai)
-    safe_tavily = _escape_toml_basic_string(tavily)
-    text = _read_config_text()
-    new_section = (
-        "[api_keys]\n"
-        f'anthropic = "{safe_anthropic}"\n'
-        f'openai = "{safe_openai}"\n'
-        f'tavily = "{safe_tavily}"\n'
-    )
-    if _API_KEYS_SECTION_RE.search(text):
-        text = _API_KEYS_SECTION_RE.sub(lambda _m: new_section.rstrip(), text)
-    else:
-        text = text.rstrip() + "\n\n" + new_section
-    _write_config_text(text)
-
-
-def _remove_legacy_api_keys_section() -> bool:
-    text = _read_config_text()
-    if not _API_KEYS_SECTION_RE.search(text):
-        return False
-    updated = _API_KEYS_SECTION_RE.sub("", text)
-    cleaned = updated.rstrip() + "\n"
-    _write_config_text(cleaned)
-    return True
-
-
-def _read_legacy_api_keys_from_disk() -> dict[str, str]:
-    loaded, _ = _load_user_config()
-    return _legacy_api_keys_from_config(loaded)
-
-
 def set_api_key(slug: str, value: str) -> None:
-    """Persist one API key using Keychain on macOS with config fallback."""
+    """Persist one API key in Apple Keychain."""
     if slug not in API_KEY_SLUGS:
         raise ValueError(f"Unknown API key slug: {slug!r}")
 
     normalized = value.strip()
-    try:
-        if normalized:
-            secrets_store.set_api_key(slug, normalized)
-        else:
-            secrets_store.delete_api_key(slug)
-    except secrets_store.SecretsStoreError as exc:
-        _log.warning(
-            "Keychain write failed for %s; falling back to config.toml storage. error=%s",
-            slug,
-            exc,
-        )
+    if normalized:
+        secrets_store.set_api_key(slug, normalized)
     else:
-        _remove_legacy_api_keys_section()
-        return
-
-    legacy = _read_legacy_api_keys_from_disk()
-    legacy[slug] = normalized
-    _write_legacy_api_keys(
-        legacy["anthropic"],
-        legacy["openai"],
-        legacy["tavily"],
-    )
+        secrets_store.delete_api_key(slug)
 
 
 def clear_api_key(slug: str) -> None:
@@ -848,33 +619,9 @@ def clear_api_key(slug: str) -> None:
     set_api_key(slug, "")
 
 
-def save_api_keys(anthropic: str, openai: str, tavily: str) -> None:
-    """Persist API keys using Keychain on macOS with config fallback."""
-    normalized = {
-        "anthropic": anthropic.strip(),
-        "openai": openai.strip(),
-        "tavily": tavily.strip(),
-    }
-    try:
-        for slug, value in normalized.items():
-            if value:
-                secrets_store.set_api_key(slug, value)
-            else:
-                secrets_store.delete_api_key(slug)
-    except secrets_store.SecretsStoreError as exc:
-        _log.warning(
-            "Keychain write failed; falling back to config.toml storage. error=%s",
-            exc,
-        )
-    else:
-        _remove_legacy_api_keys_section()
-        return
-
-    _write_legacy_api_keys(
-        normalized["anthropic"],
-        normalized["openai"],
-        normalized["tavily"],
-    )
+def save_api_key(openai: str) -> None:
+    """Persist the OpenAI API key in Apple Keychain."""
+    set_api_key("openai", openai)
 
 
 def _set_top_level_value(key: str, value: str) -> None:
@@ -937,8 +684,8 @@ def save_obsidian_vault_path(path: str) -> None:
     _set_top_level_value("obsidian_vault_path", f'"{escaped}"')
 
 
-def save_tts_voice(voice: str) -> None:
-    """Persist the voice used by Realtime and legacy speech output."""
+def save_voice(voice: str) -> None:
+    """Persist the Realtime voice."""
     escaped = _escape_toml_basic_string(voice.strip())
     _set_top_level_value("voice", f'"{escaped}"')
 
@@ -953,45 +700,6 @@ def save_input_mode(mode: str) -> None:
     if mode not in {"voice_activation", "push_to_talk"}:
         raise ValueError(f"Unknown input mode: {mode!r}")
     _set_top_level_value("input_mode", f'"{mode}"')
-
-
-def _migrate_legacy_api_keys_to_keychain(user_config: dict) -> dict:
-    """Move legacy plaintext keys into Keychain and purge [api_keys] on success."""
-    if "api_keys" not in user_config:
-        return user_config
-
-    legacy = _legacy_api_keys_from_config(user_config)
-    try:
-        for slug in API_KEY_SLUGS:
-            legacy_value = legacy[slug]
-            if not legacy_value:
-                continue
-            if secrets_store.has_api_key(slug):
-                continue
-            secrets_store.set_api_key(slug, legacy_value)
-    except secrets_store.SecretsStoreError as exc:
-        _log.warning(
-            "Failed to migrate legacy API keys to Keychain; keeping config fallback. error=%s",
-            exc,
-        )
-        return user_config
-
-    try:
-        removed = _remove_legacy_api_keys_section()
-    except OSError as exc:
-        _log.warning(
-            "Migrated API keys to Keychain but could not remove the legacy section. "
-            "path=%s error=%s",
-            CONFIG_PATH,
-            exc,
-        )
-        return user_config
-    if removed:
-        _log.info("Migrated legacy [api_keys] section to Apple Keychain")
-
-    updated = dict(user_config)
-    updated.pop("api_keys", None)
-    return updated
 
 
 def reload() -> None:
@@ -1010,14 +718,12 @@ def reload() -> None:
             load_error,
         )
 
-    _user_config = _migrate_legacy_api_keys_to_keychain(_user_config)
     _runtime_settings = _settings_from_config(_user_config)
     _apply_runtime_settings(_runtime_settings)
     _log.info("Config reloaded from %s", CONFIG_PATH)
     _log_runtime_settings(_runtime_settings, prefix="Reloaded")
 
 
-_user_config = _migrate_legacy_api_keys_to_keychain(_user_config)
 _runtime_settings = _settings_from_config(_user_config)
 _apply_runtime_settings(_runtime_settings)
 _log_runtime_settings(_runtime_settings)

@@ -130,7 +130,7 @@ class NotesManager:
     def set_file(self, relative_path: str) -> str:
         """Set the active notes file. Creates dirs and file if needed.
 
-        Returns a confirmation message for Claude to relay.
+        Returns a confirmation message for Klaus to relay.
         """
         if not self._base or not self._base.parts:
             return "Error: No Obsidian vault path configured. Set OBSIDIAN_VAULT_PATH in .env."
@@ -160,7 +160,7 @@ class NotesManager:
     def save_note(self, content: str) -> str:
         """Append content to the current notes file.
 
-        Returns a confirmation message for Claude to relay.
+        Returns a confirmation message for Klaus to relay.
         """
         if not self.current_file:
             return "Error: No notes file set. Ask the user which file to use."

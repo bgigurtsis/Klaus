@@ -11,12 +11,13 @@ import threading
 import time
 import wave
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import numpy as np
 import websocket
 
 import klaus.config as config
-from klaus.brain import AskCancelled, Exchange, _extract_sentences
+from klaus.audio_output import PCM_SAMPLE_RATE, AudioOutput
 from klaus.notes import (
     NotesManager,
     READ_NOTE_TOOL,
@@ -25,14 +26,37 @@ from klaus.notes import (
     SET_NOTES_FILE_TOOL,
 )
 from klaus.query_router import RouteDecision, default_route_decision, local_route_decision
-from klaus.search import TOOL_DEFINITION, WebSearch
-from klaus.tts import PCM_SAMPLE_RATE, TextToSpeech
 
 logger = logging.getLogger(__name__)
 
 _REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
 _CONNECTION_MAX_AGE_SECONDS = 55 * 60
 _RECV_POLL_SECONDS = 0.15
+
+
+class AskCancelled(Exception):
+    """Raised when the user cancels an active Realtime turn."""
+
+
+@dataclass
+class Exchange:
+    """A single recorded question and Realtime answer."""
+
+    user_text: str
+    assistant_text: str
+    image_base64: str | None = None
+    searches: list[dict] = field(default_factory=list)
+    notes_file_changed: bool = False
+
+
+def _extract_sentences(buf: str) -> tuple[list[str], str]:
+    """Split complete sentences from an in-progress transcript."""
+    import re
+
+    parts = re.split(r"(?<=[.!?])\s+", buf)
+    if len(parts) <= 1:
+        return [], buf
+    return [part.strip() for part in parts[:-1] if part.strip()], parts[-1]
 
 
 def wav_to_pcm24k(wav_bytes: bytes) -> bytes:
@@ -79,15 +103,14 @@ class RealtimeBrain:
         self,
         *,
         notes: NotesManager | None,
-        tts: TextToSpeech,
+        audio_output: AudioOutput,
         settings: config.RuntimeSettings | None = None,
         websocket_factory: Callable[..., object] | None = None,
     ) -> None:
         self._notes = notes
-        self._tts = tts
+        self._audio_output = audio_output
         self._settings = settings or config.get_runtime_settings()
         self._websocket_factory = websocket_factory or websocket.create_connection
-        self._search = WebSearch() if self._settings.tavily_api_key else None
         self._ws = None
         self._connected_at = 0.0
         self._turn_lock = threading.Lock()
@@ -100,8 +123,6 @@ class RealtimeBrain:
 
     def _build_tools(self) -> list[dict]:
         tools: list[dict] = []
-        if self._search is not None:
-            tools.append(_as_realtime_tool(TOOL_DEFINITION))
         if self._notes is not None and self._notes.base_path not in ("", "."):
             tools.extend(
                 [
@@ -128,7 +149,6 @@ class RealtimeBrain:
 
     def reload_clients(self) -> None:
         self._settings = config.get_runtime_settings()
-        self._search = WebSearch() if self._settings.tavily_api_key else None
         self._tools = self._build_tools()
         self.close()
 
@@ -144,7 +164,7 @@ class RealtimeBrain:
 
     def cancel_current(self) -> None:
         """Cancel server generation and remove audio the user did not hear."""
-        self._tts.stop()
+        self._audio_output.stop()
         if not self._response_active:
             return
         self._response_active = False
@@ -232,7 +252,7 @@ class RealtimeBrain:
                 self._played_frames += count
 
             playback_thread = threading.Thread(
-                target=self._tts.play_pcm_stream,
+                target=self._audio_output.play_pcm_stream,
                 args=(audio_queue,),
                 kwargs={
                     "on_first_audio": playback_started,
@@ -244,7 +264,6 @@ class RealtimeBrain:
 
             transcript = ""
             transcript_buffer = ""
-            searches: list[dict] = []
             cancelled = False
             try:
                 while True:
@@ -301,7 +320,7 @@ class RealtimeBrain:
                                 if cancel_event is not None and cancel_event.is_set():
                                     cancelled = True
                                     break
-                                output = self._run_tool(call, searches)
+                                output = self._run_tool(call)
                                 if cancel_event is not None and cancel_event.is_set():
                                     cancelled = True
                                     break
@@ -346,7 +365,7 @@ class RealtimeBrain:
                 user_text=question,
                 assistant_text=answer,
                 image_base64=image_base64 if route.use_image else None,
-                searches=searches,
+                searches=[],
                 notes_file_changed=self._notes.changed if self._notes else False,
             )
 
@@ -382,7 +401,7 @@ class RealtimeBrain:
 
             audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
             playback_thread = threading.Thread(
-                target=self._tts.play_pcm_stream,
+                target=self._audio_output.play_pcm_stream,
                 args=(audio_queue,),
                 daemon=True,
             )
@@ -440,7 +459,7 @@ class RealtimeBrain:
                 },
                 "output": {
                     "format": {"type": "audio/pcm", "rate": PCM_SAMPLE_RATE},
-                    "voice": self._settings.tts_voice,
+                    "voice": self._settings.voice,
                 },
             },
             "instructions": instructions,
@@ -462,18 +481,13 @@ class RealtimeBrain:
             instructions += f"\n\nUse no more than {route.max_sentences} sentences."
         return instructions
 
-    def _run_tool(self, call: dict, searches: list[dict]) -> str:
+    def _run_tool(self, call: dict) -> str:
         name = str(call.get("name", ""))
         try:
             arguments = json.loads(call.get("arguments", "{}"))
         except json.JSONDecodeError:
             arguments = {}
 
-        if name == "web_search" and self._search is not None:
-            query = str(arguments.get("query", ""))
-            result = self._search.search(query)
-            searches.append({"query": query, "result": result})
-            return result
         if name == "set_notes_file" and self._notes is not None:
             return self._notes.set_file(str(arguments.get("file_path", "")))
         if name == "search_notes" and self._notes is not None:

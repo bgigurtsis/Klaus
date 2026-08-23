@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import queue
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from klaus.brain import AskCancelled
+from klaus.realtime import AskCancelled
 from klaus.query_router import default_route_decision
 
 logger = logging.getLogger(__name__)
@@ -63,13 +62,12 @@ class PipelineHooks:
 class QuestionPipeline:
     """Execute one transcribe -> route -> answer -> persist pipeline run."""
 
-    def __init__(self, stt, camera, brain, memory, notes, tts) -> None:
+    def __init__(self, stt, camera, brain, memory, notes) -> None:
         self._stt = stt
         self._camera = camera
         self._brain = brain
         self._memory = memory
         self._notes = notes
-        self._tts = tts
 
     def run(self, wav_bytes: bytes, *, context: PipelineContext, hooks: PipelineHooks) -> None:
         timings = TurnTimings()
@@ -139,120 +137,21 @@ class QuestionPipeline:
         hooks.on_transcription(transcript, time.time(), thumbnail or b"")
         notes_context = self._build_notes_context(route_decision.use_notes_context)
 
-        if getattr(self._brain, "handles_audio", False) is True:
-            self._run_realtime_turn(
-                wav_bytes=wav_bytes,
-                transcript=transcript,
-                image_b64=image_b64,
-                reading_text=reading_text,
-                notes_context=notes_context,
-                route_decision=route_decision,
-                context=context,
-                hooks=hooks,
-                timings=timings,
-            )
-            return
-
-        sentence_queue: queue.Queue[str | None] = queue.Queue()
-        first_sentence = threading.Event()
-        tts_thread: threading.Thread | None = None
-
-        def on_sentence(text: str) -> None:
-            sentence_queue.put(text)
-            if hooks.on_assistant_sentence:
-                hooks.on_assistant_sentence(text)
-            if first_sentence.is_set():
-                return
-            first_sentence.set()
-            timings.first_sentence = time.perf_counter()
-            hooks.on_speaking_started()
-
-        def on_first_audio() -> None:
-            timings.first_audio = time.perf_counter()
-
-        cancelled = False
-        try:
-            if context.input_mode == "voice_activation" and context.suspend_input_stream:
-                context.suspend_input_stream()
-
-            tts_thread = threading.Thread(
-                target=self._tts.speak_streaming,
-                args=(sentence_queue,),
-                kwargs={"on_first_audio": on_first_audio},
-                daemon=True,
-            )
-            tts_thread.start()
-
-            logger.info(
-                "Sending to Claude (route=%s, image=%s, selected_text=%s, notes=%s)",
-                route_decision.mode.value,
-                "yes" if image_b64 else "no",
-                "yes" if reading_text else "no",
-                "yes" if notes_context else "no",
-            )
-            exchange = self._brain.ask(
-                question=transcript,
-                image_base64=image_b64,
-                reading_text=reading_text,
-                memory_context=None,
-                notes_context=notes_context,
-                on_sentence=on_sentence,
-                route_decision=route_decision,
-                cancel_event=cancel_event,
-            )
-        except AskCancelled:
-            cancelled = True
-        finally:
-            sentence_queue.put(None)
-
-        if cancelled:
-            self._tts.stop()
-            if tts_thread is not None:
-                tts_thread.join()
-            self._finish_cancelled(hooks, timings)
-            return
-
-        if exchange.notes_file_changed and context.current_session_id:
-            self._memory.set_session_notes_file(
-                context.current_session_id,
-                self._notes.current_file,
-            )
-
-        logger.info("Claude responded (%d chars), saving exchange", len(exchange.assistant_text))
-
-        exchange_id = ""
-        if context.current_session_id:
-            record = self._memory.save_exchange(
-                session_id=context.current_session_id,
-                user_text=exchange.user_text,
-                assistant_text=exchange.assistant_text,
-                image_base64=exchange.image_base64,
-                searches=exchange.searches,
-                note_file_path=(
-                    self._notes.current_path if exchange.notes_file_changed else None
-                ),
-            )
-            exchange_id = record.id
-
-        hooks.on_response(exchange.assistant_text, time.time(), exchange_id)
-        hooks.on_exchange_count_updated()
-        hooks.on_sessions_changed()
-
-        if tts_thread is not None:
-            tts_thread.join()
-
-        timings.turn_done = time.perf_counter()
-        logger.info("Turn timings: %s", timings.summary())
-        logger.info("Playback complete, idle")
-        hooks.on_state("idle")
+        self._run_realtime_turn(
+            wav_bytes=wav_bytes,
+            transcript=transcript,
+            image_b64=image_b64,
+            reading_text=reading_text,
+            notes_context=notes_context,
+            route_decision=route_decision,
+            context=context,
+            hooks=hooks,
+            timings=timings,
+        )
 
     def cancel_active(self) -> None:
-        """Cancel both local playback and any active server response."""
-        cancel = getattr(self._brain, "cancel_current", None)
-        if callable(cancel):
-            cancel()
-        else:
-            self._tts.stop()
+        """Cancel the active Realtime response."""
+        self._brain.cancel_current()
 
     def _run_realtime_turn(
         self,

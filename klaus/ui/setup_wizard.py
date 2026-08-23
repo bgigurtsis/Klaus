@@ -219,9 +219,7 @@ class SetupWizard(QMainWindow):
         root.addWidget(self._nav)
 
         self._collected: dict = {
-            "anthropic": config.ANTHROPIC_API_KEY,
             "openai": config.OPENAI_API_KEY,
-            "tavily": config.TAVILY_API_KEY,
             "camera_index": -1,
             "mic_index": -1,
             "user_background": "",
@@ -326,9 +324,8 @@ class SetupWizard(QMainWindow):
                 "over an answer to interrupt it and ask a follow-up.",
             ),
             (
-                "Check and Remember",
-                "Klaus can search current facts when Tavily is configured. Each reading "
-                "session may keep its questions, answers, and working context.",
+                "Remember",
+                "Each reading session can keep its questions, answers, and working context.",
             ),
             (
                 "Save to Obsidian",
@@ -581,7 +578,7 @@ class SetupWizard(QMainWindow):
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_combo.addItem("No reading source (audio only)", -1)
-        cameras = list_camera_devices(include_physical=False)
+        cameras = list_camera_devices()
         for cam in cameras:
             self._camera_combo.addItem(format_camera_label(cam), cam.index)
         if cameras:
@@ -947,11 +944,7 @@ class SetupWizard(QMainWindow):
     def _finish_setup(self) -> None:
         """Write all collected config and close the wizard."""
         import klaus.config as cfg
-        cfg.save_api_keys(
-            self._collected["anthropic"],
-            self._collected["openai"],
-            self._collected["tavily"],
-        )
+        cfg.save_api_key(self._collected["openai"])
         cam_idx = self._collected["camera_index"]
         if cam_idx != -1:
             cfg.save_camera_index(cam_idx)

@@ -330,7 +330,7 @@ class VoiceActivatedRecorder:
         """Stop the physical mic stream. Safe to call from non-callback threads.
 
         Use this (instead of pause) when you need to free the CoreAudio device,
-        e.g. before TTS playback. Call resume_stream() to reopen.
+        e.g. before audio playback. Call resume_stream() to reopen.
         """
         if self._stream is not None:
             try:

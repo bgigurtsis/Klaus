@@ -123,7 +123,7 @@ class CameraWidget(QWidget):
             label = (
                 "No reading source"
                 if device_index < 0
-                else f"Physical camera {device_index} (legacy)"
+                else "Unsupported reading source"
             )
             self._source_combo.addItem(label, int(device_index))
             combo_index = self._source_combo.count() - 1

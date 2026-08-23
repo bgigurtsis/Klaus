@@ -10,7 +10,7 @@ from klaus.realtime import RealtimeBrain
 from klaus.skill_loader import load_skill_instructions
 
 
-class _FakeTTS:
+class _FakeAudioOutput:
     def stop(self) -> None:
         pass
 
@@ -18,8 +18,7 @@ class _FakeTTS:
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         openai_api_key="test-key",
-        tavily_api_key="",
-        tts_voice="marin",
+        voice="marin",
     )
 
 
@@ -95,7 +94,11 @@ def test_note_paths_cannot_escape_the_vault(tmp_path) -> None:
 
 def test_realtime_exposes_all_obsidian_tools_for_a_configured_vault(tmp_path) -> None:
     notes = NotesManager(str(tmp_path))
-    brain = RealtimeBrain(notes=notes, tts=_FakeTTS(), settings=_settings())
+    brain = RealtimeBrain(
+        notes=notes,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+    )
 
     names = [tool["name"] for tool in brain._tools]
 

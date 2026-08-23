@@ -122,7 +122,7 @@ class SettingsDialog(QDialog):
             "echo", "fable", "onyx", "sage", "shimmer", "verse",
         ):
             self._voice_combo.addItem(voice.capitalize(), voice)
-        current_voice = self._voice_combo.findData(config.TTS_VOICE)
+        current_voice = self._voice_combo.findData(config.VOICE)
         self._voice_combo.setCurrentIndex(max(0, current_voice))
         layout.addWidget(self._voice_combo)
 
@@ -295,7 +295,7 @@ class SettingsDialog(QDialog):
         self._camera_index_by_device = {-1: 0}
         self._camera_combo.addItem("No reading source (audio only)", -1)
         try:
-            cameras = list_camera_devices(include_physical=False)
+            cameras = list_camera_devices()
         except Exception as exc:
             logger.warning("Failed to enumerate cameras: %s", exc)
             cameras = []
@@ -569,7 +569,7 @@ class SettingsDialog(QDialog):
         vault = self._vault_path_edit.text().strip()
         config.save_obsidian_vault_path(vault)
         voice = self._voice_combo.currentData()
-        config.save_tts_voice(str(voice))
+        config.save_voice(str(voice))
         config.save_barge_in_enabled(self._barge_in_check.isChecked())
         config.reload()
         logger.info("Settings saved")

@@ -1,7 +1,7 @@
 """Short synthesized audio cues for state transitions.
 
 Tones are generated with numpy (no asset files) as int16 mono PCM at the
-TTS output rate, so they can play through the persistent TTS output stream.
+Realtime output rate, so they can play through the persistent audio output stream.
 """
 
 from __future__ import annotations

@@ -184,12 +184,9 @@ class MainWindow(QMainWindow):
         thread_header_layout.addWidget(self._session_title_label)
         thread_header_layout.addStretch()
 
-        model_name = "GPT Realtime" if config.VOICE_ENGINE == "realtime" else "Legacy voice"
-        model_pill = QLabel(model_name)
+        model_pill = QLabel("GPT Realtime")
         model_pill.setObjectName("klaus-model-pill")
-        model_pill.setToolTip(
-            config.REALTIME_MODEL if config.VOICE_ENGINE == "realtime" else "Claude + OpenAI TTS"
-        )
+        model_pill.setToolTip(config.REALTIME_MODEL)
         model_pill.setFixedHeight(28)
         thread_header_layout.addWidget(model_pill)
         right_layout.addWidget(thread_header)

@@ -62,7 +62,7 @@ class _FakeWebSocket:
         self.closed = True
 
 
-class _FakeTTS:
+class _FakeAudioOutput:
     def __init__(self) -> None:
         self.chunks: list[np.ndarray] = []
         self.stopped = False
@@ -90,8 +90,7 @@ class _FakeTTS:
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         openai_api_key="test-key",
-        tavily_api_key="",
-        tts_voice="marin",
+        voice="marin",
     )
 
 
@@ -123,7 +122,11 @@ def test_wav_to_pcm24k_rejects_non_pcm16() -> None:
 
 
 def test_session_update_uses_current_ga_schema() -> None:
-    brain = RealtimeBrain(notes=None, tts=_FakeTTS(), settings=_settings())
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+    )
 
     event = brain._session_update("Answer briefly.")
 
@@ -172,10 +175,10 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
         factory_calls.append((url, kwargs))
         return websocket
 
-    tts = _FakeTTS()
+    audio_output = _FakeAudioOutput()
     brain = RealtimeBrain(
         notes=None,
-        tts=tts,
+        audio_output=audio_output,
         settings=_settings(),
         websocket_factory=websocket_factory,
     )
@@ -198,7 +201,7 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
     assert exchange.user_text == "Explain this passage"
     assert sentences == ["A useful answer."]
     assert speaking == [True]
-    assert np.array_equal(tts.chunks[0], np.array([10, 20, 30], dtype=np.int16))
+    assert np.array_equal(audio_output.chunks[0], np.array([10, 20, 30], dtype=np.int16))
 
     input_event = next(
         event for event in websocket.sent if event["type"] == "conversation.item.create"
@@ -212,7 +215,11 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
 
 def test_cancel_truncates_audio_at_played_position() -> None:
     websocket = _FakeWebSocket([])
-    brain = RealtimeBrain(notes=None, tts=_FakeTTS(), settings=_settings())
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+    )
     brain._ws = websocket
     brain._response_active = True
     brain._last_item_id = "item-1"
@@ -249,10 +256,10 @@ def test_replay_uses_out_of_band_realtime_audio() -> None:
             },
         ]
     )
-    tts = _FakeTTS()
+    audio_output = _FakeAudioOutput()
     brain = RealtimeBrain(
         notes=None,
-        tts=tts,
+        audio_output=audio_output,
         settings=_settings(),
         websocket_factory=lambda *_args, **_kwargs: websocket,
     )
@@ -268,4 +275,4 @@ def test_replay_uses_out_of_band_realtime_audio() -> None:
     assert response["output_modalities"] == ["audio"]
     assert response["input"] == []
     assert "The exact prior answer." in response["instructions"]
-    assert np.array_equal(tts.chunks[0], np.array([40, 50, 60], dtype=np.int16))
+    assert np.array_equal(audio_output.chunks[0], np.array([40, 50, 60], dtype=np.int16))

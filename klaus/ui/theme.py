@@ -840,13 +840,6 @@ QInputDialog QLabel {{
 
 
 # ---------------------------------------------------------------------------
-# Kept for backward-compat during transition; prefer application_stylesheet()
-# ---------------------------------------------------------------------------
-
-GLOBAL_STYLESHEET = application_stylesheet()
-
-
-# ---------------------------------------------------------------------------
 # Helper functions still used by widget code for dynamic / role-based styling
 # ---------------------------------------------------------------------------
 

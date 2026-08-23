@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-API_KEY_SLUGS: tuple[str, ...] = ("anthropic", "openai", "tavily")
+API_KEY_SLUGS: tuple[str, ...] = ("openai",)
 KEYCHAIN_SERVICE = "com.bgigurtsis.klaus.api-keys"
 KEYCHAIN_ACCOUNT_BY_SLUG: dict[str, str] = {
-    "anthropic": "anthropic",
     "openai": "openai",
-    "tavily": "tavily",
 }
 
 

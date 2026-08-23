@@ -146,8 +146,7 @@ def _safe_slot(func):
 from klaus import earcons
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
-from klaus.tts import TextToSpeech
-from klaus.brain import Brain
+from klaus.audio_output import AudioOutput
 from klaus.realtime import RealtimeBrain
 from klaus.memory import Memory
 from klaus.notes import NotesManager
@@ -249,34 +248,26 @@ class KlausApp:
         """
         self._runtime_settings = config.get_runtime_settings()
         settings = self._runtime_settings
-        self._camera = Camera(
-            settings.camera_device_index,
-            frame_width=settings.camera_frame_width,
-            frame_height=settings.camera_frame_height,
-            rotation=settings.camera_rotation,
-        )
+        self._camera = Camera(settings.camera_device_index)
         self._active_camera_index = settings.camera_device_index
         self._active_mic_device = _configured_mic_device()
         self._ptt_recorder = PushToTalkRecorder()
         self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
         self._stt = SpeechToText(settings=settings)
         self._speculative_stt = SpeculativeTranscriber(self._stt.transcribe)
-        self._tts = TextToSpeech(settings=settings)
+        self._audio_output = AudioOutput()
         self._notes = NotesManager(base_path=settings.obsidian_vault_path)
-        if settings.voice_engine == "realtime":
-            self._brain = RealtimeBrain(
-                notes=self._notes,
-                tts=self._tts,
-                settings=settings,
-            )
-        else:
-            self._brain = Brain(notes=self._notes)
+        self._brain = RealtimeBrain(
+            notes=self._notes,
+            audio_output=self._audio_output,
+            settings=settings,
+        )
         self._memory = Memory()
         self._rebuild_question_pipeline()
         self._ensure_device_switch_service()
 
     def _rebuild_question_pipeline(self) -> None:
-        required = ("_stt", "_camera", "_brain", "_memory", "_notes", "_tts")
+        required = ("_stt", "_camera", "_brain", "_memory", "_notes")
         if not all(hasattr(self, attr) for attr in required):
             return
         self._question_pipeline = QuestionPipeline(
@@ -285,7 +276,6 @@ class KlausApp:
             brain=self._brain,
             memory=self._memory,
             notes=self._notes,
-            tts=self._tts,
         )
 
     def _ensure_device_switch_service(self) -> None:
@@ -450,7 +440,7 @@ class KlausApp:
         if not config.EARCONS_ENABLED:
             return
         threading.Thread(
-            target=self._tts.play_pcm, args=(tone_factory(),), daemon=True,
+            target=self._audio_output.play_pcm, args=(tone_factory(),), daemon=True,
         ).start()
 
     def _session_tag(self) -> str:
@@ -612,7 +602,7 @@ class KlausApp:
         if self._input_mode != "voice_activation":
             return
         if self._speaking:
-            self._tts.stop()
+            self._audio_output.stop()
         if self._processing and not self._speaking:
             return
         self._signals.state_changed.emit("listening")
@@ -987,10 +977,7 @@ class KlausApp:
             self._vad_recorder.pause()
         self._signals.state_changed.emit("speaking")
         try:
-            if getattr(self._brain, "handles_audio", False):
-                self._brain.speak_text(text)
-            else:
-                self._tts.speak(text)
+            self._brain.speak_text(text)
         finally:
             self._speaking = False
             if self._input_mode == "voice_activation":
@@ -1111,7 +1098,6 @@ class KlausApp:
             self._rebuild_question_pipeline()
 
         self._brain.reload_clients()
-        self._tts.reload_client(settings=self._runtime_settings)
         self._stt.reload_settings(settings=self._runtime_settings)
 
     @_safe_slot
@@ -1125,7 +1111,7 @@ class KlausApp:
         if self._hotkey_listener:
             self._hotkey_listener.stop()
         self._vad_recorder.stop()
-        self._tts.stop()
+        self._audio_output.stop()
         close_brain = getattr(self._brain, "close", None)
         if callable(close_brain):
             close_brain()
