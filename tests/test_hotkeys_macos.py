@@ -1,11 +1,51 @@
 """Hotkey behavior tests for macOS § / Shift+§ semantics."""
 
+import sys
+
+import klaus.main as main_module
 from klaus.main import (
     _hotkey_action_for_press,
     _mark_key_pressed,
     _mark_key_released,
+    _should_disable_global_hotkeys,
 )
 from klaus.ui.main_window import hotkey_action_for_keypress
+
+
+def test_disables_global_hotkeys_on_macos_26_with_python_312(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        main_module.platform,
+        "mac_ver",
+        lambda: ("26.5.2", ("", "", ""), "arm64"),
+    )
+    monkeypatch.delenv("KLAUS_FORCE_GLOBAL_HOTKEYS", raising=False)
+
+    assert _should_disable_global_hotkeys() is True
+
+
+def test_allows_global_hotkeys_before_macos_26(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        main_module.platform,
+        "mac_ver",
+        lambda: ("15.7", ("", "", ""), "arm64"),
+    )
+    monkeypatch.delenv("KLAUS_FORCE_GLOBAL_HOTKEYS", raising=False)
+
+    assert _should_disable_global_hotkeys() is False
+
+
+def test_force_override_allows_global_hotkeys_on_macos_26(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        main_module.platform,
+        "mac_ver",
+        lambda: ("26.5.2", ("", "", ""), "arm64"),
+    )
+    monkeypatch.setenv("KLAUS_FORCE_GLOBAL_HOTKEYS", "1")
+
+    assert _should_disable_global_hotkeys() is False
 
 
 def test_listener_plain_section_is_ptt_on_macos_shared_key() -> None:

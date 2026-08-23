@@ -1,5 +1,7 @@
 """Klaus -- Voice Research Assistant. Entry point."""
 
+from __future__ import annotations
+
 import functools
 import logging
 import os
@@ -11,9 +13,9 @@ import threading
 def _should_disable_global_hotkeys() -> bool:
     """Return True when starting pynput global hotkeys is known to crash.
 
-    macOS 26 + Python 3.14 has a crash path in pynput/Carbon keyboard APIs
-    (HIToolbox dispatch queue assertion).  Keep the app alive by disabling
-    global hotkeys and relying on in-app Qt hotkeys.
+    macOS 26 has a crash path in pynput/Carbon keyboard APIs across supported
+    Python versions (HIToolbox dispatch queue assertion). Keep the app alive
+    by disabling global hotkeys and relying on in-app Qt hotkeys.
 
     Also used at import time to skip loading pynput altogether, since merely
     importing pynput loads pyobjc extensions that trigger intermittent
@@ -30,7 +32,7 @@ def _should_disable_global_hotkeys() -> bool:
     except (TypeError, ValueError):
         return False
 
-    return mac_major >= 26 and sys.version_info >= (3, 14)
+    return mac_major >= 26
 
 
 if not _should_disable_global_hotkeys():
@@ -496,8 +498,8 @@ class KlausApp:
             logger.warning(
                 "Global hotkeys disabled on macOS %s with Python %s due a known "
                 "pynput crash. In-app hotkeys still work when the Klaus window "
-                "is focused. Use Python 3.13 for stable global hotkeys, or set "
-                "KLAUS_FORCE_GLOBAL_HOTKEYS=1 to force-enable (may crash).",
+                "is focused. Set KLAUS_FORCE_GLOBAL_HOTKEYS=1 to force-enable "
+                "them (may crash).",
                 platform.mac_ver()[0] or "unknown",
                 platform.python_version(),
             )

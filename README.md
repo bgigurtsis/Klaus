@@ -108,7 +108,7 @@ On first launch, the setup wizard can guide you through API keys, reading source
 
 > **macOS permissions:** macOS may request Accessibility for global hotkeys and selected PDF text. It may also request Screen Recording so Klaus can capture Desk View or a PDF window. You can deny Accessibility and use the in-app buttons, though selected-text capture may then use the window-image fallback.
 
-> **macOS 26 + Python 3.14:** `pynput` global hotkeys can crash on this combination. Klaus automatically disables global hotkeys and keeps in-app hotkeys active. Use Python 3.13 for stable global hotkeys.
+> **macOS 26:** `pynput` global hotkeys can crash across supported Python versions. Klaus automatically disables global hotkeys and keeps in-app hotkeys active.
 
 ### Updating
 
