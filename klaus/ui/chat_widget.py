@@ -476,10 +476,23 @@ class ChatWidget(QWidget):
             for widget in (self._empty_state, *self._message_widgets)
             if not widget.isHidden()
         ]
+        # The container has a fixed height so its scroll range ends at the last
+        # message. Qt can therefore shrink a newly inserted or growing row to
+        # the container's old height before this method expands the container.
+        # Pin each row to its current size hint first, then measure the result.
+        for widget in widgets:
+            widget.updateGeometry()
+            if widget.layout() is not None:
+                widget.layout().invalidate()
+                widget.layout().activate()
+            widget.setMinimumHeight(widget.sizeHint().height())
+        self._layout.invalidate()
         self._layout.activate()
         margins = self._layout.contentsMargins()
         content_height = margins.top() + margins.bottom()
-        content_height += sum(widget.height() for widget in widgets)
+        content_height += sum(
+            max(widget.height(), widget.sizeHint().height()) for widget in widgets
+        )
         if widgets:
             content_height += self._layout.spacing() * (len(widgets) - 1)
         target = max(self._scroll.viewport().height(), content_height)

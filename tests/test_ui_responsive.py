@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import QApplication, QBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QApplication, QBoxLayout, QLabel, QSizePolicy
 
 from klaus.ui.chat_widget import ChatWidget, MessageCard
 from klaus.ui.file_links import reveal_file_in_browser
@@ -113,6 +115,67 @@ def test_chat_scroll_range_ends_after_last_message(qt_app) -> None:
     )
 
     assert bottom_gap <= chat._layout.contentsMargins().bottom() + 1
+
+
+def test_streamed_answer_grows_instead_of_clipping_last_lines(qt_app) -> None:
+    chat = ChatWidget()
+    chat.resize(1024, 525)
+    chat.show()
+    for fragment in (
+        "You are looking at a developer's task summary detailing fixes for a "
+        "software issue called 'active window voice stop'.",
+        "It reports specific updates to synthetic voice testing, interruption "
+        "latency, and echo prevention, confirming all tests passed.",
+        "This view appears to be within a project management or git "
+        "collaboration tool.",
+    ):
+        chat.append_assistant_stream(fragment)
+        qt_app.processEvents()
+    for _ in range(3):
+        qt_app.processEvents()
+
+    card = chat._streaming_card
+    row = chat._message_widgets[-1]
+
+    assert card is not None
+    assert row.height() >= row.sizeHint().height()
+    assert card.height() >= card.sizeHint().height()
+    assert card._body.height() >= card._body.sizeHint().height()
+
+
+def test_new_screenshot_card_keeps_full_thumbnail_in_long_chat(qt_app) -> None:
+    thumbnail = BytesIO()
+    Image.new("RGB", (1200, 800), color=(25, 50, 75)).save(
+        thumbnail, format="JPEG"
+    )
+    chat = ChatWidget()
+    chat.resize(1024, 525)
+    chat.show()
+    for _ in range(8):
+        chat.add_message(
+            "assistant",
+            "A previous response that occupies several wrapped lines. " * 6,
+        )
+        qt_app.processEvents()
+
+    chat.add_message(
+        "user",
+        "What am I looking at?",
+        thumbnail_bytes=thumbnail.getvalue(),
+    )
+    for _ in range(3):
+        qt_app.processEvents()
+
+    row = chat._message_widgets[-1]
+    card = chat._last_card
+    thumbnail_label = next(
+        label
+        for label in card.findChildren(QLabel)
+        if label.objectName() == "card-thumbnail"
+    )
+
+    assert row.height() >= row.sizeHint().height()
+    assert thumbnail_label.height() == thumbnail_label.pixmap().height()
 
 
 def test_note_card_exposes_a_finder_link(qt_app, tmp_path) -> None:
