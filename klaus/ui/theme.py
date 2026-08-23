@@ -15,6 +15,7 @@ import sys
 logger = logging.getLogger(__name__)
 
 _FONTS_DIR = Path(__file__).parent / "fonts"
+_ICONS_DIR = Path(__file__).parent / "icons"
 
 # ---------------------------------------------------------------------------
 # Color palette
@@ -139,7 +140,12 @@ QComboBox {{
 }}
 QComboBox::drop-down {{
     border: none;
-    width: 20px;
+    width: 30px;
+}}
+QComboBox::down-arrow {{
+    image: url({_ICONS_DIR.as_posix()}/chevron-down.svg);
+    width: 12px;
+    height: 12px;
 }}
 QComboBox QAbstractItemView {{
     background-color: {SURFACE_RAISED};
@@ -162,6 +168,40 @@ QComboBox QAbstractItemView::item:selected {{
 QComboBox QAbstractItemView::item:selected:hover {{
     background-color: {USER_ACCENT};
     color: #ffffff;
+}}
+#reading-source-combo {{
+    background-color: {SURFACE_RAISED};
+    border: 1px solid {BORDER_EMPHASIS};
+    border-radius: 9px;
+    padding: 7px 12px;
+    font-size: {FONT_SIZE_BODY}px;
+    font-weight: 600;
+}}
+#reading-source-combo:hover, #reading-source-combo:on {{
+    background-color: {SURFACE_OVERLAY};
+    border-color: {USER_ACCENT};
+}}
+#reading-source-menu {{
+    background-color: {SURFACE_RAISED};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER_EMPHASIS};
+    border-radius: 10px;
+    padding: 6px;
+    outline: none;
+}}
+#reading-source-menu::item {{
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 7px;
+    font-size: {FONT_SIZE_BODY}px;
+}}
+#reading-source-menu::item:selected {{
+    color: #ffffff;
+    background-color: #5b4f88;
+}}
+#reading-source-menu::item:hover:!selected {{
+    color: {TEXT_PRIMARY};
+    background-color: {SURFACE_OVERLAY};
 }}
 
 /* ===== Default button ===== */
@@ -262,6 +302,7 @@ QSplitter::handle {{
     border: 1px solid {BORDER_DEFAULT};
     border-radius: 14px;
     color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_SMALL + 1}px;
 }}
 #reading-context-title {{
     color: {TEXT_SECONDARY};
@@ -510,12 +551,12 @@ QPushButton#card-accent-btn:hover {{
     border-radius: 18px;
 }}
 #klaus-state-label {{
-    font-size: {FONT_SIZE_BODY}px;
+    font-size: {FONT_SIZE_BODY + 1}px;
     font-weight: 700;
 }}
 #klaus-state-detail {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
     background: transparent;
 }}
 #klaus-state-orb {{
@@ -551,14 +592,24 @@ QPushButton#card-accent-btn:hover {{
     background-color: {STOP_HOVER_BG};
 }}
 #klaus-hotkey-hint {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 600;
     background: transparent;
     border: none;
 }}
+#klaus-hotkey-keycap {{
+    color: {BG};
+    background: {TEXT_PRIMARY};
+    border: 1px solid #ffffff;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 800;
+}}
 #klaus-stats {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
+    color: {TEXT_SECONDARY};
+    font-size: {FONT_SIZE_SMALL + 1}px;
     background: transparent;
     border: none;
 }}

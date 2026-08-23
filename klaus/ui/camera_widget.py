@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QListView, QVBoxLayout, QWidget
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 import cv2
@@ -51,6 +51,13 @@ class CameraWidget(QWidget):
         self._source_combo: QComboBox | None = None
         if sys.platform == "darwin":
             self._source_combo = QComboBox()
+            self._source_combo.setObjectName("reading-source-combo")
+            self._source_combo.setFixedHeight(38)
+            source_view = QListView()
+            source_view.setObjectName("reading-source-menu")
+            source_view.setMouseTracking(True)
+            source_view.setUniformItemSizes(True)
+            self._source_combo.setView(source_view)
             self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
             self._source_combo.addItem(
                 "Active window  ·  PDF",
@@ -62,6 +69,8 @@ class CameraWidget(QWidget):
         self._video_label = QLabel()
         self._video_label.setObjectName("camera-preview")
         self._video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._video_label.setWordWrap(True)
+        self._video_label.setContentsMargins(18, 12, 18, 12)
         self._video_label.setMinimumSize(270, 160)
         self._video_label.setMaximumHeight(204)
         self._video_label.setText("No reading context\nSelect a source to begin")

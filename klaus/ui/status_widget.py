@@ -61,8 +61,8 @@ class StatusWidget(QWidget):
     }
 
     _HOTKEY_HINTS = {
-        "push_to_talk": "{toggle} switches to hands-free",
-        "voice_activation": "{toggle} switches to push to talk",
+        "push_to_talk": "Switch to hands-free",
+        "voice_activation": "Switch to push to talk",
     }
 
     def __init__(
@@ -117,12 +117,17 @@ class StatusWidget(QWidget):
 
         layout.addStretch()
 
-        hint = self._HOTKEY_HINTS.get(self._mode, "").format(
-            hotkey=self._hotkey, toggle=self._toggle_key,
-        )
-        self._hotkey_label = QLabel(hint)
+        hotkey_cluster = QHBoxLayout()
+        hotkey_cluster.setSpacing(7)
+        self._hotkey_keycap = QLabel(self._toggle_key)
+        self._hotkey_keycap.setObjectName("klaus-hotkey-keycap")
+        self._hotkey_keycap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hotkey_cluster.addWidget(self._hotkey_keycap)
+
+        self._hotkey_label = QLabel(self._HOTKEY_HINTS.get(self._mode, ""))
         self._hotkey_label.setObjectName("klaus-hotkey-hint")
-        layout.addWidget(self._hotkey_label)
+        hotkey_cluster.addWidget(self._hotkey_label)
+        layout.addLayout(hotkey_cluster)
 
         self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
         self._mode_btn.setObjectName("klaus-mode-btn")
@@ -176,10 +181,7 @@ class StatusWidget(QWidget):
         """Update the mode button label and hotkey hint."""
         self._mode = mode
         self._mode_btn.setText(self._MODE_LABELS.get(mode, "Voice"))
-        hint = self._HOTKEY_HINTS.get(mode, "").format(
-            hotkey=self._hotkey, toggle=self._toggle_key,
-        )
-        self._hotkey_label.setText(hint)
+        self._hotkey_label.setText(self._HOTKEY_HINTS.get(mode, ""))
         self._apply_state_label(self._current_state)
 
     def set_exchange_count(self, count: int) -> None:
@@ -191,8 +193,6 @@ class StatusWidget(QWidget):
         """Update hotkey labels shown in the status bar."""
         self._hotkey = hotkey
         self._toggle_key = toggle_key
-        hint = self._HOTKEY_HINTS.get(self._mode, "").format(
-            hotkey=self._hotkey, toggle=self._toggle_key,
-        )
-        self._hotkey_label.setText(hint)
+        self._hotkey_keycap.setText(self._toggle_key)
+        self._hotkey_label.setText(self._HOTKEY_HINTS.get(self._mode, ""))
         self._apply_state_label(self._current_state)
