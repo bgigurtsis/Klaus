@@ -1,4 +1,4 @@
-"""Klaus -- Voice Research Assistant. Entry point."""
+"""Voice-powered research assistant for physical and digital media."""
 
 from __future__ import annotations
 

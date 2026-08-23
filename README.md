@@ -5,7 +5,7 @@
 <h1 align="center">Klaus</h1>
 
 <p align="center">
-  <strong>A voice-powered research assistant for physical and digital media.</strong>
+  <strong>Voice-powered research assistant for physical and digital media.</strong>
 </p>
 
 <p align="center">
@@ -17,14 +17,27 @@
 
 Klaus can answer spoken questions about a physical page or anything in your active window. It can read papers through Apple Desk View. It can also use selected text or an image from any macOS app. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. GPT Realtime powers the live conversation.
 
-## Quick setup
+## Install Klaus
 
 You need macOS 12 or later, a microphone, and an [OpenAI API key](https://platform.openai.com/api-keys).
+
+### Homebrew
 
 ```sh
 brew tap bgigurtsis/klaus
 brew install klaus
 klaus
+```
+
+### PyPI
+
+Klaus needs Python 3.11 through 3.13 and PortAudio. Create a virtual environment before you install it from PyPI.
+
+```sh
+brew install python@3.13 portaudio
+python3.13 -m venv .venv-klaus
+.venv-klaus/bin/pip install klaus-assistant
+.venv-klaus/bin/klaus
 ```
 
 The first-launch guide sets up your API key, reading source, microphone, local speech model, and optional Obsidian vault.
