@@ -13,6 +13,7 @@ from klaus.macos_reading_source import (
     ACTIVE_READING_WINDOW_SOURCE_INDEX,
     DESK_VIEW_SOURCE_INDEX,
     MacOSReadingSource,
+    NO_READING_SOURCE_INDEX,
     is_window_reading_source,
     reading_source_mode,
 )
@@ -38,6 +39,8 @@ class Camera:
 
     def start(self) -> None:
         if self._running:
+            return
+        if self._device_index == NO_READING_SOURCE_INDEX:
             return
         if not is_window_reading_source(self._device_index):
             raise RuntimeError("Choose Desk View or Active window as the reading source")

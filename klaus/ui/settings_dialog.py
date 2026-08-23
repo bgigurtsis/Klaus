@@ -55,8 +55,8 @@ class SettingsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumSize(640, 380)
-        self.resize(700, 420)
+        self.setMinimumSize(700, 520)
+        self.resize(760, 560)
         self.setStyleSheet(theme.application_stylesheet())
         self._active_camera_index = active_camera_index
         self._active_mic_device = active_mic_device

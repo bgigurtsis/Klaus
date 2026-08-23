@@ -15,6 +15,14 @@ def test_camera_has_no_frame_before_capture_starts():
     assert camera.get_frame_rgb() is None
 
 
+def test_disabled_reading_source_starts_without_error():
+    camera = Camera(device_index=-1)
+
+    camera.start()
+
+    assert camera.is_running is False
+
+
 def test_active_window_text_refreshes_frame():
     camera = Camera(device_index=-3)
     source = MagicMock()

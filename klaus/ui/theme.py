@@ -132,8 +132,9 @@ QComboBox {{
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: {RADIUS_SM}px;
-    padding: 7px 11px;
+    padding: 4px 11px;
     font-size: {FONT_SIZE_SMALL}px;
+    min-height: 24px;
     min-width: 180px;
 }}
 QComboBox::drop-down {{

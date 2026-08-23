@@ -27,6 +27,8 @@ def test_main_window_collapses_sidebar_at_compact_width(qt_app) -> None:
     qt_app.processEvents()
 
     assert window.minimumWidth() == 680
+    assert window.centralWidget().layout().indexOf(window._splitter) == 0
+    assert window._splitter.width() == window.centralWidget().width()
     assert window._left_panel.isHidden()
     assert window._sidebar_btn.accessibleName() == "Show library sidebar"
 

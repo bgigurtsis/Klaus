@@ -100,6 +100,22 @@ def test_settings_blocks_selected_provider_without_a_key(qt_app, monkeypatch) ->
     dialog.close()
 
 
+def test_settings_voice_controls_fit_their_font(qt_app) -> None:
+    dialog = SettingsDialog()
+    dialog.show()
+    qt_app.processEvents()
+
+    assert dialog.minimumHeight() == 520
+    for combo in (
+        dialog._live_model_combo,
+        dialog._reasoning_effort_combo,
+        dialog._voice_combo,
+    ):
+        assert combo.height() >= combo.fontMetrics().height() + 8
+
+    dialog.close()
+
+
 def test_setup_persists_only_the_selected_provider_key(qt_app, monkeypatch) -> None:
     wizard = SetupWizard()
     wizard._live_model_combo.setCurrentIndex(

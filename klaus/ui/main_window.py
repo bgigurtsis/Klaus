@@ -218,16 +218,16 @@ class MainWindow(QMainWindow):
         self._compact_mode = False
         self._update_sidebar_button()
 
-    def set_live_model(self, label: str) -> None:
-        """Update the active live-model label after a settings change."""
-        self._model_pill.setText(label)
-        self._model_pill.setToolTip(config.LIVE_MODEL)
-
         main_layout.addWidget(splitter, stretch=1)
 
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
+
+    def set_live_model(self, label: str) -> None:
+        """Update the active live-model label after a settings change."""
+        self._model_pill.setText(label)
+        self._model_pill.setToolTip(config.LIVE_MODEL)
 
     def resizeEvent(self, event) -> None:
         """Collapse the sidebar when the window crosses the compact breakpoint."""
