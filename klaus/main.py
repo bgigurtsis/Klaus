@@ -147,7 +147,7 @@ from klaus import earcons
 from klaus.camera import Camera
 from klaus.audio import PushToTalkRecorder, VoiceActivatedRecorder
 from klaus.audio_output import AudioOutput
-from klaus.realtime import RealtimeBrain
+from klaus.realtime import build_live_brain
 from klaus.memory import Memory
 from klaus.notes import NotesManager
 from klaus.services import (
@@ -257,7 +257,7 @@ class KlausApp:
         self._speculative_stt = SpeculativeTranscriber(self._stt.transcribe)
         self._audio_output = AudioOutput()
         self._notes = NotesManager(base_path=settings.obsidian_vault_path)
-        self._brain = RealtimeBrain(
+        self._brain = build_live_brain(
             notes=self._notes,
             audio_output=self._audio_output,
             settings=settings,
@@ -336,13 +336,13 @@ class KlausApp:
         app_font.setPixelSize(theme.FONT_SIZE_BODY)
         app.setFont(app_font)
 
-        if not config.is_setup_complete() or not config.OPENAI_API_KEY:
+        if not config.is_setup_complete() or not config.has_active_api_key():
             from klaus.ui.setup_wizard import SetupWizard
             wizard = SetupWizard()
             wizard.show()
             app.exec()
             config.reload()
-            if not config.is_setup_complete() or not config.OPENAI_API_KEY:
+            if not config.is_setup_complete() or not config.has_active_api_key():
                 logger.info("Setup wizard closed without completing, exiting")
                 sys.exit(0)
             self._runtime_settings = config.get_runtime_settings()
@@ -1096,8 +1096,19 @@ class KlausApp:
             self._notes = NotesManager(vault)
             self._brain.set_notes_manager(self._notes)
             self._rebuild_question_pipeline()
-
-        self._brain.reload_clients()
+        brain_is_gemini = type(self._brain).__name__ == "GeminiLiveBrain"
+        selected_is_gemini = config.active_api_key_slug() == "gemini"
+        if brain_is_gemini != selected_is_gemini:
+            self._brain.close()
+            self._brain = build_live_brain(
+                notes=self._notes,
+                audio_output=self._audio_output,
+                settings=self._runtime_settings,
+            )
+            self._rebuild_question_pipeline()
+        else:
+            self._brain.reload_clients()
+        self._window.set_live_model(config.live_model_details()["label"])
         self._stt.reload_settings(settings=self._runtime_settings)
 
     @_safe_slot

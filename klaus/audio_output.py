@@ -1,4 +1,4 @@
-"""PCM audio playback for GPT Realtime responses and app cues."""
+"""PCM audio playback for live-model responses and app cues."""
 
 from __future__ import annotations
 

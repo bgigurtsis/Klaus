@@ -33,7 +33,6 @@ from klaus.device_catalog import (
 from klaus.ui import theme
 from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
-    REQUIRED_API_KEY_SLUGS,
     validate_api_key,
 )
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
@@ -109,22 +108,44 @@ class SettingsDialog(QDialog):
             "background: transparent; border: none;"
         )
         layout.addWidget(model_label)
-        model_value = QLabel("GPT Realtime 2.1  \u00b7  live speech-to-speech")
-        model_value.setObjectName("klaus-model-pill")
-        model_value.setToolTip(config.REALTIME_MODEL)
-        layout.addWidget(model_value, alignment=Qt.AlignmentFlag.AlignLeft)
+        self._live_model_combo = QComboBox()
+        for model, details in config.LIVE_MODELS.items():
+            self._live_model_combo.addItem(details["label"], model)
+        selected_model = self._live_model_combo.findData(config.LIVE_MODEL)
+        self._live_model_combo.setCurrentIndex(max(0, selected_model))
+        self._live_model_combo.currentIndexChanged.connect(self._on_live_model_changed)
+        layout.addWidget(self._live_model_combo)
+
+        self._model_info = QLabel()
+        self._model_info.setWordWrap(True)
+        self._model_info.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(self._model_info)
+
+        layout.addWidget(QLabel("Reasoning effort"))
+        self._reasoning_effort_combo = QComboBox()
+        for effort in ("low", "medium", "high"):
+            self._reasoning_effort_combo.addItem(effort.capitalize(), effort)
+        selected_effort = self._reasoning_effort_combo.findData(config.REASONING_EFFORT)
+        self._reasoning_effort_combo.setCurrentIndex(max(0, selected_effort))
+        layout.addWidget(self._reasoning_effort_combo)
+
+        effort_hint = QLabel("Higher effort may improve difficult answers, but it can take longer.")
+        effort_hint.setWordWrap(True)
+        effort_hint.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+            "background: transparent; border: none;"
+        )
+        layout.addWidget(effort_hint)
 
         layout.addSpacing(8)
         layout.addWidget(QLabel("Voice"))
         self._voice_combo = QComboBox()
-        for voice in (
-            "cedar", "marin", "coral", "nova", "alloy", "ash", "ballad",
-            "echo", "fable", "onyx", "sage", "shimmer", "verse",
-        ):
-            self._voice_combo.addItem(voice.capitalize(), voice)
-        current_voice = self._voice_combo.findData(config.VOICE)
-        self._voice_combo.setCurrentIndex(max(0, current_voice))
+        self._populate_voices(config.LIVE_MODEL)
         layout.addWidget(self._voice_combo)
+        self._on_live_model_changed()
 
         self._barge_in_check = QCheckBox("Let me interrupt by speaking")
         self._barge_in_check.setChecked(config.BARGE_IN_ENABLED)
@@ -141,6 +162,37 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return page
 
+    def _on_live_model_changed(self) -> None:
+        model = str(self._live_model_combo.currentData())
+        details = config.live_model_details(model)
+        self._model_info.setText(
+            "Gemini Live includes Google Search grounding. GPT Live does not offer web "
+            "search in Klaus."
+            if details["provider"] == "gemini"
+            else "GPT Live does not offer web search in Klaus. Choose Gemini Live for "
+            "Google Search grounding."
+        )
+        self._populate_voices(model)
+
+    def _populate_voices(self, model: str) -> None:
+        current_voice = self._voice_combo.currentData()
+        voices = (
+            ("Kore",)
+            if config.live_model_details(model)["provider"] == "gemini"
+            else (
+                "cedar", "marin", "coral", "nova", "alloy", "ash", "ballad",
+                "echo", "fable", "onyx", "sage", "shimmer", "verse",
+            )
+        )
+        preferred = current_voice or config.VOICE
+        self._voice_combo.blockSignals(True)
+        self._voice_combo.clear()
+        for voice in voices:
+            self._voice_combo.addItem(voice.capitalize(), voice)
+        selected = self._voice_combo.findData(preferred)
+        self._voice_combo.setCurrentIndex(max(0, selected))
+        self._voice_combo.blockSignals(False)
+
     def _build_keys_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -156,8 +208,7 @@ class SettingsDialog(QDialog):
             row = QHBoxLayout()
             row.setSpacing(8)
 
-            suffix = "" if slug in REQUIRED_API_KEY_SLUGS else "  optional"
-            name = QLabel(label + suffix)
+            name = QLabel(label + "  optional")
             name.setFixedWidth(135)
             name.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
@@ -570,6 +621,8 @@ class SettingsDialog(QDialog):
         config.save_obsidian_vault_path(vault)
         voice = self._voice_combo.currentData()
         config.save_voice(str(voice))
+        config.save_live_model(str(self._live_model_combo.currentData()))
+        config.save_reasoning_effort(str(self._reasoning_effort_combo.currentData()))
         config.save_barge_in_enabled(self._barge_in_check.isChecked())
         config.reload()
         logger.info("Settings saved")

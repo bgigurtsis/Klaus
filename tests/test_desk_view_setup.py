@@ -37,11 +37,15 @@ def test_native_launcher_uses_avfoundation() -> None:
     application.presentWithCompletionHandler_.assert_called_once()
 
 
-def test_api_key_screen_only_requests_openai() -> None:
+def test_api_key_screen_supports_gemini_and_openai() -> None:
     from klaus.ui.shared.key_validation import KEY_PATTERNS, KEY_URLS
 
-    assert KEY_PATTERNS == [("OpenAI", "openai", "sk-", 20)]
-    assert KEY_URLS == {"openai": "https://platform.openai.com/api-keys"}
+    assert KEY_PATTERNS == [
+        ("Gemini", "gemini", "AIza", 20),
+        ("OpenAI", "openai", "sk-", 20),
+    ]
+    assert KEY_URLS["gemini"] == "https://aistudio.google.com/app/apikey"
+    assert KEY_URLS["openai"] == "https://platform.openai.com/api-keys"
 
 
 @patch("klaus.ui.desk_view_setup.subprocess.Popen")

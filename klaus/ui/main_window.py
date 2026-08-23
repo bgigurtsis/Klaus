@@ -184,11 +184,11 @@ class MainWindow(QMainWindow):
         thread_header_layout.addWidget(self._session_title_label)
         thread_header_layout.addStretch()
 
-        model_pill = QLabel("GPT Realtime")
-        model_pill.setObjectName("klaus-model-pill")
-        model_pill.setToolTip(config.REALTIME_MODEL)
-        model_pill.setFixedHeight(28)
-        thread_header_layout.addWidget(model_pill)
+        self._model_pill = QLabel(config.live_model_details()["label"])
+        self._model_pill.setObjectName("klaus-model-pill")
+        self._model_pill.setToolTip(config.LIVE_MODEL)
+        self._model_pill.setFixedHeight(28)
+        thread_header_layout.addWidget(self._model_pill)
         right_layout.addWidget(thread_header)
 
         self.permission_banner = PermissionBanner()
@@ -217,6 +217,11 @@ class MainWindow(QMainWindow):
         self._splitter = splitter
         self._compact_mode = False
         self._update_sidebar_button()
+
+    def set_live_model(self, label: str) -> None:
+        """Update the active live-model label after a settings change."""
+        self._model_pill.setText(label)
+        self._model_pill.setToolTip(config.LIVE_MODEL)
 
         main_layout.addWidget(splitter, stretch=1)
 

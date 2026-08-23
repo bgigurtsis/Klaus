@@ -90,6 +90,8 @@ class _FakeAudioOutput:
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         openai_api_key="test-key",
+        live_model="gpt-realtime-2.1",
+        reasoning_effort="low",
         voice="marin",
     )
 
@@ -133,7 +135,8 @@ def test_session_update_uses_current_ga_schema() -> None:
     assert event["type"] == "session.update"
     session = event["session"]
     assert session["type"] == "realtime"
-    assert session["model"] == config.REALTIME_MODEL
+    assert session["model"] == "gpt-realtime-2.1"
+    assert session["reasoning"] == {"effort": "low"}
     assert session["output_modalities"] == ["audio"]
     assert session["audio"]["input"] == {
         "format": {"type": "audio/pcm", "rate": 24_000},
@@ -195,7 +198,7 @@ def test_audio_turn_streams_pcm_and_prefers_selected_text() -> None:
         route_decision=_route(),
     )
 
-    assert factory_calls[0][0].endswith(f"model={config.REALTIME_MODEL}")
+    assert factory_calls[0][0].endswith("model=gpt-realtime-2.1")
     assert factory_calls[0][1]["header"] == ["Authorization: Bearer test-key"]
     assert exchange.assistant_text == "A useful answer."
     assert exchange.user_text == "Explain this passage"

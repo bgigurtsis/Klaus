@@ -182,7 +182,7 @@ class QuestionPipeline:
 
         try:
             logger.info(
-                "Sending speech turn to GPT Realtime (route=%s, image=%s, selected_text=%s)",
+                "Sending speech turn to selected live model (route=%s, image=%s, selected_text=%s)",
                 route_decision.mode.value,
                 "yes" if image_b64 else "no",
                 "yes" if reading_text else "no",

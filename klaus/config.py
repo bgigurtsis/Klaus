@@ -191,6 +191,8 @@ LIVE_MODELS: dict[str, dict[str, str]] = {
     },
 }
 DEFAULT_LIVE_MODEL = GEMINI_LIVE_MODEL
+# Compatibility alias for integrations that import the historical OpenAI model constant.
+REALTIME_MODEL = "gpt-realtime-2.1"
 _DEFAULT_PTT_KEY = "§"
 _DEFAULT_TOGGLE_KEY = "§"
 

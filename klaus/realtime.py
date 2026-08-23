@@ -440,17 +440,18 @@ class RealtimeBrain:
         if self._ws is not None and age < _CONNECTION_MAX_AGE_SECONDS:
             return
         self.close()
-        url = _REALTIME_URL.format(model=config.REALTIME_MODEL)
+        model = getattr(self._settings, "live_model", config.REALTIME_MODEL)
+        url = _REALTIME_URL.format(model=model)
         headers = [f"Authorization: Bearer {self._settings.openai_api_key}"]
         self._ws = self._websocket_factory(url, header=headers, timeout=10)
         self._ws.settimeout(_RECV_POLL_SECONDS)
         self._connected_at = time.monotonic()
-        logger.info("Connected GPT Realtime session (%s)", config.REALTIME_MODEL)
+        logger.info("Connected GPT Realtime session (%s)", model)
 
     def _session_update(self, instructions: str) -> dict:
         session: dict = {
             "type": "realtime",
-            "model": config.REALTIME_MODEL,
+            "model": getattr(self._settings, "live_model", config.REALTIME_MODEL),
             "output_modalities": ["audio"],
             "audio": {
                 "input": {
@@ -464,6 +465,9 @@ class RealtimeBrain:
             },
             "instructions": instructions,
             "max_output_tokens": 1024,
+            "reasoning": {
+                "effort": getattr(self._settings, "reasoning_effort", "low")
+            },
         }
         if self._tools:
             session["tools"] = self._tools
@@ -539,3 +543,22 @@ class RealtimeBrain:
                 if text:
                     parts.append(str(text))
         return " ".join(parts).strip()
+
+
+def build_live_brain(
+    *,
+    notes: NotesManager | None,
+    audio_output: AudioOutput,
+    settings: config.RuntimeSettings | None = None,
+):
+    """Create the brain for the selected Gemini Live or GPT Live model."""
+    selected = settings or config.get_runtime_settings()
+    if config.active_api_key_slug(selected) == "gemini":
+        from klaus.gemini_live import GeminiLiveBrain
+
+        return GeminiLiveBrain(
+            notes=notes,
+            audio_output=audio_output,
+            settings=selected,
+        )
+    return RealtimeBrain(notes=notes, audio_output=audio_output, settings=selected)

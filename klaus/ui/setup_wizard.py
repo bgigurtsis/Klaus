@@ -43,7 +43,6 @@ from klaus.ui.desk_view_setup import launch_desk_view_setup
 from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
     KEY_URLS,
-    REQUIRED_API_KEY_SLUGS,
     validate_api_key,
 )
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
@@ -219,7 +218,10 @@ class SetupWizard(QMainWindow):
         root.addWidget(self._nav)
 
         self._collected: dict = {
+            "gemini": config.GEMINI_API_KEY,
             "openai": config.OPENAI_API_KEY,
+            "live_model": config.LIVE_MODEL,
+            "reasoning_effort": config.REASONING_EFFORT,
             "camera_index": -1,
             "mic_index": -1,
             "user_background": "",
@@ -276,10 +278,9 @@ class SetupWizard(QMainWindow):
 
     def _update_next_enabled(self) -> None:
         if self._current_step == 1:
-            all_valid = all(
-                self._key_valid.get(slug, False) for slug in REQUIRED_API_KEY_SLUGS
+            self._next_btn.setEnabled(
+                self._key_valid.get(self._selected_key_slug(), False)
             )
-            self._next_btn.setEnabled(all_valid)
         else:
             self._next_btn.setEnabled(True)
 
@@ -401,14 +402,15 @@ class SetupWizard(QMainWindow):
         layout.setContentsMargins(48, 24, 48, 16)
         layout.setSpacing(8)
 
-        heading = QLabel("Enter your OpenAI API key")
+        heading = QLabel("Choose your live conversation")
         heading.setStyleSheet(
             f"font-size: 22px; font-weight: bold; color: {theme.TEXT_PRIMARY}; "
             "background: transparent; border: none;"
         )
         layout.addWidget(heading)
         description = QLabel(
-            "OpenAI powers the live voice conversation."
+            "Gemini Live is the default and can use Google Search. GPT Live does not "
+            "offer web search in Klaus."
         )
         description.setWordWrap(True)
         description.setStyleSheet(
@@ -418,17 +420,44 @@ class SetupWizard(QMainWindow):
         layout.addWidget(description)
         layout.addSpacing(8)
 
+        model_row = QHBoxLayout()
+        model_label = QLabel("Conversation model")
+        model_label.setFixedWidth(135)
+        model_row.addWidget(model_label)
+        self._live_model_combo = QComboBox()
+        for model, details in config.LIVE_MODELS.items():
+            self._live_model_combo.addItem(details["label"], model)
+        selected_model = self._live_model_combo.findData(self._collected["live_model"])
+        self._live_model_combo.setCurrentIndex(max(0, selected_model))
+        self._live_model_combo.currentIndexChanged.connect(self._on_live_model_changed)
+        model_row.addWidget(self._live_model_combo, stretch=1)
+        layout.addLayout(model_row)
+
+        effort_row = QHBoxLayout()
+        effort_label = QLabel("Reasoning effort")
+        effort_label.setFixedWidth(135)
+        effort_row.addWidget(effort_label)
+        self._reasoning_effort_combo = QComboBox()
+        for effort in ("low", "medium", "high"):
+            self._reasoning_effort_combo.addItem(effort.capitalize(), effort)
+        selected_effort = self._reasoning_effort_combo.findData(
+            self._collected["reasoning_effort"]
+        )
+        self._reasoning_effort_combo.setCurrentIndex(max(0, selected_effort))
+        effort_row.addWidget(self._reasoning_effort_combo, stretch=1)
+        layout.addLayout(effort_row)
+
         self._key_edits: dict[str, QLineEdit] = {}
         self._key_indicators: dict[str, QLabel] = {}
         self._key_hints: dict[str, QLabel] = {}
         self._key_valid: dict[str, bool] = {}
+        self._key_names: dict[str, QLabel] = {}
 
         for label, slug, prefix, min_len in KEY_PATTERNS:
             row = QHBoxLayout()
             row.setSpacing(8)
 
-            suffix = "" if slug in REQUIRED_API_KEY_SLUGS else "  optional"
-            name = QLabel(label + suffix)
+            name = QLabel(label)
             name.setFixedWidth(135)
             name.setStyleSheet(
                 f"color: {theme.TEXT_SECONDARY}; font-weight: 600; "
@@ -443,6 +472,7 @@ class SetupWizard(QMainWindow):
             edit.setMinimumWidth(300)
             edit.textChanged.connect(lambda _, s=slug: self._validate_key(s))
             self._key_edits[slug] = edit
+            self._key_names[slug] = name
             row.addWidget(edit, stretch=1)
 
             indicator = QLabel("\u2713" if existing_key else "")
@@ -481,6 +511,8 @@ class SetupWizard(QMainWindow):
             layout.addWidget(hint)
             self._key_valid[slug] = existing_key
 
+        self._update_key_requirement_labels()
+
         layout.addStretch()
 
         footer = QLabel(
@@ -495,6 +527,21 @@ class SetupWizard(QMainWindow):
         layout.addWidget(footer)
 
         self._stack.addWidget(page)
+
+    def _selected_key_slug(self) -> str:
+        model = str(self._live_model_combo.currentData())
+        return config.live_model_details(model)["provider"]
+
+    def _on_live_model_changed(self) -> None:
+        self._collected["live_model"] = str(self._live_model_combo.currentData())
+        self._update_key_requirement_labels()
+        self._update_next_enabled()
+
+    def _update_key_requirement_labels(self) -> None:
+        required = self._selected_key_slug()
+        for label, slug, _prefix, _min_len in KEY_PATTERNS:
+            suffix = " required" if slug == required else " optional"
+            self._key_names[slug].setText(label + suffix)
 
     def _validate_key(self, slug: str) -> None:
         text = self._key_edits[slug].text().strip()
@@ -715,7 +762,7 @@ class SetupWizard(QMainWindow):
 
         self._model_info = QLabel(
             "Klaus uses a local speech model to show your question quickly and "
-            "filter noise before GPT Realtime answers.\nThis one-time download is about 245 MB."
+            "filter noise before the live model answers.\nThis one-time download is about 245 MB."
         )
         self._model_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._model_info.setStyleSheet(
@@ -944,7 +991,12 @@ class SetupWizard(QMainWindow):
     def _finish_setup(self) -> None:
         """Write all collected config and close the wizard."""
         import klaus.config as cfg
-        cfg.save_api_key(self._collected["openai"])
+        for slug in cfg.API_KEY_SLUGS:
+            value = str(self._collected.get(slug, "")).strip()
+            if value:
+                cfg.set_api_key(slug, value)
+        cfg.save_live_model(str(self._live_model_combo.currentData()))
+        cfg.save_reasoning_effort(str(self._reasoning_effort_combo.currentData()))
         cam_idx = self._collected["camera_index"]
         if cam_idx != -1:
             cfg.save_camera_index(cam_idx)

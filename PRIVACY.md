@@ -1,13 +1,15 @@
 # Privacy
 
-Klaus runs on your Mac and sends enabled Realtime requests to OpenAI.
+Klaus runs on your Mac and sends live requests to the provider you select.
 
 ## Data sent to providers
 
-Klaus may send recorded question audio and reading context to OpenAI.
+Klaus may send recorded question audio and reading context to Gemini or OpenAI.
 Reading context may include text selected in any app, an active-window image, or a camera image.
 
-OpenAI handling follows its terms, privacy policy, and account settings.
+Gemini Live can use Google Search grounding. GPT Live does not offer web search in Klaus.
+
+Gemini and OpenAI handling follows each provider's terms, privacy policy, and account settings.
 
 ## Data stored on the Mac
 
@@ -22,7 +24,7 @@ Logs may contain vault paths, device details, timing, and error messages.
 ## Your controls
 
 You can disable camera access, selected-text access, or Obsidian integration.
-You can remove the OpenAI key in Settings.
+You can remove the Gemini or OpenAI key in Settings.
 You can delete `~/.klaus/klaus.db` to remove local session history.
 You can inspect or delete `~/.klaus/config.toml` and `~/Library/Logs/Klaus/`.
 

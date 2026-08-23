@@ -50,7 +50,7 @@ def test_openai_key_loads_from_environment(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-environment-key")
     settings = config._settings_from_config({})
     assert settings.openai_api_key == "sk-environment-key"
-    assert config.get_api_key_sources() == {"openai": "env"}
+    assert config.get_api_key_sources()["openai"] == "env"
 
 
 def test_keychain_value_loads_when_environment_is_empty(monkeypatch):
@@ -58,7 +58,7 @@ def test_keychain_value_loads_when_environment_is_empty(monkeypatch):
     monkeypatch.setattr(config.secrets_store, "get_api_key", lambda _: "sk-keychain-key")
     settings = config._settings_from_config({})
     assert settings.openai_api_key == "sk-keychain-key"
-    assert config.get_api_key_sources() == {"openai": "keychain"}
+    assert config.get_api_key_sources()["openai"] == "keychain"
 
 
 def test_mark_setup_complete_persists(config_dir):
@@ -86,5 +86,15 @@ def test_unknown_input_mode_fails():
 def test_defaults_use_realtime_and_desk_view():
     settings = config._settings_from_config({})
     assert settings.camera_device_index == -2
-    assert settings.voice == "cedar"
+    assert settings.live_model == config.GEMINI_LIVE_MODEL
+    assert settings.voice == "Kore"
     assert settings.barge_in_enabled is True
+
+
+def test_live_model_and_reasoning_effort_persist(config_dir):
+    config.save_live_model("gpt-realtime-2.1-mini")
+    config.save_reasoning_effort("high")
+    with config_dir.open("rb") as file:
+        saved = tomllib.load(file)
+    assert saved["live_model"] == "gpt-realtime-2.1-mini"
+    assert saved["reasoning_effort"] == "high"

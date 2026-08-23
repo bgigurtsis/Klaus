@@ -15,11 +15,11 @@
   <a href="https://github.com/bgigurtsis/Klaus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-6f55a5" alt="MIT License"></a>
 </p>
 
-Klaus can answer spoken questions about a physical page or anything in your active window. It can read papers through Apple Desk View. It can also use selected text or an image from any macOS app. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. GPT Realtime powers the live conversation.
+Klaus can answer spoken questions about a physical page or anything in your active window. It can read papers through Apple Desk View. It can also use selected text or an image from any macOS app. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. Gemini Live powers the default live conversation.
 
 ## Install Klaus
 
-You need macOS 12 or later, a microphone, and an [OpenAI API key](https://platform.openai.com/api-keys).
+You need macOS 12 or later, a microphone, and an API key for your selected live model. Klaus defaults to [Gemini Live](https://aistudio.google.com/app/apikey). You can instead select GPT Live and use an [OpenAI API key](https://platform.openai.com/api-keys).
 
 ### Homebrew
 
@@ -42,7 +42,9 @@ python3.13 -m venv .venv-klaus
 
 ### First time launch
 
-The first time launch guide sets up your API key, reading source, microphone, local speech model, and optional Obsidian vault.
+The first-launch guide selects Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini. It also sets the matching API key, reasoning effort, reading source, microphone, local speech model, and optional Obsidian vault.
+
+Gemini Live is the default because Klaus enables its Google Search grounding. GPT Live does not offer web search in Klaus.
 
 Klaus may ask for these macOS permissions:
 
@@ -56,7 +58,8 @@ You can deny Accessibility and use the buttons in Klaus. Questions about an acti
 
 - Read papers through Apple Desk View.
 - Read selected text or capture the active window.
-- Answer through one live GPT Realtime voice conversation.
+- Answer through Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini.
+- Use Google Search grounding when Gemini Live is selected.
 - Stop an answer when you start speaking.
 - Search, read, and append notes inside a configured Obsidian vault.
 - Keep local reading sessions and conversation history.
@@ -94,15 +97,16 @@ Klaus accepts only paths inside that vault. It appends to existing notes instead
 
 | Provider | Required | Used for |
 |---|---:|---|
-| [OpenAI](https://platform.openai.com/api-keys) | Yes | Live voice, page reasoning, and spoken answers |
+| [Gemini](https://aistudio.google.com/app/apikey) | Only for Gemini Live | Default live voice, page reasoning, spoken answers, and Google Search grounding |
+| [OpenAI](https://platform.openai.com/api-keys) | Only for GPT Live | GPT Live 2.1 or GPT Live 2.1 mini voice, page reasoning, and spoken answers |
 
 Klaus stores API keys in Apple Keychain. It stores settings and conversation history under `~/.klaus/`. It does not store captured page images in its database.
 
 Provider use may incur charges. Read the [privacy notes](https://github.com/bgigurtsis/Klaus/blob/main/PRIVACY.md) before you connect accounts or private notes.
 
-## Realtime cost estimate
+## GPT Live cost estimate
 
-Klaus currently uses `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI bills user audio at one token per 100 milliseconds and assistant audio at one token per 50 milliseconds in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs). That works out to about 600 input-audio tokens and 1,200 output-audio tokens per minute.
+These estimates apply only when you select `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI bills user audio at one token per 100 milliseconds and assistant audio at one token per 50 milliseconds in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs). That works out to about 600 input-audio tokens and 1,200 output-audio tokens per minute.
 
 The estimates below cover raw audio only. They assume each question lasts 30 seconds and each answer lasts 60 seconds, unless noted otherwise. They exclude text context and captured page images, which can increase the bill.
 
@@ -120,7 +124,9 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 
 | Setting | Default | Purpose |
 |---|---:|---|
-| `voice` | `cedar` | Choose the GPT Realtime voice |
+| `live_model` | `gemini-3.1-flash-live-preview` | Choose Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini |
+| `reasoning_effort` | `low` | Choose `low`, `medium`, or `high` reasoning effort |
+| `voice` | `Kore` | Choose the voice available for the selected live model |
 | `camera_index` | `-2` | Use Desk View with `-2`, the active window with `-3`, or audio only with `-1` |
 | `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
 | `log_level` | `INFO` | Set log detail |
