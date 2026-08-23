@@ -67,7 +67,9 @@ class _FakeTTS:
         self.chunks: list[np.ndarray] = []
         self.stopped = False
 
-    def play_pcm_stream(self, audio_queue, *, on_first_audio, on_frames_played) -> None:
+    def play_pcm_stream(
+        self, audio_queue, *, on_first_audio=None, on_frames_played=None
+    ) -> None:
         first = True
         while True:
             chunk = audio_queue.get()
@@ -76,8 +78,10 @@ class _FakeTTS:
             self.chunks.append(chunk.copy())
             if first:
                 first = False
-                on_first_audio()
-            on_frames_played(len(chunk))
+                if on_first_audio:
+                    on_first_audio()
+            if on_frames_played:
+                on_frames_played(len(chunk))
 
     def stop(self) -> None:
         self.stopped = True
@@ -132,7 +136,10 @@ def test_session_update_uses_current_ga_schema() -> None:
         "format": {"type": "audio/pcm", "rate": 24_000},
         "turn_detection": None,
     }
-    assert session["audio"]["output"]["format"] == {"type": "audio/pcm"}
+    assert session["audio"]["output"]["format"] == {
+        "type": "audio/pcm",
+        "rate": 24_000,
+    }
     assert session["audio"]["output"]["voice"] == "marin"
 
 
@@ -223,3 +230,42 @@ def test_cancel_truncates_audio_at_played_position() -> None:
             "audio_end_ms": 500,
         },
     ]
+
+
+def test_replay_uses_out_of_band_realtime_audio() -> None:
+    raw_pcm = np.array([40, 50, 60], dtype=np.int16).tobytes()
+    websocket = _FakeWebSocket(
+        [
+            {
+                "type": "response.output_audio.delta",
+                "delta": base64.b64encode(raw_pcm).decode("ascii"),
+            },
+            {
+                "type": "response.done",
+                "response": {
+                    "status": "completed",
+                    "metadata": {"purpose": "replay"},
+                },
+            },
+        ]
+    )
+    tts = _FakeTTS()
+    brain = RealtimeBrain(
+        notes=None,
+        tts=tts,
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: websocket,
+    )
+
+    brain.speak_text("The exact prior answer.")
+
+    response_event = next(
+        event for event in websocket.sent if event["type"] == "response.create"
+    )
+    response = response_event["response"]
+    assert response["conversation"] == "none"
+    assert response["metadata"] == {"purpose": "replay"}
+    assert response["output_modalities"] == ["audio"]
+    assert response["input"] == []
+    assert "The exact prior answer." in response["instructions"]
+    assert np.array_equal(tts.chunks[0], np.array([40, 50, 60], dtype=np.int16))

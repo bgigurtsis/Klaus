@@ -975,7 +975,10 @@ class KlausApp:
             self._vad_recorder.pause()
         self._signals.state_changed.emit("speaking")
         try:
-            self._tts.speak(text)
+            if getattr(self._brain, "handles_audio", False):
+                self._brain.speak_text(text)
+            else:
+                self._tts.speak(text)
         finally:
             self._speaking = False
             if self._input_mode == "voice_activation":

@@ -339,6 +339,72 @@ class RealtimeBrain:
                 notes_file_changed=self._notes.changed if self._notes else False,
             )
 
+    def speak_text(self, text: str) -> None:
+        """Replay text through GPT Realtime without changing conversation history."""
+        spoken_text = text.strip()
+        if not spoken_text:
+            return
+
+        with self._turn_lock:
+            self._ensure_connected()
+            self._send(self._session_update(config.SYSTEM_PROMPT))
+            self._send(
+                {
+                    "type": "response.create",
+                    "response": {
+                        "conversation": "none",
+                        "metadata": {"purpose": "replay"},
+                        "output_modalities": ["audio"],
+                        "input": [],
+                        "instructions": (
+                            "Read the following text aloud exactly as written. Do not "
+                            "add, remove, explain, or paraphrase anything.\n\n"
+                            f"<text_to_read>\n{spoken_text}\n</text_to_read>"
+                        ),
+                    },
+                }
+            )
+            self._response_active = True
+            self._last_item_id = None
+            self._last_content_index = 0
+            self._played_frames = 0
+
+            audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
+            playback_thread = threading.Thread(
+                target=self._tts.play_pcm_stream,
+                args=(audio_queue,),
+                daemon=True,
+            )
+            playback_thread.start()
+
+            try:
+                while True:
+                    event = self._receive_event()
+                    if event is None:
+                        continue
+                    event_type = event.get("type")
+                    if event_type == "response.output_audio.delta":
+                        raw = base64.b64decode(event.get("delta", ""))
+                        usable = len(raw) - (len(raw) % 2)
+                        if usable:
+                            audio_queue.put(np.frombuffer(raw[:usable], dtype=np.int16))
+                    elif event_type == "response.done":
+                        response = event.get("response", {})
+                        status = response.get("status")
+                        if status == "cancelled":
+                            break
+                        if status in {"failed", "incomplete"}:
+                            detail = response.get("status_details") or status
+                            raise RuntimeError(f"Realtime replay {status}: {detail}")
+                        break
+                    elif event_type == "error":
+                        error = event.get("error", event)
+                        raise RuntimeError(str(error.get("message", error)))
+            finally:
+                self._response_active = False
+                audio_queue.put(None)
+                playback_thread.join(timeout=10)
+
     def _ensure_connected(self) -> None:
         age = time.monotonic() - self._connected_at
         if self._ws is not None and age < _CONNECTION_MAX_AGE_SECONDS:
@@ -362,7 +428,7 @@ class RealtimeBrain:
                     "turn_detection": None,
                 },
                 "output": {
-                    "format": {"type": "audio/pcm"},
+                    "format": {"type": "audio/pcm", "rate": PCM_SAMPLE_RATE},
                     "voice": self._settings.tts_voice,
                 },
             },
