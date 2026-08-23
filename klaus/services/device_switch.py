@@ -12,6 +12,7 @@ class CameraSwitchResult:
     success: bool
     camera: object
     active_index: int
+    error_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,11 +72,12 @@ class DeviceSwitchService:
                         rollback_camera = self._camera_factory(-1)
                 apply_camera(rollback_camera)
                 self._persist_camera_index(rollback_index)
-                self._show_error(
-                    "Reading Source Unavailable",
-                    "Could not switch to that source. Reverted to the previous source.",
+                return CameraSwitchResult(
+                    False,
+                    rollback_camera,
+                    rollback_index,
+                    error_message=str(exc),
                 )
-                return CameraSwitchResult(False, rollback_camera, rollback_index)
 
         apply_camera(candidate)
         return CameraSwitchResult(True, candidate, target)

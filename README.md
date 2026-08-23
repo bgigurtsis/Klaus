@@ -103,11 +103,11 @@ Provider use may incur charges. Read the [privacy notes](https://github.com/bgig
 
 ## Realtime cost estimate
 
-Klaus currently uses `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI estimates approximately 600 input-audio tokens per minute and 1,200 output-audio tokens per minute in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs).
+Klaus currently uses `gpt-realtime-2.1`. OpenAI lists audio input at $32 per million tokens and audio output at $64 per million tokens in its [model documentation](https://developers.openai.com/api/docs/models/gpt-realtime-2.1). OpenAI bills user audio at one token per 100 milliseconds and assistant audio at one token per 50 milliseconds in its [Realtime cost guide](https://developers.openai.com/api/docs/guides/realtime-costs). That works out to about 600 input-audio tokens and 1,200 output-audio tokens per minute.
 
 The estimates below cover raw audio only. They assume each question lasts 30 seconds and each answer lasts 60 seconds, unless noted otherwise. They exclude text context, captured page images, web search, and other provider charges, which can increase the bill.
 
-| Usage pattern | Monthly use | Audio input | Audio output | Estimated monthly cost |
+| Usage pattern | Monthly use | Audio input | Audio output | Audio-only baseline |
 |---|---|---:|---:|---:|
 | Occasional reference | 20 questions per month | 10 min | 20 min | $1.73 |
 | Regular study | 3 questions on each of 20 days | 30 min | 60 min | $5.18 |

@@ -47,6 +47,7 @@ _PYNPUT_SHIFTED_VARIANTS: dict[str, str] = {
 }
 
 import klaus.config as config
+from klaus.permissions import guidance_for_error
 
 
 def _resolve_pynput_key(key_name: str) -> object:
@@ -366,14 +367,19 @@ class KlausApp:
         self._window = MainWindow()
         self._connect_signals()
 
+        startup_reading_error: str | None = None
         try:
             self._camera.start()
             self._active_camera_index = self._camera.device_index
         except RuntimeError as e:
             logger.warning("Reading source unavailable: %s", e)
+            startup_reading_error = str(e)
+            self._camera = Camera(-1)
             self._active_camera_index = -1
 
         self._window.camera_widget.set_camera(self._camera)
+        if startup_reading_error:
+            self._surface_reading_source_error(startup_reading_error)
         self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
 
         self._load_sessions()
@@ -1009,6 +1015,20 @@ class KlausApp:
     def _show_device_switch_error(self, title: str, message: str) -> None:
         QMessageBox.warning(self._window, title, message)
 
+    def _surface_reading_source_error(self, error: str) -> None:
+        guidance = guidance_for_error(error)
+        if guidance is None:
+            self._show_device_switch_error(
+                "Reading Source Unavailable",
+                "Could not switch to that source. Reverted to the previous source.",
+            )
+            return
+        self._window.show_permission_warning(
+            guidance.title,
+            guidance.message,
+            guidance.settings_url,
+        )
+
     @_safe_slot
     def _on_reading_source_changed(self, new_index: int) -> None:
         """Apply a Desk View/PDF switch from the main preview selector."""
@@ -1029,6 +1049,10 @@ class KlausApp:
         self._camera = result.camera
         self._active_camera_index = result.active_index
         self._rebuild_question_pipeline()
+        if result.success:
+            self._window.clear_permission_warning()
+        elif result.error_message:
+            self._surface_reading_source_error(result.error_message)
         return result.success, result.active_index
 
     def _apply_mic_device_live(self, new_device: int | None) -> tuple[bool, int | None]:

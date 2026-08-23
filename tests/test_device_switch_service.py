@@ -111,8 +111,9 @@ class TestDeviceSwitchService:
         assert result.success is False
         assert result.active_index == 0
         assert result.camera._device_index == 0
+        assert result.error_message == "camera unavailable"
         assert persisted_camera == [0]
-        assert len(errors) == 1
+        assert errors == []
         _FakeCamera.fail_indices = set()
 
     def test_mic_switch_failure_rolls_back_and_persists(self):

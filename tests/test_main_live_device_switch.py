@@ -21,10 +21,13 @@ def _make_app(service: MagicMock) -> KlausApp:
         camera_widget=SimpleNamespace(
             set_camera=MagicMock(),
             set_source_selection=MagicMock(),
-        )
+        ),
+        clear_permission_warning=MagicMock(),
+        show_permission_warning=MagicMock(),
     )
     app._ensure_device_switch_service = MagicMock()
     app._rebuild_question_pipeline = MagicMock()
+    app._surface_reading_source_error = MagicMock()
     return app
 
 
@@ -66,6 +69,7 @@ def test_apply_camera_device_live_delegates_to_service_and_refreshes_pipeline():
         success=False,
         camera="rollback-camera",
         active_index=0,
+        error_message="camera unavailable",
     )
     app = _make_app(service)
 
@@ -84,6 +88,26 @@ def test_apply_camera_device_live_delegates_to_service_and_refreshes_pipeline():
     assert app._camera == "rollback-camera"
     assert app._active_camera_index == 0
     app._rebuild_question_pipeline.assert_called_once()
+    app._surface_reading_source_error.assert_called_once_with("camera unavailable")
+
+
+def test_screen_recording_failure_surfaces_permission_action() -> None:
+    app = KlausApp.__new__(KlausApp)
+    app._window = SimpleNamespace(show_permission_warning=MagicMock())
+
+    KlausApp._surface_reading_source_error(
+        app,
+        "Allow Klaus under System Settings > Privacy & Security > "
+        "Screen & System Audio Recording, then restart Klaus.",
+    )
+
+    app._window.show_permission_warning.assert_called_once()
+    title, message, settings_url = (
+        app._window.show_permission_warning.call_args.args
+    )
+    assert title == "Allow Screen Recording"
+    assert "choose the source again" in message
+    assert settings_url.startswith("x-apple.systempreferences:")
 
 
 def test_apply_mic_device_live_delegates_to_service_and_updates_active_device():
@@ -118,6 +142,7 @@ def test_main_reading_selector_switches_and_persists(mock_set_camera_index):
         success=True,
         camera="desk-view-camera",
         active_index=-2,
+        error_message=None,
     )
     app = _make_app(service)
 
@@ -125,3 +150,4 @@ def test_main_reading_selector_switches_and_persists(mock_set_camera_index):
 
     mock_set_camera_index.assert_called_once_with(-2, persist=True)
     app._window.camera_widget.set_source_selection.assert_called_with(-2)
+    app._window.clear_permission_warning.assert_called_once()

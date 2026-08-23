@@ -21,6 +21,7 @@ import klaus.config as config
 from klaus.ui import theme
 from klaus.ui.camera_widget import CameraWidget
 from klaus.ui.chat_widget import ChatWidget
+from klaus.ui.permission_banner import PermissionBanner
 from klaus.ui.session_panel import SessionPanel
 from klaus.ui.status_widget import StatusWidget
 
@@ -193,6 +194,9 @@ class MainWindow(QMainWindow):
         thread_header_layout.addWidget(model_pill)
         right_layout.addWidget(thread_header)
 
+        self.permission_banner = PermissionBanner()
+        right_layout.addWidget(self.permission_banner)
+
         self.chat_widget = ChatWidget()
         self.chat_widget.replay_requested.connect(self.replay_requested.emit)
         right_layout.addWidget(self.chat_widget, stretch=1)
@@ -270,6 +274,19 @@ class MainWindow(QMainWindow):
     def get_current_session_id(self) -> str | None:
         """Return the currently selected session id from the session panel."""
         return self.session_panel.current_id
+
+    def show_permission_warning(
+        self,
+        title: str,
+        message: str,
+        settings_url: str,
+    ) -> None:
+        """Show an actionable permission warning above the active thread."""
+        self.permission_banner.show_issue(title, message, settings_url)
+
+    def clear_permission_warning(self) -> None:
+        """Hide the permission warning after the blocked action succeeds."""
+        self.permission_banner.clear_issue()
 
     # -- In-app keyboard shortcuts (no Accessibility permission needed) --
 
