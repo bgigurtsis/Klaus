@@ -5,7 +5,7 @@
 <h1 align="center">Klaus</h1>
 
 <p align="center">
-  <strong>A voice assistant for reading papers and PDFs on macOS.</strong>
+  <strong>A voice-powered research assistant for physical and digital media.</strong>
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <a href="https://github.com/bgigurtsis/Klaus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-6f55a5" alt="MIT License"></a>
 </p>
 
-Klaus can answer spoken questions about the page in front of you. It may read papers through Apple Desk View. It can also use selected text or an image from the active PDF window. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian.
+Klaus can answer spoken questions about the page in front of you. It may read papers through Apple Desk View. It can also use selected text or an image from the active window. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. GPT Realtime powers the live conversation.
 
 ## Quick setup
 
@@ -27,7 +27,7 @@ brew install klaus
 klaus
 ```
 
-The first-launch guide sets up your API keys, reading source, microphone, local speech model, and optional Obsidian vault.
+The first-launch guide sets up your API key, reading source, microphone, local speech model, and optional Obsidian vault.
 
 Klaus may ask for these macOS permissions:
 
@@ -35,15 +35,15 @@ Klaus may ask for these macOS permissions:
 - **Screen Recording** for Desk View and PDF window images.
 - **Accessibility** for global hotkeys and selected PDF text.
 
-You can deny Accessibility and use the buttons in Klaus. PDF questions may then use a window image instead of selected text.
+You can deny Accessibility and use the buttons in Klaus. Questions about an active window may then use an image instead of selected text.
 
 ## What Klaus can do
 
 - Read papers through Apple Desk View.
-- Read selected text or capture the active PDF window.
+- Read selected text or capture the active window.
 - Answer through one live GPT Realtime voice conversation.
 - Stop an answer when you start speaking.
-- Search the web through Tavily when current information matters.
+- Search the web when Tavily is configured.
 - Search, read, and append notes inside a configured Obsidian vault.
 - Keep local reading sessions and conversation history.
 
@@ -55,9 +55,11 @@ You can deny Accessibility and use the buttons in Klaus. PDF questions may then 
 2. Choose **Desk View: paper** in Klaus.
 3. Frame the page and ask a question.
 
-### Read a PDF
+Desk View needs strong, even lighting to read small text.
 
-1. Open the PDF in Preview, a browser, or another macOS app.
+### Read digital media
+
+1. Open the document or page in Preview, a browser, or another macOS app.
 2. Choose **Active window: PDF** in Klaus.
 3. Keep the PDF window in front.
 4. Select text when you want Klaus to use an exact passage.
@@ -95,7 +97,6 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 | `voice_engine` | `realtime` | Use GPT Realtime or the `legacy` Claude and OpenAI TTS path |
 | `camera_index` | `0` | Use Desk View with `-2`, active PDF with `-3`, or audio only with `-1` |
 | `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
-| `stt_moonshine_model` | `medium` | Choose the local speech model size |
 | `log_level` | `INFO` | Set log detail |
 
 ## Build from source
