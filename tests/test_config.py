@@ -18,9 +18,16 @@ def test_resolve_data_dir_prefers_environment_override(tmp_path, monkeypatch):
 @pytest.fixture
 def config_dir(tmp_path, monkeypatch):
     """Redirect config to a temporary directory."""
+    def keychain_unavailable(*_args, **_kwargs):
+        raise config.secrets_store.SecretsStoreError("Keychain disabled for test")
+
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text(config._DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     monkeypatch.setattr(config, "CONFIG_PATH", cfg_path)
+    monkeypatch.setattr(config.secrets_store, "get_api_key", keychain_unavailable)
+    monkeypatch.setattr(config.secrets_store, "has_api_key", keychain_unavailable)
+    monkeypatch.setattr(config.secrets_store, "set_api_key", keychain_unavailable)
+    monkeypatch.setattr(config.secrets_store, "delete_api_key", keychain_unavailable)
     return cfg_path
 
 
