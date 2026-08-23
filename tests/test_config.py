@@ -86,9 +86,15 @@ def test_unknown_input_mode_fails():
 def test_defaults_use_realtime_and_desk_view():
     settings = config._settings_from_config({})
     assert settings.camera_device_index == -2
-    assert settings.live_model == config.GEMINI_LIVE_MODEL
-    assert settings.voice == "Kore"
+    assert settings.live_model == "gpt-realtime-2.1-mini"
+    assert settings.reasoning_effort == "high"
+    assert settings.voice == "cedar"
     assert settings.barge_in_enabled is False
+
+
+def test_default_voice_matches_saved_gemini_model():
+    settings = config._settings_from_config({"live_model": config.GEMINI_LIVE_MODEL})
+    assert settings.voice == "Kore"
 
 
 def test_live_model_and_reasoning_effort_persist(config_dir):

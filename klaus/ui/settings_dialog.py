@@ -109,6 +109,7 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(model_label)
         self._live_model_combo = QComboBox()
+        self._enable_combo_popup_hover(self._live_model_combo)
         for model, details in config.LIVE_MODELS.items():
             self._live_model_combo.addItem(details["label"], model)
         selected_model = self._live_model_combo.findData(config.LIVE_MODEL)
@@ -126,6 +127,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(QLabel("Reasoning effort"))
         self._reasoning_effort_combo = QComboBox()
+        self._enable_combo_popup_hover(self._reasoning_effort_combo)
         for effort in ("low", "medium", "high"):
             self._reasoning_effort_combo.addItem(effort.capitalize(), effort)
         selected_effort = self._reasoning_effort_combo.findData(config.REASONING_EFFORT)
@@ -143,6 +145,7 @@ class SettingsDialog(QDialog):
         layout.addSpacing(8)
         layout.addWidget(QLabel("Voice"))
         self._voice_combo = QComboBox()
+        self._enable_combo_popup_hover(self._voice_combo)
         self._populate_voices(config.LIVE_MODEL)
         layout.addWidget(self._voice_combo)
         self._on_live_model_changed()

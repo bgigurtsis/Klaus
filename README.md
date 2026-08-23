@@ -15,11 +15,11 @@
   <a href="https://github.com/bgigurtsis/Klaus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-6f55a5" alt="MIT License"></a>
 </p>
 
-Klaus can answer spoken questions about a physical page or anything in your active window. It can read papers through Apple Desk View. It can also use selected text or an image from any macOS app. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. Gemini Live powers the default live conversation.
+Klaus can answer spoken questions about a physical page or anything in your active window. It can read papers through Apple Desk View. It can also use selected text or an image from any macOS app. Klaus keeps answers short, supports follow-up questions, and can save notes to Obsidian. GPT Live 2.1 mini powers the default live conversation.
 
 ## Install Klaus
 
-You need macOS 12 or later, a microphone, and an API key for your selected live model. Klaus defaults to [Gemini Live](https://aistudio.google.com/app/apikey). You can instead select GPT Live and use an [OpenAI API key](https://platform.openai.com/api-keys).
+You need macOS 12 or later, a microphone, and an API key for your selected live model. Klaus defaults to GPT Live 2.1 mini with [an OpenAI API key](https://platform.openai.com/api-keys). You can instead select [Gemini Live](https://aistudio.google.com/app/apikey) for Google Search grounding.
 
 ### Homebrew
 
@@ -44,7 +44,7 @@ python3.13 -m venv .venv-klaus
 
 The first-launch guide selects Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini. It also sets the matching API key, reasoning effort, reading source, microphone, local speech model, and optional Obsidian vault.
 
-Gemini Live is the default because Klaus enables its Google Search grounding. GPT Live does not offer web search in Klaus.
+GPT Live 2.1 mini is the default. Choose Gemini Live when you need Google Search grounding because GPT Live does not offer web search in Klaus.
 
 Klaus may ask for these macOS permissions:
 
@@ -124,9 +124,9 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 
 | Setting | Default | Purpose |
 |---|---:|---|
-| `live_model` | `gemini-3.1-flash-live-preview` | Choose Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini |
-| `reasoning_effort` | `low` | Choose `low`, `medium`, or `high` reasoning effort |
-| `voice` | `Kore` | Choose the voice available for the selected live model |
+| `live_model` | `gpt-realtime-2.1-mini` | Choose Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini |
+| `reasoning_effort` | `high` | Choose `low`, `medium`, or `high` reasoning effort |
+| `voice` | `cedar` for GPT, `Kore` for Gemini | Choose the voice available for the selected live model |
 | `camera_index` | `-2` | Use Desk View with `-2`, the active window with `-3`, or audio only with `-1` |
 | `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
 | `log_level` | `INFO` | Set log detail |
