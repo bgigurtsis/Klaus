@@ -67,7 +67,8 @@ class SettingsDialog(QDialog):
         self._mic_populated = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(12)
 
         self._tabs = QTabWidget()
         self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
@@ -99,7 +100,7 @@ class SettingsDialog(QDialog):
     def _build_voice_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         model_label = QLabel("Conversation model")
@@ -199,7 +200,7 @@ class SettingsDialog(QDialog):
     def _build_keys_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         self._key_edits: dict[str, QLineEdit] = {}
@@ -320,7 +321,7 @@ class SettingsDialog(QDialog):
     def _build_camera_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         layout.addWidget(QLabel("Reading source"))
@@ -389,7 +390,7 @@ class SettingsDialog(QDialog):
     def _build_profile_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         label = QLabel("Your background")
@@ -490,7 +491,7 @@ class SettingsDialog(QDialog):
     def _build_mic_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         layout.addWidget(QLabel("Input device"))

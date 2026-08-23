@@ -19,28 +19,35 @@ _ICONS_DIR = Path(__file__).parent / "icons"
 # Color palette
 # ---------------------------------------------------------------------------
 
-# Base layers (darkest to lightest)
-BG = "#1e1e1c"
-SURFACE = "#232321"
-SURFACE_RAISED = "#2b2b28"
-SURFACE_OVERLAY = "#343431"
-SIDEBAR = "#181816"
+# Base layers (darkest to lightest), hue-biased toward the violet accent
+BG = "#141418"
+SURFACE = "#1a1a20"
+SURFACE_RAISED = "#22222b"
+SURFACE_OVERLAY = "#2c2c38"
+SIDEBAR = "#0f0f13"
 
 # Borders
-BORDER_MUTED = "#2b2b28"
-BORDER_DEFAULT = "#3c3c38"
-BORDER_EMPHASIS = "#5b5b55"
+BORDER_MUTED = "#26262f"
+BORDER_DEFAULT = "#35353f"
+BORDER_EMPHASIS = "#4c4c5c"
 
 # Text
-TEXT_PRIMARY = "#f0f0ec"
-TEXT_SECONDARY = "#b8b8b1"
-TEXT_MUTED = "#81817a"
+TEXT_PRIMARY = "#ededf2"
+TEXT_SECONDARY = "#b6b6c2"
+TEXT_MUTED = "#80808f"
 
 # Accents
 USER_ACCENT = "#aa9cf1"
-USER_BG = "#2c2a35"
-KLAUS_ACCENT = "#f0f0ec"
-KLAUS_BG = "#2b2b28"
+USER_BG = "#282444"
+USER_BORDER = "#3d3763"
+KLAUS_ACCENT = "#ededf2"
+KLAUS_BG = "#22222b"
+
+# Primary action (filled buttons, selected states, focus)
+ACCENT = "#a495f0"
+ACCENT_HOVER = "#b9adf6"
+ACCENT_PRESSED = "#8d7de6"
+ACCENT_TEXT = "#17131f"
 
 LISTENING_COLOR = "#e25466"
 THINKING_COLOR = "#b7791f"
@@ -54,8 +61,8 @@ STOP_BORDER = "#dc2626"
 STOP_HOVER_BG = "#dc2626"
 
 # Klaus card accent buttons
-KLAUS_BTN_BORDER = "#454540"
-KLAUS_BTN_HOVER_BG = "#353531"
+KLAUS_BTN_BORDER = "#3b3b48"
+KLAUS_BTN_HOVER_BG = "#2c2c38"
 
 # ---------------------------------------------------------------------------
 # Fonts
@@ -131,11 +138,17 @@ QComboBox {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: {RADIUS_SM}px;
-    padding: 4px 11px;
+    border-radius: 9px;
+    padding: 5px 12px;
     font-size: {FONT_SIZE_SMALL}px;
-    min-height: 24px;
+    min-height: 26px;
     min-width: 180px;
+}}
+QComboBox:hover {{
+    border-color: {BORDER_EMPHASIS};
+}}
+QComboBox:on, QComboBox:focus {{
+    border-color: {ACCENT};
 }}
 QComboBox::drop-down {{
     border: none;
@@ -203,18 +216,70 @@ QComboBox QAbstractItemView::item:selected:hover {{
     background-color: {SURFACE_OVERLAY};
 }}
 
-/* ===== Default button ===== */
+/* ===== Buttons =====
+   Hierarchy: default = quiet secondary; primary ids get the filled accent;
+   card/icon buttons are ghosts that only surface on hover. */
 QPushButton {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: {RADIUS_SM}px;
-    padding: 8px 14px;
+    border-radius: 9px;
+    padding: 7px 14px;
     font-size: {FONT_SIZE_SMALL}px;
+    font-weight: 600;
 }}
 QPushButton:hover {{
     background-color: {SURFACE_OVERLAY};
     border-color: {BORDER_EMPHASIS};
+}}
+QPushButton:pressed {{
+    background-color: {SURFACE};
+    border-color: {BORDER_EMPHASIS};
+}}
+QPushButton:disabled {{
+    background-color: {SURFACE};
+    color: {TEXT_MUTED};
+    border-color: {BORDER_MUTED};
+}}
+QPushButton:focus {{
+    border-color: {ACCENT};
+    outline: none;
+}}
+#wizard-primary-btn, #wizard-next-btn, #session-new-btn,
+#desk-view-confirm-button {{
+    background-color: {ACCENT};
+    color: {ACCENT_TEXT};
+    border: none;
+    font-weight: 700;
+}}
+#wizard-primary-btn:hover, #wizard-next-btn:hover, #session-new-btn:hover,
+#desk-view-confirm-button:hover {{
+    background-color: {ACCENT_HOVER};
+}}
+#wizard-primary-btn:pressed, #wizard-next-btn:pressed, #session-new-btn:pressed,
+#desk-view-confirm-button:pressed {{
+    background-color: {ACCENT_PRESSED};
+}}
+
+/* ===== Checkbox ===== */
+QCheckBox {{
+    spacing: 8px;
+    background: transparent;
+}}
+QCheckBox::indicator {{
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1px solid {BORDER_EMPHASIS};
+    background-color: {SURFACE_RAISED};
+}}
+QCheckBox::indicator:hover {{
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+    image: url({_ICONS_DIR.as_posix()}/check.svg);
 }}
 
 /* ===== Header ===== */
@@ -238,9 +303,9 @@ QPushButton:hover {{
     border: none;
 }}
 #klaus-brand-mark {{
-    color: {BG};
-    background: {KLAUS_ACCENT};
-    border: 1px solid {KLAUS_ACCENT};
+    color: {ACCENT_TEXT};
+    background: {ACCENT};
+    border: none;
     border-radius: 9px;
     font-size: 15px;
     font-weight: 800;
@@ -342,16 +407,9 @@ QSplitter::handle {{
     border: none;
 }}
 #session-new-btn {{
-    color: {BG};
-    background: {KLAUS_ACCENT};
-    border: 1px solid {KLAUS_ACCENT};
     border-radius: 8px;
-    padding: 6px 10px;
+    padding: 6px 12px;
     font-size: {FONT_SIZE_CAPTION}px;
-}}
-#session-new-btn:hover {{
-    background-color: #ffffff;
-    border-color: #ffffff;
 }}
 #session-list {{
     background: transparent;
@@ -464,9 +522,9 @@ QMenu::item:selected {{
     border: none;
 }}
 #chat-empty-orb {{
-    color: {KLAUS_ACCENT};
-    background: {KLAUS_BG};
-    border: 1px solid {KLAUS_BTN_BORDER};
+    color: {USER_ACCENT};
+    background: {USER_BG};
+    border: 1px solid {USER_BORDER};
     border-radius: 32px;
     font-size: 27px;
     font-weight: 700;
@@ -492,7 +550,7 @@ QLabel#chat-status-msg {{
 /* ===== MessageCard (role-based via dynamic property) ===== */
 MessageCard[role="user"] {{
     background-color: {USER_BG};
-    border: 1px solid {BORDER_DEFAULT};
+    border: 1px solid {USER_BORDER};
     border-radius: {CARD_RADIUS}px;
 }}
 MessageCard[role="assistant"] {{
@@ -546,19 +604,23 @@ QLabel#card-thumbnail {{
     margin-bottom: 4px;
 }}
 
-/* Accent buttons (copy / replay) on Klaus cards */
+/* Ghost buttons (copy / replay) on Klaus cards */
 QPushButton#card-accent-btn {{
-    color: {TEXT_SECONDARY};
+    color: {TEXT_MUTED};
     background: transparent;
-    border: 1px solid {BORDER_DEFAULT};
+    border: 1px solid transparent;
     border-radius: 7px;
     font-size: {FONT_SIZE_CAPTION}px;
+    font-weight: 600;
     padding: 4px 9px;
 }}
 QPushButton#card-accent-btn:hover {{
     color: {TEXT_PRIMARY};
-    background: {SURFACE_OVERLAY};
-    border-color: {BORDER_EMPHASIS};
+    background: {SURFACE_RAISED};
+    border-color: {BORDER_DEFAULT};
+}}
+QPushButton#card-accent-btn:pressed {{
+    background: {SURFACE};
 }}
 
 /* ===== Status bar ===== */
@@ -567,7 +629,7 @@ QPushButton#card-accent-btn:hover {{
     border: none;
 }}
 #klaus-voice-composer {{
-    background-color: {BG};
+    background-color: {SURFACE};
     border: 1px solid {BORDER_DEFAULT};
     border-radius: 18px;
 }}
@@ -620,13 +682,14 @@ QPushButton#card-accent-btn:hover {{
     border: none;
 }}
 #klaus-hotkey-keycap {{
-    color: {BG};
-    background: {TEXT_PRIMARY};
-    border: 1px solid #ffffff;
+    color: {TEXT_PRIMARY};
+    background: {SURFACE_OVERLAY};
+    border: 1px solid {BORDER_EMPHASIS};
+    border-bottom: 2px solid {BORDER_EMPHASIS};
     border-radius: 6px;
     padding: 4px 8px;
-    font-size: {FONT_SIZE_SMALL + 1}px;
-    font-weight: 800;
+    font-size: {FONT_SIZE_SMALL}px;
+    font-weight: 700;
 }}
 #klaus-stats {{
     color: {TEXT_SECONDARY};
@@ -635,32 +698,35 @@ QPushButton#card-accent-btn:hover {{
     border: none;
 }}
 
-/* ===== Tab widget ===== */
+/* ===== Tab widget (segmented pills, no boxed pane) ===== */
 QTabWidget::pane {{
-    background-color: {SURFACE};
-    border: 1px solid {BORDER_DEFAULT};
-    border-top: none;
-    border-radius: 0 0 {RADIUS_SM}px {RADIUS_SM}px;
+    background-color: transparent;
+    border: none;
+    border-top: 1px solid {BORDER_MUTED};
+    margin-top: 6px;
+}}
+QTabBar {{
+    background: transparent;
 }}
 QTabBar::tab {{
-    background-color: {SURFACE_RAISED};
-    color: {TEXT_SECONDARY};
-    border: 1px solid {BORDER_DEFAULT};
-    border-bottom: none;
-    padding: 8px 10px;
+    background-color: transparent;
+    color: {TEXT_MUTED};
+    border: 1px solid transparent;
+    padding: 7px 16px;
     font-size: {FONT_SIZE_SMALL}px;
     font-weight: 600;
-    margin-right: 2px;
-    border-radius: {RADIUS_SM}px {RADIUS_SM}px 0 0;
+    margin-right: 4px;
+    margin-bottom: 8px;
+    border-radius: 9px;
 }}
 QTabBar::tab:selected {{
-    background-color: {SURFACE};
+    background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
-    border-bottom: 2px solid {USER_ACCENT};
+    border-color: {BORDER_DEFAULT};
 }}
 QTabBar::tab:hover:!selected {{
-    background-color: {SURFACE_OVERLAY};
-    color: {TEXT_PRIMARY};
+    background-color: {SURFACE};
+    color: {TEXT_SECONDARY};
 }}
 
 /* ===== Dialogs ===== */
@@ -668,17 +734,17 @@ QDialog {{
     background-color: {SURFACE};
     color: {TEXT_PRIMARY};
 }}
-QLineEdit {{
+QLineEdit, QPlainTextEdit {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: {RADIUS_SM}px;
-    padding: 6px 10px;
-    font-size: {FONT_SIZE_BODY}px;
-    selection-background-color: {SURFACE_OVERLAY};
+    border-radius: 9px;
+    padding: 7px 11px;
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    selection-background-color: {USER_BG};
 }}
-QLineEdit:focus {{
-    border-color: {BORDER_EMPHASIS};
+QLineEdit:focus, QPlainTextEdit:focus {{
+    border-color: {ACCENT};
 }}
 QMessageBox {{
     background-color: {SURFACE};
@@ -719,16 +785,9 @@ QMessageBox QLabel {{
     background: transparent;
 }}
 #desk-view-confirm-button {{
-    color: {BG};
-    background-color: {TEXT_PRIMARY};
-    border: none;
     border-radius: 9px;
     padding: 9px 18px;
     font-size: {FONT_SIZE_SMALL + 1}px;
-    font-weight: 500;
-}}
-#desk-view-confirm-button:hover {{
-    background-color: #ffffff;
 }}
 QInputDialog {{
     background-color: {SURFACE};
@@ -778,16 +837,9 @@ QInputDialog QLabel {{
     border: none;
 }}
 #wizard-primary-btn {{
-    background-color: {KLAUS_ACCENT};
-    color: {BG};
-    border: none;
-    border-radius: {RADIUS_SM}px;
+    border-radius: 9px;
     padding: 10px 24px;
     font-size: {FONT_SIZE_BODY}px;
-    font-weight: 600;
-}}
-#wizard-primary-btn:hover {{
-    background-color: #ffffff;
 }}
 #wizard-link-btn {{
     color: {USER_ACCENT};
@@ -813,16 +865,9 @@ QInputDialog QLabel {{
     border-color: {BORDER_EMPHASIS};
 }}
 #wizard-next-btn {{
-    background-color: {KLAUS_ACCENT};
-    color: {BG};
-    border: none;
-    border-radius: {RADIUS_SM}px;
+    border-radius: 9px;
     padding: 8px 24px;
     font-size: {FONT_SIZE_SMALL}px;
-    font-weight: 600;
-}}
-#wizard-next-btn:hover {{
-    background-color: #ffffff;
 }}
 #wizard-next-btn:disabled {{
     background-color: {SURFACE_RAISED};
@@ -834,7 +879,7 @@ QInputDialog QLabel {{
     border-radius: 4px;
 }}
 #wizard-mic-meter::chunk, #wizard-model-progress::chunk {{
-    background-color: {KLAUS_ACCENT};
+    background-color: {ACCENT};
     border-radius: 3px;
 }}
 """
