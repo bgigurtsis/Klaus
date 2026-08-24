@@ -241,11 +241,7 @@ class RemarkableClient:
         return response_headers, payload
 
     def version(self, cancel_event: threading.Event | None = None) -> str:
-        status, _, payload = self._request("GET", "/version", cancel_event=cancel_event)
-        if status != 200:
-            raise RemarkableMissingServiceError(
-                f"The Klaus tablet service returned HTTP {status}"
-            )
+        _, payload = self._authenticated_request("/version", cancel_event)
         return payload.decode("utf-8", errors="replace").strip()
 
     def screenshot_png(self, cancel_event: threading.Event | None = None) -> bytes:

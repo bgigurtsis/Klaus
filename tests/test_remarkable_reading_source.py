@@ -92,15 +92,15 @@ def remarkable_server(tmp_path):
             self.wfile.write(payload)
 
         def do_GET(self):
+            expected = f"Bearer token-{state['login_count']}"
+            if self.headers.get("Authorization") != expected:
+                self.send_error(401)
+                return
             if self.path == "/version":
                 payload = b"klaus-paper-pure-test"
             elif self.path == "/screenshot":
                 if state["expire_once"]:
                     state["expire_once"] = False
-                    self.send_error(401)
-                    return
-                expected = f"Bearer token-{state['login_count']}"
-                if self.headers.get("Authorization") != expected:
                     self.send_error(401)
                     return
                 payload = png.getvalue()
@@ -211,6 +211,7 @@ def test_transient_network_failure_retries_once():
             "a" * 64,
             retries=1,
         )
+        client._token = "token"
         assert client.version() == "version"
     assert connection_class.call_count == 2
 
