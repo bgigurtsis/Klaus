@@ -13,6 +13,8 @@ import pytest
 
 
 INSTALLER = Path(__file__).parents[1] / "scripts" / "install-macos-app.sh"
+CERT_SCRIPT = Path(__file__).parents[1] / "scripts" / "create-signing-certificate.sh"
+LAUNCHER = Path(__file__).parents[1] / "packaging" / "macos" / "launcher.c"
 
 
 def test_installer_does_not_ad_hoc_sign() -> None:
@@ -23,8 +25,48 @@ def test_installer_does_not_ad_hoc_sign() -> None:
     assert '[[ "$codesign_identity" == "-" ]]' in script
 
 
+def test_installer_signs_with_stable_certificate_by_default() -> None:
+    script = INSTALLER.read_text()
+
+    assert 'default_identity="Klaus Code Signing"' in script
+    assert "create-signing-certificate.sh" in script
+    assert "certificate-app-bundle-v2" in script
+    assert "signature-format" in script
+
+
+def test_installer_resets_tcc_rows_when_identity_changes() -> None:
+    script = INSTALLER.read_text()
+
+    assert "tccutil reset ScreenCapture com.bgigurtsis.klaus" in script
+    assert "tccutil reset Microphone com.bgigurtsis.klaus" in script
+    assert "tccutil reset Camera com.bgigurtsis.klaus" in script
+    assert 'previous_signature_format" != "$signature_format' in script
+
+
+def test_certificate_script_creates_codesigning_identity() -> None:
+    script = CERT_SCRIPT.read_text()
+
+    assert "find-identity -v -p codesigning" in script
+    assert "extendedKeyUsage = critical, codeSigning" in script
+    assert "keyUsage = critical, digitalSignature" in script
+    assert "-T /usr/bin/codesign" in script
+    assert "set-key-partition-list" not in script
+
+
+def test_launcher_forks_and_stays_responsible_process() -> None:
+    launcher = LAUNCHER.read_text()
+
+    assert "fork()" in launcher
+    assert "waitpid" in launcher
+    assert "EINTR" in launcher
+    assert "WIFEXITED" in launcher
+    assert "WIFSIGNALED" in launcher
+    assert "kill(child, sig)" in launcher
+    assert "execv(klaus_executable" in launcher
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS app test")
-def test_default_installer_uses_linker_signature_and_skips_valid_reinstall(
+def test_opt_out_installer_uses_linker_signature_and_skips_valid_reinstall(
     tmp_path: Path,
 ) -> None:
     repository = Path(__file__).resolve().parents[1]
@@ -32,6 +74,7 @@ def test_default_installer_uses_linker_signature_and_skips_valid_reinstall(
 
     for relative_path in (
         "scripts/install-macos-app.sh",
+        "scripts/create-signing-certificate.sh",
         "packaging/macos/launcher.c",
         "packaging/macos/Info.plist",
         "klaus/ui/icon.png",
@@ -53,7 +96,7 @@ def test_default_installer_uses_linker_signature_and_skips_valid_reinstall(
 
     app_parent = tmp_path / "Applications"
     environment = os.environ.copy()
-    environment.pop("KLAUS_CODESIGN_IDENTITY", None)
+    environment["KLAUS_CODESIGN_IDENTITY"] = "none"
     first_install = subprocess.run(
         [str(checkout / "scripts/install-macos-app.sh"), str(app_parent)],
         check=True,

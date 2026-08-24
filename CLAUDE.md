@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-08-24 (capsule voice dock, pill control language, QSS split
-into theme_qss modules).
+Last updated: 2026-08-24 (capsule voice dock, QSS split into theme_qss
+modules, stable self-signed code-signing identity for the macOS app).
 
 ## Project Summary
 
@@ -231,7 +231,17 @@ responds aloud through text-to-speech.
   `pyobjc-framework-AVFoundation` requirement.
 - **Packaging**: `pyproject.toml` with `hatchling` build backend. Entry point:
   `klaus = "klaus.main:main"`. Homebrew formula in `homebrew/klaus.rb` for
-  macOS distribution via a tap repo.
+  macOS distribution via a tap repo. `scripts/install-macos-app.sh` builds a
+  local Klaus.app launcher and signs it with the self-signed "Klaus Code
+  Signing" identity (auto-created by `scripts/create-signing-certificate.sh`),
+  because ad-hoc signatures trigger Jamf Protect alerts and break TCC grants
+  on every rebuild. `KLAUS_CODESIGN_IDENTITY=none` forces the linker's ad-hoc
+  signature. `packaging/macos/launcher.c` forks and waits on the venv `klaus`
+  child so the signed bundle binary stays the TCC responsible process (an
+  execv would replace its code identity before the Screen Recording check).
+  When the signing identity changes, the installer runs `tccutil reset` on
+  Klaus's ScreenCapture/Microphone/Camera rows so macOS re-prompts once
+  instead of failing silently.
 
 ## Development Conventions
 

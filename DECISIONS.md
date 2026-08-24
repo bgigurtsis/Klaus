@@ -107,3 +107,40 @@ height, keycap) deliberately does not scale. The dock mode button now names
 the action ("Switch to push to talk"); the current mode lives in the tooltip.
 Rejected: labeling the button with the current mode — that read as a state
 badge, which is what confused in the first place.
+
+## 2026-08-24 — Ad-hoc alerts persist; sign with a stable self-signed certificate
+
+Removing the installer's `codesign --sign -` call (earlier today) did not stop
+the Jamf Protect alerts: the arm64 linker still embeds an ad-hoc signature in
+the launcher, and Jamf flagged a launch four minutes after a clean reinstall
+by the new path. The rule matches the ad-hoc signature itself, not just the
+codesign CLI. Fix: `scripts/create-signing-certificate.sh` creates a
+self-signed "Klaus Code Signing" identity once (openssl + security import;
+the trust step needs the user's password), and the installer now creates and
+uses that identity when `KLAUS_CODESIGN_IDENTITY` is unset (`none` forces the
+linker signature — the installer test uses this). A stable identity also
+fixes the 2026-08-23 TCC-grant breakage, since the signing identity no longer
+changes on every rebuild. Rejected: a Jamf-side exception (the CDHash changes
+per rebuild, and the repo should not depend on MDM config). Revisit if macOS
+tightens `security add-trusted-cert` further; the script prints Keychain
+Access fallback steps when trust fails.
+
+## 2026-08-24 — Launcher forks so the bundle stays the TCC responsible process
+
+The "allowed but still prompted" Screen Recording bug had a second cause
+beyond the unstable signature: launcher.c used execv, which replaced the
+signed bundle binary with the venv Python before the app ever asked TCC for
+access. This reverses the 2026-08-23 rejection of fork+waitpid — the stamp
+mitigation did not hold in practice. The launcher now forks; the parent
+stays alive as the responsible process, forwards SIGTERM/SIGINT/SIGHUP to
+the child, and propagates its exit status (child _exit(127) = exec failed,
+parent shows the alert). The installer also writes a signature-format file
+into the bundle and, when the signing identity changes, runs `tccutil reset`
+for ScreenCapture/Microphone/Camera on com.bgigurtsis.klaus — otherwise the
+stale rows show ON in System Settings while matching nothing. The build
+stamp now embeds the certificate hash (certificate-app-bundle-v2), so a
+recreated certificate forces exactly one reinstall. Rejected: scripting
+`security set-key-partition-list` to suppress the one-time codesign keychain
+dialog — it puts the login password on a command line; "Always Allow" once
+is fine. Revisit if the forked parent confuses the Dock or Force Quit
+(contingency: LSUIElement in Info.plist).

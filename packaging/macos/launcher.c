@@ -1,11 +1,26 @@
 #include <errno.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+/* The launcher must stay alive as the TCC responsible process: macOS
+ * attributes the Python child's Screen Recording and microphone requests
+ * to this signed bundle binary. An execv here would replace the bundle's
+ * code identity with the venv Python's and break the grants. */
+static volatile pid_t g_child = 0;
+
+static void forward_signal(int sig) {
+    pid_t child = g_child;
+    if (child > 0) {
+        kill(child, sig);
+    }
+}
 
 static void show_start_error(void) {
     const char *script =
@@ -89,9 +104,61 @@ int main(void) {
         return 1;
     }
 
-    char *const arguments[] = {klaus_executable, NULL};
-    execv(klaus_executable, arguments);
-    perror("Could not launch Klaus");
-    show_start_error();
+    /* Block the forwarded signals until the handlers are installed, so a
+     * signal delivered mid-fork cannot kill the parent and orphan the child. */
+    sigset_t forwarded_signals;
+    sigset_t original_mask;
+    sigemptyset(&forwarded_signals);
+    sigaddset(&forwarded_signals, SIGTERM);
+    sigaddset(&forwarded_signals, SIGINT);
+    sigaddset(&forwarded_signals, SIGHUP);
+    sigprocmask(SIG_BLOCK, &forwarded_signals, &original_mask);
+
+    g_child = fork();
+    if (g_child < 0) {
+        perror("Could not launch Klaus");
+        show_start_error();
+        return 1;
+    }
+
+    if (g_child == 0) {
+        /* Signal masks survive execv; dispositions reset on their own. */
+        sigprocmask(SIG_SETMASK, &original_mask, NULL);
+        char *const arguments[] = {klaus_executable, NULL};
+        execv(klaus_executable, arguments);
+        perror("Could not launch Klaus");
+        _exit(127);
+    }
+
+    struct sigaction forward_action;
+    memset(&forward_action, 0, sizeof(forward_action));
+    forward_action.sa_handler = forward_signal;
+    sigemptyset(&forward_action.sa_mask);
+    sigaction(SIGTERM, &forward_action, NULL);
+    sigaction(SIGINT, &forward_action, NULL);
+    sigaction(SIGHUP, &forward_action, NULL);
+    sigprocmask(SIG_SETMASK, &original_mask, NULL);
+
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(g_child, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+    if (waited == -1) {
+        return 1;
+    }
+
+    if (WIFEXITED(status)) {
+        if (WEXITSTATUS(status) == 127) {
+            show_start_error();
+            return 1;
+        }
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        signal(WTERMSIG(status), SIG_DFL);
+        raise(WTERMSIG(status));
+        return 128 + WTERMSIG(status);
+    }
     return 1;
 }

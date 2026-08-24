@@ -153,8 +153,19 @@ open "$HOME/Applications/Klaus.app"
 ```
 
 The app points to this checkout. Rerun the installer after you move the repository.
-The local installer should avoid an explicit ad-hoc `codesign` command.
-Developers can set `KLAUS_CODESIGN_IDENTITY` to a Keychain identity name.
+
+The installer signs Klaus.app with a stable "Klaus Code Signing" identity so
+Screen Recording and microphone grants survive rebuilds (ad-hoc signatures
+change identity on every rebuild, and tools such as Jamf Protect flag them).
+On first run it creates that identity via
+`scripts/create-signing-certificate.sh`: macOS asks for your login password
+once to trust the certificate, and the first signing run shows a keychain
+dialog — click "Always Allow". When the identity changes, the installer
+resets Klaus's stale permission rows, so macOS asks once more on the next
+launch; after that the grant sticks.
+
+Set `KLAUS_CODESIGN_IDENTITY` to use a different Keychain identity, or set it
+to `none` to keep the linker's ad-hoc signature.
 
 ## Project
 
