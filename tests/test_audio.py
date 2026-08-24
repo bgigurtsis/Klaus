@@ -193,6 +193,23 @@ class TestVoiceStartGate:
         started.assert_not_called()
         assert rec._speaking is False
 
+    def test_resume_rejects_a_matching_playback_tail(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(on_speech_start=started, start_trigger_ms=90)
+        rec._vad = MagicMock()
+        rec._vad.is_speech.return_value = True
+        rng = np.random.default_rng(17)
+        playback = rng.integers(-8_000, 8_000, FRAME_SIZE * 12, dtype=np.int16)
+        rec.observe_playback(playback, sample_rate=16_000)
+        rec.resume()
+
+        tail = playback[-FRAME_SIZE * 6 :]
+        for frame in np.split(tail, 6):
+            rec._process_frame(frame)
+
+        started.assert_not_called()
+        assert rec._speaking is False
+
 
 class TestSpeculativeMaybeEnd:
     def test_maybe_end_fires_before_finalize_with_exact_gap(self):
@@ -339,6 +356,51 @@ class TestBargeInGate:
 
         assert not barge
         assert rec._gated is True
+
+    def test_louder_playback_phrase_does_not_trigger_barge_in(self):
+        barge: list[np.ndarray] = []
+        rec = self._gated_recorder(barge)
+        output_size = FRAME_SIZE * 30 * 3 // 2
+        time = np.arange(output_size) / 24_000
+        playback = (
+            7_000 * np.sin(2 * np.pi * 230 * time)
+            + 2_600 * np.sin(2 * np.pi * 670 * time)
+        ).astype(np.int16)
+        rec.observe_playback(playback, sample_rate=24_000)
+        mic_playback = np.interp(
+            np.linspace(0, output_size - 1, FRAME_SIZE * 30),
+            np.arange(output_size),
+            playback,
+        ).astype(np.int16)
+
+        quiet_echo = mic_playback[: FRAME_SIZE * rec._gate_calib_frames] // 20
+        for frame in np.split(quiet_echo, rec._gate_calib_frames):
+            rec._process_gate_frame(frame)
+
+        loud_echo = mic_playback[FRAME_SIZE * 20 : FRAME_SIZE * 23] // 2
+        for frame in np.split(loud_echo, 3):
+            rec._process_gate_frame(frame)
+
+        assert not barge
+        assert rec._gated is True
+
+    def test_user_speech_over_playback_still_triggers_barge_in(self):
+        barge: list[np.ndarray] = []
+        rec = self._gated_recorder(barge)
+        rng = np.random.default_rng(11)
+        playback = rng.integers(-2_000, 2_000, FRAME_SIZE * 30, dtype=np.int16)
+        rec.observe_playback(playback, sample_rate=16_000)
+
+        quiet_echo = playback[: FRAME_SIZE * rec._gate_calib_frames] // 20
+        for frame in np.split(quiet_echo, rec._gate_calib_frames):
+            rec._process_gate_frame(frame)
+
+        user_speech = rng.integers(-12_000, 12_000, FRAME_SIZE * 3, dtype=np.int16)
+        for frame in np.split(user_speech, 3):
+            rec._process_gate_frame(frame)
+
+        assert len(barge) == 1
+        assert rec._gated is False
 
     def test_prime_with_seed_starts_utterance(self):
         started = MagicMock()

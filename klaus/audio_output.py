@@ -19,11 +19,31 @@ WRITE_BLOCK_FRAMES = 2_048
 class AudioOutput:
     """Play 24 kHz PCM audio through one persistent output stream."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        playback_observer: Callable[[np.ndarray, int], None] | None = None,
+    ) -> None:
         self._stream: sd.OutputStream | None = None
         self._stream_lock = threading.Lock()
         self._playback_id = 0
         self._stream_playback_id: int | None = None
+        self._playback_observer = playback_observer
+
+    def set_playback_observer(
+        self,
+        observer: Callable[[np.ndarray, int], None] | None,
+    ) -> None:
+        """Set the callback that receives audio written to the output stream."""
+        self._playback_observer = observer
+
+    def _report_playback(self, audio: np.ndarray, rate: int) -> None:
+        observer = self._playback_observer
+        if observer is None:
+            return
+        try:
+            observer(audio, rate)
+        except Exception:
+            logger.exception("Playback observer failed")
 
     def _begin_playback(self) -> int:
         with self._stream_lock:
@@ -84,6 +104,7 @@ class AudioOutput:
                     logger.debug("Audio write ended during cancellation", exc_info=True)
                     break
                 raise
+            self._report_playback(audio[offset:end], PCM_SAMPLE_RATE)
             offset = end
         return offset
 

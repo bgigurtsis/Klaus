@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 from klaus.audio_output import AudioOutput
 
 
@@ -38,3 +40,19 @@ def test_stop_invalidates_current_playback(output_stream) -> None:
 
     assert output._is_current(playback_id) is False
     stream.close.assert_called_once()
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_written_audio_is_reported_to_playback_observer(output_stream) -> None:
+    stream = MagicMock(closed=False)
+    output_stream.return_value = stream
+    observer = MagicMock()
+    output = AudioOutput(playback_observer=observer)
+    audio = np.arange(1_000, dtype=np.int16)
+
+    output.play_pcm(audio)
+
+    observer.assert_called_once()
+    reported, rate = observer.call_args.args
+    np.testing.assert_array_equal(reported, audio)
+    assert rate == 24_000

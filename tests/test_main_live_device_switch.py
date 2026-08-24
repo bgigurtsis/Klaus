@@ -17,6 +17,7 @@ def _make_app(service: MagicMock) -> KlausApp:
     app._active_camera_index = 0
     app._active_mic_device = 1
     app._input_mode = "voice_activation"
+    app._audio_output = MagicMock()
     app._window = SimpleNamespace(
         camera_widget=SimpleNamespace(
             set_camera=MagicMock(),
@@ -114,9 +115,10 @@ def test_screen_recording_failure_surfaces_permission_action() -> None:
 
 def test_apply_mic_device_live_delegates_to_service_and_updates_active_device():
     service = MagicMock()
+    new_vad = MagicMock()
     service.switch_mic.return_value = SimpleNamespace(
         success=True,
-        vad_recorder="new-vad",
+        vad_recorder=new_vad,
         active_device=4,
     )
     app = _make_app(service)
@@ -133,8 +135,11 @@ def test_apply_mic_device_live_delegates_to_service_and_updates_active_device():
 
     assert ok is True
     assert effective_device == 4
-    assert app._vad_recorder == "new-vad"
+    assert app._vad_recorder is new_vad
     assert app._active_mic_device == 4
+    app._audio_output.set_playback_observer.assert_called_once_with(
+        new_vad.observe_playback,
+    )
 
 
 @patch("klaus.main.config.set_camera_index")

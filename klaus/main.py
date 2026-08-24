@@ -255,7 +255,9 @@ class KlausApp:
         self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
         self._stt = SpeechToText(settings=settings)
         self._speculative_stt = SpeculativeTranscriber(self._stt.transcribe)
-        self._audio_output = AudioOutput()
+        self._audio_output = AudioOutput(
+            playback_observer=self._vad_recorder.observe_playback,
+        )
         self._notes = NotesManager(base_path=settings.obsidian_vault_path)
         self._brain = build_live_brain(
             notes=self._notes,
@@ -1054,6 +1056,9 @@ class KlausApp:
         )
         self._vad_recorder = result.vad_recorder
         self._active_mic_device = result.active_device
+        self._audio_output.set_playback_observer(
+            self._vad_recorder.observe_playback,
+        )
         return result.success, result.active_device
 
     @_safe_slot

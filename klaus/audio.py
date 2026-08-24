@@ -188,6 +188,12 @@ class VoiceActivatedRecorder:
         self._gate_frames: collections.deque[np.ndarray] = collections.deque(
             maxlen=gate_buffer_frames
         )
+        self._playback_lock = threading.Lock()
+        self._playback_samples = np.empty(0, dtype=np.int16)
+        self._playback_sample_rate: int | None = None
+        self._playback_max_seconds = 3
+        self._echo_similarity_threshold = 0.75
+        self._post_playback_echo_frames = 0
 
         pre_buffer_ms = 300
         pre_buffer_count = int(pre_buffer_ms / FRAME_DURATION_MS)
@@ -256,12 +262,84 @@ class VoiceActivatedRecorder:
         self._gate_floor_dbfs = self._min_rms_dbfs
         self._gate_run = 0
         self._gate_frames.clear()
+        with self._playback_lock:
+            self._playback_samples = np.empty(0, dtype=np.int16)
+            self._playback_sample_rate = None
         self._gated = True
         logger.debug("VAD gated mode entered")
 
     def exit_gated_mode(self) -> None:
         self._gated = False
         logger.debug("VAD gated mode exited")
+
+    def observe_playback(self, audio: np.ndarray, sample_rate: int) -> None:
+        """Keep recent output audio as a reference for playback-echo rejection."""
+        samples = np.asarray(audio, dtype=np.int16).reshape(-1)
+        if samples.size == 0 or sample_rate <= 0:
+            return
+        with self._playback_lock:
+            if self._playback_sample_rate not in (None, sample_rate):
+                self._playback_samples = np.empty(0, dtype=np.int16)
+            self._playback_sample_rate = sample_rate
+            combined = np.concatenate((self._playback_samples, samples))
+            max_samples = sample_rate * self._playback_max_seconds
+            self._playback_samples = combined[-max_samples:]
+
+    def _matches_recent_playback(self, candidate: np.ndarray) -> bool:
+        """Return whether a mic segment matches Klaus's recent output waveform."""
+        with self._playback_lock:
+            reference = self._playback_samples.copy()
+            playback_sample_rate = self._playback_sample_rate
+
+        if playback_sample_rate is None:
+            return False
+        if playback_sample_rate != self._sample_rate:
+            output_length = max(
+                1,
+                round(candidate.size * playback_sample_rate / self._sample_rate),
+            )
+            source_positions = np.arange(candidate.size, dtype=np.float64)
+            target_positions = np.linspace(0, candidate.size - 1, output_length)
+            candidate = np.interp(
+                target_positions,
+                source_positions,
+                candidate,
+            ).astype(np.int16)
+
+        decimation = 4
+        candidate_size = candidate.size - (candidate.size % decimation)
+        reference_size = reference.size - (reference.size % decimation)
+        if candidate_size < FRAME_SIZE * 3 or reference_size < candidate_size:
+            return False
+
+        mic = candidate[:candidate_size].astype(np.float64).reshape(
+            -1, decimation
+        ).mean(axis=1)
+        output = reference[:reference_size].astype(np.float64).reshape(
+            -1, decimation
+        ).mean(axis=1)
+        mic -= float(np.mean(mic))
+        mic_norm = float(np.linalg.norm(mic))
+        if mic_norm <= 1e-6:
+            return False
+
+        numerator = np.correlate(output, mic, mode="valid")
+        window = mic.size
+        prefix = np.concatenate(([0.0], np.cumsum(output)))
+        square_prefix = np.concatenate(([0.0], np.cumsum(np.square(output))))
+        sums = prefix[window:] - prefix[:-window]
+        square_sums = square_prefix[window:] - square_prefix[:-window]
+        variances = np.maximum(square_sums - np.square(sums) / window, 1e-12)
+        similarity = float(
+            np.max(np.abs(numerator) / (np.sqrt(variances) * mic_norm))
+        )
+        if similarity < self._echo_similarity_threshold:
+            return False
+        logger.info(
+            "Barge-in candidate rejected as playback echo (similarity=%.2f)",
+            similarity,
+        )
+        return True
 
     def prime_with_seed(self, seed: np.ndarray) -> None:
         """Begin a new utterance pre-loaded with barge-in audio.
@@ -324,6 +402,11 @@ class VoiceActivatedRecorder:
         self._settle_frames = max(
             0,
             math.ceil(max(0, settle_ms) / FRAME_DURATION_MS),
+        )
+        with self._playback_lock:
+            has_playback_reference = self._playback_samples.size > 0
+        self._post_playback_echo_frames = (
+            math.ceil(1200 / FRAME_DURATION_MS) if has_playback_reference else 0
         )
         self._pre_buffer.clear()
         self._sample_buf = np.empty(0, dtype=np.int16)
@@ -422,10 +505,12 @@ class VoiceActivatedRecorder:
             self._gate_run = 0
 
         if self._gate_run >= self._gate_run_needed:
-            self._gated = False
             self._gate_run = 0
             seed_frame_count = self._gate_run_needed + self._gate_seed_prefix_frames
             seed = np.concatenate(list(self._gate_frames)[-seed_frame_count:])
+            if self._matches_recent_playback(seed):
+                return
+            self._gated = False
             self._gate_frames.clear()
             logger.info("Barge-in detected (%.1fs of gated audio buffered)",
                         len(seed) / self._sample_rate)
@@ -441,6 +526,8 @@ class VoiceActivatedRecorder:
 
         if not self._speaking:
             self._pre_buffer.append(frame)
+            if self._post_playback_echo_frames:
+                self._post_playback_echo_frames -= 1
             rms_dbfs = self._compute_rms_dbfs(frame)
             if is_speech and rms_dbfs >= self._min_rms_dbfs:
                 self._start_voiced_run += 1
@@ -449,6 +536,16 @@ class VoiceActivatedRecorder:
 
             if self._start_voiced_run >= self._start_run_needed:
                 buffered_frames = list(self._pre_buffer)
+                echo_candidate_frames = self._start_run_needed + 3
+                echo_candidate = np.concatenate(
+                    buffered_frames[-echo_candidate_frames:]
+                )
+                if (
+                    self._post_playback_echo_frames
+                    and self._matches_recent_playback(echo_candidate)
+                ):
+                    self._start_voiced_run = 0
+                    return
                 self._speaking = True
                 self._silent_frames = 0
                 self._chunks = buffered_frames
