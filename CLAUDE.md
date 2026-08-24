@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-08-23 (Desk View and active-PDF workflows, selected-text
-context, confirmed voice onset).
+Last updated: 2026-08-24 (capsule voice dock, pill control language, QSS split
+into theme_qss modules).
 
 ## Project Summary
 
@@ -59,13 +59,15 @@ responds aloud through text-to-speech.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `theme.py` | 586 | Palette tokens, dimensions, single `application_stylesheet()` QSS, `apply_dark_titlebar()`, `load_fonts()` |
+| `theme.py` | ~140 | Palette tokens, dimensions, `apply_dark_titlebar()`, `load_fonts()`; QSS delegated to theme_qss |
+| `theme_qss.py` | ~690 | Main-window QSS assembled from theme tokens |
+| `theme_qss_dialogs.py` | ~180 | Dialog and setup-wizard QSS |
 | `chat_widget.py` | 260 | Scrollable chat feed with message cards, thumbnails, replay |
 | `session_panel.py` | 190 | Session list sidebar with visible action menus |
 | `main_window.py` | 204 | Top-level window layout, splitter, header, settings button, Qt key events for in-app hotkeys |
 | `setup_wizard.py` | ~920 | First-run 7-step setup wizard (API keys, reading source, mic, model download, user background, Obsidian vault) with live source preview |
 | `settings_dialog.py` | ~525 | Tabbed settings dialog for voice, API keys, reading source, mic, profile, and Obsidian |
-| `status_widget.py` | 120 | Voice dock with turn state, input mode, hotkey help, and a large Interrupt action |
+| `status_widget.py` | ~225 | Single-line capsule voice dock: state dot/word/hint, mode pill, Stop pill while busy |
 | `camera_widget.py` | ~100 | Main Desk View/PDF selector and live preview with source-specific waiting messages |
 | `icon.png` | -- | Application icon (owl logo); used for window, taskbar, and macOS dock |
 
@@ -165,12 +167,19 @@ responds aloud through text-to-speech.
   in `config.toml` (with `.env` fallback). Configurable in the setup wizard
   ("About You" step) and settings dialog ("Profile" tab) via a native folder
   picker. Notes are disabled when the path is empty.
-- **Single QSS theme**: All styling lives in `theme.py` via one
-  `application_stylesheet()` function. Widgets use `setObjectName()` for
-  targeted selectors (e.g. `#klaus-header`, `#session-list`). Only dynamic
-  state (status bar color) uses inline `setStyleSheet`. Dark Windows title bar
-  via DWM API (`apply_dark_titlebar()`). Dialogs (`QLineEdit`, `QMessageBox`,
-  `QInputDialog`) are styled globally and get dark title bars.
+- **Single QSS theme**: Tokens live in `theme.py`; the stylesheet is assembled
+  in `theme_qss.py` (main window) plus `theme_qss_dialogs.py` (dialogs/wizard)
+  and returned by `theme.application_stylesheet()`. Widgets use
+  `setObjectName()` for targeted selectors (e.g. `#klaus-header`). Only dynamic
+  state (dock state dot, `dockState` capsule property) uses inline styling or
+  repolish. Controls share a pill language: each border-radius is tuned to half
+  the control's height (Qt draws radius > height/2 badly, so there is no shared
+  radius token). Dark Windows title bar via DWM API (`apply_dark_titlebar()`).
+- **Capsule voice dock**: `StatusWidget` is one 52px pill (max 860px, matching
+  the chat column). Busy states (`thinking`, `speaking`) set the capsule's
+  `dockState` property to `hot` (pink border tint), swap the right-side
+  controls for a Stop pill, and require `style().unpolish/polish` to retint.
+  Interrupt styling uses LISTENING_COLOR pink, not error red.
 - **Bundled Inter font**: `klaus/ui/fonts/` contains Inter .ttf files (Regular,
   Medium, SemiBold, Bold). `theme.load_fonts()` registers them with Qt at
   startup. Falls back to Segoe UI if missing.
