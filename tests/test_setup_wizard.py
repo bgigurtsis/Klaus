@@ -46,6 +46,16 @@ def test_live_model_step_defaults_to_mini_with_high_effort(qt_app, monkeypatch) 
     wizard.close()
 
 
+def test_reading_source_step_defaults_to_audio_only(qt_app) -> None:
+    wizard = SetupWizard()
+
+    wizard._populate_cameras()
+
+    assert wizard._camera_combo.currentData() == -1
+    assert wizard._collected["camera_index"] == -1
+    wizard.close()
+
+
 @pytest.mark.parametrize(
     ("model", "effort", "required_slug"),
     [

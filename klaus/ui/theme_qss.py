@@ -646,15 +646,6 @@ QPushButton#card-accent-btn:pressed {{
 #klaus-stop-btn:hover {{
     background-color: {STOP_HOVER_BG};
 }}
-#klaus-hotkey-keycap {{
-    color: {TEXT_SECONDARY};
-    background: transparent;
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 5px;
-    padding: 2px 7px;
-    font-size: {FONT_SIZE_CAPTION - 1}px;
-    font-weight: 600;
-}}
 #klaus-stats {{
     color: {TEXT_MUTED};
     font-size: {FONT_SIZE_CAPTION}px;

@@ -610,6 +610,7 @@ class SetupWizard(QMainWindow):
         layout.addWidget(self._camera_preview, alignment=Qt.AlignmentFlag.AlignCenter)
 
         tip = QLabel(
+            "Audio only: keep No reading source selected.\n"
             "Physical paper: Klaus opens Apple's Desk View setup for you.\n"
             "On screen: keep any app window frontmost and select text when useful.\n"
             "Paper Pure: open klaus-remarkable in reManager and choose Pair with Klaus."
@@ -631,8 +632,6 @@ class SetupWizard(QMainWindow):
         cameras = list_camera_devices()
         for cam in cameras:
             self._camera_combo.addItem(format_camera_label(cam), cam.index)
-        if cameras:
-            self._camera_combo.setCurrentIndex(1)
         self._camera_combo.blockSignals(False)
         self._on_camera_changed()
 
@@ -971,10 +970,10 @@ class SetupWizard(QMainWindow):
         if config.PUSH_TO_TALK_KEY == config.TOGGLE_KEY and len(config.TOGGLE_KEY) == 1:
             toggle_hint = f"Shift+{config.TOGGLE_KEY}"
         instructions = QLabel(
-            "Speak to ask in hands-free mode.\n"
-            f"Hold {config.PUSH_TO_TALK_KEY} for push-to-talk. "
-            f"Press {toggle_hint} to switch modes.\n"
-            "Choose a reading source on the left. Name a vault note when you want to save."
+            f"Hold {config.PUSH_TO_TALK_KEY} to talk. "
+            f"Press {toggle_hint} to switch to hands-free mode.\n"
+            "Choose a reading source when you need visual context. "
+            "Name a vault note when you want to save."
         )
         instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
         instructions.setWordWrap(True)

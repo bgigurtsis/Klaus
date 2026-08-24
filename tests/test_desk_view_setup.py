@@ -135,6 +135,17 @@ def test_paper_pure_stays_available_in_reading_source_selector(qt_app) -> None:
         for index in range(combo.count())
         if combo.itemData(index) == REMARKABLE_PAPER_PURE_SOURCE_INDEX
     ]
-    assert matching_items == [2]
+    assert matching_items == [3]
     assert combo.currentData() == REMARKABLE_PAPER_PURE_SOURCE_INDEX
     assert combo.currentText() == "reMarkable Paper Pure  ·  tablet"
+
+
+def test_no_reading_source_is_available_in_main_selector(qt_app) -> None:
+    widget = CameraWidget()
+
+    widget.set_source_selection(-1)
+
+    combo = widget._source_combo
+    assert combo.currentData() == -1
+    assert combo.currentText() == "No reading source  ·  audio only"
+    assert [combo.itemData(index) for index in range(combo.count())].count(-1) == 1

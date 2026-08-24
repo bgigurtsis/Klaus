@@ -45,7 +45,6 @@ def test_voice_dock_hides_optional_text_when_narrow(qt_app) -> None:
 
     assert dock._detail_label.isHidden()
     assert dock._stats_label.isHidden()
-    assert dock._hotkey_keycap.isHidden()
     assert dock._mode_btn.isHidden() is False
 
 
@@ -59,18 +58,14 @@ def test_voice_dock_collapses_controls_to_stop_while_busy(qt_app) -> None:
 
     assert dock._stop_btn.isHidden() is False
     assert dock._mode_btn.isHidden()
-    assert dock._hotkey_keycap.isHidden()
     assert dock._stats_label.isHidden()
     assert dock._capsule.property("dockState") == "hot"
 
     dock.set_state("idle")
     qt_app.processEvents()
-    keycap_text_width = dock._hotkey_keycap.fontMetrics().horizontalAdvance(
-        "Shift+§"
-    )
     assert dock._stop_btn.isHidden()
     assert dock._mode_btn.isHidden() is False
-    assert dock._hotkey_keycap.minimumWidth() >= keycap_text_width + 20
+    assert dock._mode_btn.text() == "Shift+§  ·  Switch to hands-free"
     assert dock._capsule.property("dockState") == "calm"
 
     dock.close()
