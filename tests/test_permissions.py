@@ -9,6 +9,8 @@ def test_screen_recording_failure_has_actionable_guidance() -> None:
 
     assert guidance is not None
     assert guidance.title == "Allow Screen Recording"
+    assert "already enabled" in guidance.message
+    assert "quit and reopen Klaus" in guidance.message
     assert guidance.settings_url == SCREEN_RECORDING_SETTINGS_URL
 
 
