@@ -68,7 +68,9 @@ class StatusWidget(QWidget):
         "voice_activation": "Hands-free",
     }
 
-    _HOTKEY_HINTS = {
+    # The mode button is labeled with the action it performs, not the
+    # current mode, so the switch is unambiguous.
+    _MODE_ACTIONS = {
         "push_to_talk": "Switch to hands-free",
         "voice_activation": "Switch to push to talk",
     }
@@ -133,12 +135,13 @@ class StatusWidget(QWidget):
         self._resize_hotkey_keycap()
         row.addWidget(self._hotkey_keycap)
 
-        self._mode_btn = QPushButton(self._MODE_LABELS.get(self._mode, "Voice"))
+        self._mode_btn = QPushButton()
         self._mode_btn.setObjectName("klaus-mode-btn")
         self._mode_btn.setFixedHeight(32)
         self._mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._mode_btn.clicked.connect(self.mode_toggle_clicked.emit)
         row.addWidget(self._mode_btn)
+        self._update_switch_hints()
 
         self._stop_btn = QPushButton("Stop")
         self._stop_btn.setObjectName("klaus-stop-btn")
@@ -192,9 +195,8 @@ class StatusWidget(QWidget):
         self._apply_state(state)
 
     def set_mode(self, mode: str) -> None:
-        """Update the mode button label and keycap tooltip."""
+        """Update the mode-switch action label and tooltips."""
         self._mode = mode
-        self._mode_btn.setText(self._MODE_LABELS.get(mode, "Voice"))
         self._update_switch_hints()
         self._apply_state(self._current_state)
 
@@ -213,9 +215,12 @@ class StatusWidget(QWidget):
         self._apply_state(self._current_state)
 
     def _update_switch_hints(self) -> None:
-        hint = self._HOTKEY_HINTS.get(self._mode, "Switch voice input mode")
-        self._hotkey_keycap.setToolTip(hint)
-        self._mode_btn.setToolTip(hint)
+        action = self._MODE_ACTIONS.get(self._mode, "Switch voice input mode")
+        current = self._MODE_LABELS.get(self._mode, "Voice")
+        self._mode_btn.setText(action)
+        tooltip = f"Current mode: {current}. Shortcut: {self._toggle_key}."
+        self._mode_btn.setToolTip(tooltip)
+        self._hotkey_keycap.setToolTip(tooltip)
 
     def _resize_hotkey_keycap(self) -> None:
         """Keep the full shortcut visible inside its padded keycap."""

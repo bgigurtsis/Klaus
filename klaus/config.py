@@ -232,6 +232,7 @@ class RuntimeSettings:
     barge_in_min_voiced_ms: int
     barge_in_rms_margin_dbfs: float
     earcons_enabled: bool
+    ui_font_scale: float
     user_background: str
     system_prompt: str
 
@@ -318,6 +319,7 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("barge_in_min_voiced_ms", "barge_in_min_voiced_ms", 120, _as_int),
     _SettingSpec("barge_in_rms_margin_dbfs", "barge_in_rms_margin_dbfs", 4.0, _as_float),
     _SettingSpec("earcons_enabled", "earcons_enabled", True, _as_bool),
+    _SettingSpec("ui_font_scale", "ui_font_scale", 1.0, _as_float),
 )
 
 
@@ -511,6 +513,7 @@ _RUNTIME_EXPORTS: dict[str, str] = {
     "BARGE_IN_MIN_VOICED_MS": "barge_in_min_voiced_ms",
     "BARGE_IN_RMS_MARGIN_DBFS": "barge_in_rms_margin_dbfs",
     "EARCONS_ENABLED": "earcons_enabled",
+    "UI_FONT_SCALE": "ui_font_scale",
     "USER_BACKGROUND": "user_background",
     "SYSTEM_PROMPT": "system_prompt",
 }
@@ -737,6 +740,13 @@ def _set_top_level_value(key: str, value: str) -> None:
         first_newline = text.index("\n") if "\n" in text else len(text)
         text = text[:first_newline] + "\n" + line + text[first_newline:]
     _write_config_text(text)
+
+
+def save_ui_font_scale(scale: float) -> None:
+    """Persist the UI text zoom factor to config.toml."""
+    global UI_FONT_SCALE
+    UI_FONT_SCALE = float(scale)
+    _set_top_level_value("ui_font_scale", f"{UI_FONT_SCALE:.2f}")
 
 
 def mark_setup_complete() -> None:

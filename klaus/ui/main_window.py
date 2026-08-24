@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
 )
 from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtGui import QKeyEvent, QKeySequence, QShortcut
 
 import klaus.config as config
 from klaus.ui import theme
@@ -99,7 +99,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(680, 520)
         self.resize(1180, 760)
 
+        theme.set_font_scale(config.UI_FONT_SCALE)
         self.setStyleSheet(theme.application_stylesheet())
+        self._init_zoom_shortcuts()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -223,6 +225,36 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
+
+    # -- Text zoom (Cmd+= / Cmd+- / Cmd+0 on macOS, Ctrl elsewhere) --
+
+    def _init_zoom_shortcuts(self) -> None:
+        bindings = (
+            ("Ctrl+=", theme.FONT_SCALE_STEP),
+            ("Ctrl++", theme.FONT_SCALE_STEP),
+            ("Ctrl+-", -theme.FONT_SCALE_STEP),
+            ("Ctrl+0", None),
+        )
+        for sequence, delta in bindings:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(
+                lambda d=delta: self._adjust_text_zoom(d)
+            )
+
+    def _adjust_text_zoom(self, delta: float | None) -> None:
+        """Step the UI text zoom, or reset it when delta is None."""
+        target = 1.0 if delta is None else theme.FONT_SCALE + delta
+        applied = theme.set_font_scale(target)
+        try:
+            config.save_ui_font_scale(applied)
+        except OSError:
+            logger.warning("Could not persist ui_font_scale", exc_info=True)
+        stylesheet = theme.application_stylesheet()
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet)
+        self.setStyleSheet(stylesheet)
+        logger.info("UI text zoom set to %.0f%%", applied * 100)
 
     def set_live_model(self, label: str) -> None:
         """Update the active live-model label after a settings change."""

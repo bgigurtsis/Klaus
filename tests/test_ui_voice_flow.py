@@ -32,9 +32,10 @@ def test_voice_dock_explains_each_input_mode(qt_app) -> None:
     dock.set_mode("push_to_talk")
     dock.set_state("idle")
 
-    assert dock._mode_btn.text() == "Push to talk"
+    assert dock._mode_btn.text() == "Switch to hands-free"
     assert dock._detail_label.text() == "Hold F2 to ask a question"
-    assert "hands-free" in dock._mode_btn.toolTip()
+    assert "Push to talk" in dock._mode_btn.toolTip()
+    assert "F3" in dock._mode_btn.toolTip()
 
 
 def test_interrupted_stream_stays_visible_and_marked(qt_app) -> None:

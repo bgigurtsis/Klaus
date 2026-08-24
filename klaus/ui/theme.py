@@ -70,10 +70,23 @@ KLAUS_BTN_HOVER_BG = "#2c2c38"
 
 FONT_FAMILY_NAME = "Helvetica Neue"
 FONT_FAMILY = f'"{FONT_FAMILY_NAME}"'
-FONT_SIZE_BODY = 15
-FONT_SIZE_SMALL = 13
-FONT_SIZE_CAPTION = 12
-FONT_SIZE_HEADING = 20
+FONT_SIZE_BODY = 16
+FONT_SIZE_SMALL = 14
+FONT_SIZE_CAPTION = 13
+FONT_SIZE_HEADING = 21
+
+# Text zoom (Cmd+= / Cmd+- / Cmd+0). Applied to every font-size in the QSS.
+FONT_SCALE_MIN = 0.8
+FONT_SCALE_MAX = 1.5
+FONT_SCALE_STEP = 0.1
+FONT_SCALE = 1.0
+
+
+def set_font_scale(scale: float) -> float:
+    """Clamp and store the UI text zoom factor. Returns the applied value."""
+    global FONT_SCALE
+    FONT_SCALE = min(FONT_SCALE_MAX, max(FONT_SCALE_MIN, round(float(scale), 2)))
+    return FONT_SCALE
 
 # ---------------------------------------------------------------------------
 # Dimensions
@@ -96,9 +109,18 @@ CAMERA_PREVIEW_WIDTH = 286
 
 def application_stylesheet() -> str:
     """Return the single QSS string that styles every widget in the app."""
+    import re
+
     from klaus.ui import theme_qss
 
-    return theme_qss.application_stylesheet()
+    qss = theme_qss.application_stylesheet()
+    if FONT_SCALE != 1.0:
+        qss = re.sub(
+            r"font-size: (\d+)px",
+            lambda m: f"font-size: {max(9, round(int(m.group(1)) * FONT_SCALE))}px",
+            qss,
+        )
+    return qss
 
 
 # ---------------------------------------------------------------------------
