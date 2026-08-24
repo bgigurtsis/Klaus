@@ -106,7 +106,9 @@ def test_screen_recording_failure_surfaces_permission_action() -> None:
         app._window.show_permission_warning.call_args.args
     )
     assert title == "Allow Screen Recording"
-    assert "choose the source again" in message
+    assert "turn it off and on" in message
+    assert "quit and reopen Klaus" in message
+    assert "choosing the source again" in message
     assert settings_url.startswith("x-apple.systempreferences:")
 
 
