@@ -150,6 +150,7 @@ from klaus.audio_output import AudioOutput
 from klaus.realtime import build_live_brain
 from klaus.memory import Memory
 from klaus.notes import NotesManager
+from klaus.remarkable_pairing_server import RemarkablePairingServer
 from klaus.services import (
     DeviceSwitchService,
     PipelineContext,
@@ -188,6 +189,7 @@ class Signals(QObject):
     exchange_count_updated = pyqtSignal(int)
     sessions_changed = pyqtSignal()
     status_message = pyqtSignal(str)
+    remarkable_paired = pyqtSignal(str)
 
 
 class KlausApp:
@@ -356,6 +358,14 @@ class KlausApp:
 
         self._window = MainWindow()
         self._connect_signals()
+        self._pairing_server = RemarkablePairingServer(
+            on_paired=self._signals.remarkable_paired.emit,
+        )
+        try:
+            self._pairing_server.start()
+        except OSError as exc:
+            logger.warning("One-click Paper Pure pairing is unavailable: %s", exc)
+            self._pairing_server = None
 
         startup_reading_error: str | None = None
         try:
@@ -398,6 +408,7 @@ class KlausApp:
         sig.error.connect(self._on_error)
         sig.exchange_count_updated.connect(self._window.status_widget.set_exchange_count)
         sig.status_message.connect(self._window.chat_widget.add_status_message)
+        sig.remarkable_paired.connect(self._on_remarkable_paired)
 
         sig.mode_changed.connect(self._window.status_widget.set_mode)
         sig.sessions_changed.connect(self._refresh_session_list)
@@ -1116,10 +1127,25 @@ class KlausApp:
     def _on_error(self, message: str) -> None:
         self._window.chat_widget.add_status_message(f"Error: {message}")
 
+    @_safe_slot
+    def _on_remarkable_paired(self, message: str) -> None:
+        """Select the tablet after reManager completes one-click pairing."""
+        config.reload()
+        success, effective_index = self._apply_camera_device_live(-4)
+        if success:
+            config.set_camera_index(effective_index, persist=True)
+            self._window.camera_widget.set_source_selection(effective_index)
+            self._window.chat_widget.add_status_message(message)
+        self._window.show()
+        self._window.raise_()
+        self._window.activateWindow()
+
     # -- Shutdown --
 
     def _shutdown(self) -> None:
         logger.info("Klaus shutting down")
+        if getattr(self, "_pairing_server", None) is not None:
+            self._pairing_server.stop()
         if self._hotkey_listener:
             self._hotkey_listener.stop()
         self._vad_recorder.stop()

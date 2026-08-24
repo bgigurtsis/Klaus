@@ -84,10 +84,14 @@ Desk View needs strong, even lighting to read small text.
 ### Read a reMarkable Paper Pure
 
 1. Install `klaus-remarkable` through reManager after adding its Vellum package source.
-2. Run `/home/root/.vellum/bin/klaus-remarkable-pairing` from reManager's terminal.
-3. Open **Settings > Reading** in Klaus and choose **Pair Paper Pure**.
-4. Enter the tablet address, username, and pairing password shown by the command.
-5. Choose **reMarkable Paper Pure** as the reading source.
+2. Open the installed `klaus-remarkable` package in reManager.
+3. Choose **Pair with Klaus**.
+
+reManager opens Klaus and transfers the credentials through a private local
+socket. Klaus tests the service, pins the certificate, stores the password in
+Apple Keychain, and selects **reMarkable Paper Pure**. You only need to pair
+again after the package credentials or tablet certificate change. Use **Show
+pairing details** and **Pair manually** in Klaus Settings as a fallback.
 
 Klaus previews the current tablet screen about once each second. It captures a
 fresh frame after speech ends, before it sends the question to the selected

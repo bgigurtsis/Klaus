@@ -347,7 +347,7 @@ class SettingsDialog(QDialog):
         self._remarkable_status = QLabel()
         self._refresh_remarkable_status()
         tablet_row.addWidget(self._remarkable_status, stretch=1)
-        pair_button = QPushButton("Pair Paper Pure...")
+        pair_button = QPushButton("Pair manually...")
         pair_button.clicked.connect(self._pair_remarkable)
         tablet_row.addWidget(pair_button)
         layout.addLayout(tablet_row)
