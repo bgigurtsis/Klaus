@@ -37,19 +37,19 @@ def test_main_window_collapses_sidebar_at_compact_width(qt_app) -> None:
     window.close()
 
 
-def test_voice_dock_reflows_and_hides_optional_text(qt_app) -> None:
+def test_voice_dock_hides_optional_text_when_narrow(qt_app) -> None:
     dock = StatusWidget()
     dock.resize(500, dock.height())
     dock.show()
     qt_app.processEvents()
 
-    assert dock._compact_layout is True
-    assert dock.height() == 138
-    assert dock._hotkey_label.isHidden()
+    assert dock._detail_label.isHidden()
     assert dock._stats_label.isHidden()
+    assert dock._hotkey_keycap.isHidden()
+    assert dock._mode_btn.isHidden() is False
 
 
-def test_voice_dock_reflows_before_active_controls_clip(qt_app) -> None:
+def test_voice_dock_collapses_controls_to_stop_while_busy(qt_app) -> None:
     dock = StatusWidget(toggle_key="Shift+§")
     dock.set_state("thinking")
     dock.set_exchange_count(18)
@@ -57,11 +57,21 @@ def test_voice_dock_reflows_before_active_controls_clip(qt_app) -> None:
     dock.show()
     qt_app.processEvents()
 
-    keycap_text_width = dock._hotkey_keycap.fontMetrics().horizontalAdvance("Shift+§")
-    assert dock._compact_layout is True
-    assert dock.height() == 138
-    assert dock._detail_label.isHidden() is False
-    assert dock._hotkey_keycap.width() >= keycap_text_width + 24
+    assert dock._stop_btn.isHidden() is False
+    assert dock._mode_btn.isHidden()
+    assert dock._hotkey_keycap.isHidden()
+    assert dock._stats_label.isHidden()
+    assert dock._capsule.property("dockState") == "hot"
+
+    dock.set_state("idle")
+    qt_app.processEvents()
+    keycap_text_width = dock._hotkey_keycap.fontMetrics().horizontalAdvance(
+        "Shift+§"
+    )
+    assert dock._stop_btn.isHidden()
+    assert dock._mode_btn.isHidden() is False
+    assert dock._hotkey_keycap.minimumWidth() >= keycap_text_width + 20
+    assert dock._capsule.property("dockState") == "calm"
 
     dock.close()
 

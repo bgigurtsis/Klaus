@@ -33,7 +33,6 @@ from klaus.ui.theme import (  # noqa: F401
     SIDEBAR,
     SPEAKING_COLOR,
     STOP_BG,
-    STOP_BORDER,
     STOP_HOVER_BG,
     SURFACE,
     SURFACE_OVERLAY,
@@ -587,30 +586,32 @@ QPushButton#card-accent-btn:pressed {{
 #klaus-voice-composer {{
     background-color: {SURFACE};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 18px;
+    border-radius: 26px;
+}}
+#klaus-voice-composer[dockState="hot"] {{
+    border-color: rgba(226, 84, 102, 0.45);
+}}
+#klaus-state-dot {{
+    background: transparent;
+    border: none;
 }}
 #klaus-state-label {{
-    font-size: {FONT_SIZE_BODY + 1}px;
-    font-weight: 700;
-}}
-#klaus-state-detail {{
-    color: {TEXT_SECONDARY};
     font-size: {FONT_SIZE_SMALL + 1}px;
+    font-weight: 600;
     background: transparent;
 }}
-#klaus-state-orb {{
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 20px;
-    font-size: 18px;
+#klaus-state-detail {{
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_SMALL}px;
+    background: transparent;
 }}
 #klaus-mode-btn {{
     color: {TEXT_SECONDARY};
     background-color: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 10px;
-    padding: 8px 14px;
-    font-size: {FONT_SIZE_SMALL}px;
+    border-radius: 16px;
+    padding: 0 16px;
+    font-size: {FONT_SIZE_CAPTION}px;
     font-weight: 600;
 }}
 #klaus-mode-btn:hover {{
@@ -619,37 +620,29 @@ QPushButton#card-accent-btn:pressed {{
     border: 1px solid {BORDER_EMPHASIS};
 }}
 #klaus-stop-btn {{
-    color: #fff;
+    color: #ffffff;
     background-color: {STOP_BG};
-    border: 1px solid {STOP_BORDER};
-    border-radius: 10px;
-    padding: 9px 18px;
-    font-size: {FONT_SIZE_SMALL}px;
+    border: none;
+    border-radius: 16px;
+    padding: 0 18px;
+    font-size: {FONT_SIZE_CAPTION}px;
     font-weight: 700;
 }}
 #klaus-stop-btn:hover {{
     background-color: {STOP_HOVER_BG};
 }}
-#klaus-hotkey-hint {{
-    color: {TEXT_SECONDARY};
-    font-size: {FONT_SIZE_SMALL + 1}px;
-    font-weight: 600;
-    background: transparent;
-    border: none;
-}}
 #klaus-hotkey-keycap {{
-    color: {TEXT_PRIMARY};
-    background: {SURFACE_OVERLAY};
-    border: 1px solid {BORDER_EMPHASIS};
-    border-bottom: 2px solid {BORDER_EMPHASIS};
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: {FONT_SIZE_SMALL}px;
-    font-weight: 700;
+    color: {TEXT_SECONDARY};
+    background: transparent;
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-size: {FONT_SIZE_CAPTION - 1}px;
+    font-weight: 600;
 }}
 #klaus-stats {{
-    color: {TEXT_SECONDARY};
-    font-size: {FONT_SIZE_SMALL + 1}px;
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_CAPTION}px;
     background: transparent;
     border: none;
 }}

@@ -55,10 +55,10 @@ SPEAKING_COLOR = "#16835f"
 IDLE_COLOR = "#74746e"
 ERROR_COLOR = "#ef4444"
 
-# Stop button (semantic aliases for ERROR_COLOR shades)
-STOP_BG = "#b91c1c"
-STOP_BORDER = "#dc2626"
-STOP_HOVER_BG = "#dc2626"
+# Stop button (matches LISTENING_COLOR: interrupt is a mic-hot action, not an
+# error, so the alarm reds are gone)
+STOP_BG = "#e25466"
+STOP_HOVER_BG = "#e96b7b"
 
 # Klaus card accent buttons
 KLAUS_BTN_BORDER = "#3b3b48"
@@ -80,7 +80,7 @@ FONT_SIZE_HEADING = 20
 # ---------------------------------------------------------------------------
 
 HEADER_HEIGHT = 58
-STATUS_BAR_HEIGHT = 104
+STATUS_BAR_HEIGHT = 76
 CARD_PADDING_H = 20
 CARD_PADDING_V = 16
 CARD_RADIUS = 16
