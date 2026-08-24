@@ -126,6 +126,29 @@ def _make_vad_recorder(**kwargs):
 
 
 class TestVoiceStartGate:
+    def test_resume_settle_drops_playback_tail_before_listening(self):
+        started = MagicMock()
+        rec = _make_vad_recorder(on_speech_start=started, start_trigger_ms=90)
+        rec._vad = MagicMock()
+        rec._vad.is_speech.return_value = True
+        frame = np.full(FRAME_SIZE, 1000, dtype=np.int16)
+        indata = frame.reshape(-1, 1)
+        rec._running = True
+        rec.pause()
+
+        rec.resume(settle_ms=90)
+        for _ in range(3):
+            rec._audio_callback(indata, FRAME_SIZE, None, None)
+
+        started.assert_not_called()
+        assert rec._speaking is False
+
+        for _ in range(3):
+            rec._audio_callback(indata, FRAME_SIZE, None, None)
+
+        started.assert_called_once()
+        assert rec._speaking is True
+
     def test_single_vad_spike_does_not_start_listening(self):
         started = MagicMock()
         rec = _make_vad_recorder(on_speech_start=started, start_trigger_ms=90)

@@ -88,10 +88,16 @@ def test_realtime_turn_persists_exchange_and_streams_answer():
     response = MagicMock()
     speaking = MagicMock()
     text_delta = MagicMock()
+    suspend_input = MagicMock()
+    suspend_input.side_effect = brain.ask_audio.assert_not_called
 
     _pipeline(stt, camera, brain, memory=memory).run(
         b"wav-audio",
-        context=PipelineContext(input_mode="voice_activation", current_session_id="session-1"),
+        context=PipelineContext(
+            input_mode="voice_activation",
+            current_session_id="session-1",
+            suspend_input_stream=suspend_input,
+        ),
         hooks=_hooks(
             on_response=response,
             on_speaking_started=speaking,
@@ -103,6 +109,7 @@ def test_realtime_turn_persists_exchange_and_streams_answer():
     assert brain.ask_audio.call_args.kwargs["reading_text"] == "Selected passage"
     speaking.assert_called_once()
     text_delta.assert_called_once_with("A direct explanation.")
+    suspend_input.assert_called_once_with()
     memory.save_exchange.assert_called_once()
     response.assert_called_once()
 
