@@ -94,3 +94,16 @@ per surface rule: Save in settings, wizard next/primary — nothing in the
 sidebar. Single-line QLineEdits are pills; QPlainTextEdit keeps a 12px
 rectangle (a pill collapses visually on multi-line fields). Revisit hiding
 the preview if users forget a source is selected while it's warming up.
+
+## 2026-08-24 — Text zoom via QSS post-processing, action-labeled mode button
+
+Cmd+= / Cmd+- / Cmd+0 scale UI text (0.8–1.5x, ui_font_scale in config.toml).
+Implementation choice: theme.application_stylesheet() regex-scales every
+`font-size: Npx` in the assembled QSS rather than mutating the FONT_SIZE_*
+tokens — theme_qss binds those names at import, so mutation would not reach
+the stylesheet. Known residue: inline rich-text sizes (session list rows)
+re-render only on the next data refresh, and fixed pixel chrome (capsule
+height, keycap) deliberately does not scale. The dock mode button now names
+the action ("Switch to push to talk"); the current mode lives in the tooltip.
+Rejected: labeling the button with the current mode — that read as a state
+badge, which is what confused in the first place.
