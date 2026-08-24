@@ -68,7 +68,7 @@ def remarkable_server(tmp_path):
     image = Image.new("RGB", (3, 2), (25, 50, 75))
     png = BytesIO()
     image.save(png, "PNG")
-    state = {"login_count": 0, "expire_once": False}
+    state = {"login_count": 0, "expire_once": False, "orientation": 0}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, _format, *_args):
@@ -108,6 +108,10 @@ def remarkable_server(tmp_path):
                 self.send_error(404)
                 return
             self.send_response(200)
+            if self.path == "/screenshot":
+                self.send_header(
+                    "X-Remarkable-Orientation", str(state["orientation"])
+                )
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -164,6 +168,14 @@ def test_png_decoding_and_orientation(remarkable_server):
     assert original.shape == (2, 3, 3)
     assert rotated.shape == (3, 2, 3)
     assert np.array_equal(rotated, np.rot90(original, k=3))
+
+
+def test_png_uses_tablet_orientation_header(remarkable_server):
+    client = _client(remarkable_server)
+    original = client.screenshot_frame()
+    remarkable_server[2]["orientation"] = 180
+    rotated = client.screenshot_frame()
+    assert np.array_equal(rotated, np.rot90(original, k=2))
 
 
 def test_certificate_change_requires_repairing(remarkable_server):

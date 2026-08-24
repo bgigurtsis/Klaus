@@ -209,14 +209,14 @@ class RemarkableClient:
         self,
         path: str,
         cancel_event: threading.Event | None = None,
-    ) -> bytes:
+    ) -> tuple[dict[str, str], bytes]:
         with self._token_lock:
             token = self._token
         if not token:
             self.login(cancel_event)
             with self._token_lock:
                 token = self._token
-        status, _, payload = self._request(
+        status, response_headers, payload = self._request(
             "GET",
             path,
             headers={"Authorization": f"Bearer {token}"},
@@ -226,7 +226,7 @@ class RemarkableClient:
             self.login(cancel_event)
             with self._token_lock:
                 token = self._token
-            status, _, payload = self._request(
+            status, response_headers, payload = self._request(
                 "GET",
                 path,
                 headers={"Authorization": f"Bearer {token}"},
@@ -238,7 +238,7 @@ class RemarkableClient:
             raise RemarkableMissingServiceError(
                 f"The Klaus tablet service returned HTTP {status}"
             )
-        return payload
+        return response_headers, payload
 
     def version(self, cancel_event: threading.Event | None = None) -> str:
         status, _, payload = self._request("GET", "/version", cancel_event=cancel_event)
@@ -249,18 +249,25 @@ class RemarkableClient:
         return payload.decode("utf-8", errors="replace").strip()
 
     def screenshot_png(self, cancel_event: threading.Event | None = None) -> bytes:
-        payload = self._authenticated_request("/screenshot", cancel_event)
+        _, payload = self._screenshot_response(cancel_event)
+        return payload
+
+    def _screenshot_response(
+        self,
+        cancel_event: threading.Event | None = None,
+    ) -> tuple[dict[str, str], bytes]:
+        headers, payload = self._authenticated_request("/screenshot", cancel_event)
         if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
             raise RemarkableImageError("The tablet returned an invalid screenshot")
-        return payload
+        return headers, payload
 
     def screenshot_frame(
         self,
         *,
-        orientation: int = 0,
+        orientation: int | None = None,
         cancel_event: threading.Event | None = None,
     ) -> np.ndarray:
-        payload = self.screenshot_png(cancel_event)
+        headers, payload = self._screenshot_response(cancel_event)
         try:
             rgb = np.asarray(Image.open(BytesIO(payload)).convert("RGB"))
         except (UnidentifiedImageError, OSError, ValueError) as exc:
@@ -272,6 +279,21 @@ class RemarkableClient:
             180: cv2.ROTATE_180,
             270: cv2.ROTATE_90_COUNTERCLOCKWISE,
         }
+        if orientation is None:
+            orientation_header = next(
+                (
+                    value
+                    for name, value in headers.items()
+                    if name.lower() == "x-remarkable-orientation"
+                ),
+                "0",
+            )
+            try:
+                orientation = int(orientation_header)
+            except ValueError as exc:
+                raise RemarkableImageError(
+                    "The tablet returned an invalid screen orientation"
+                ) from exc
         if orientation not in rotations:
             raise ValueError("orientation must be 0, 90, 180, or 270")
         rotation = rotations[orientation]
@@ -304,7 +326,7 @@ def pair_tablet(
 class RemarkableReadingSource:
     """Expose Paper Pure screenshots through the Klaus reading-source contract."""
 
-    def __init__(self, client: RemarkableClient, *, orientation: int = 0) -> None:
+    def __init__(self, client: RemarkableClient, *, orientation: int | None = None) -> None:
         self._client = client
         self._orientation = orientation
         self._waiting_message = "Waiting for the reMarkable Paper Pure"
