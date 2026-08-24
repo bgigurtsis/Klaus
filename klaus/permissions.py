@@ -28,7 +28,9 @@ def guidance_for_error(error: str) -> PermissionGuidance | None:
             title="Allow Screen Recording",
             message=(
                 "Klaus needs Screen Recording to capture Desk View or an active "
-                "window. Allow it in System Settings, then choose the source again."
+                "window. If Klaus is already enabled in System Settings, turn it "
+                "off and on. Then quit and reopen Klaus before choosing the source "
+                "again."
             ),
             settings_url=SCREEN_RECORDING_SETTINGS_URL,
         )
