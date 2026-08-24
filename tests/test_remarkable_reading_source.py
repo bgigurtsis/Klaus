@@ -149,7 +149,7 @@ def test_pairing_checks_version_authentication_and_png(remarkable_server):
 
 
 def test_invalid_credentials_are_distinct(remarkable_server):
-    with pytest.raises(RemarkableAuthenticationError):
+    with pytest.raises(RemarkableAuthenticationError, match="not the tablet SSH password"):
         _client(remarkable_server, password="wrong").screenshot_png()
 
 

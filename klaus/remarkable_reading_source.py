@@ -187,7 +187,10 @@ class RemarkableClient:
             cancel_event=cancel_event,
         )
         if status in {401, 403}:
-            raise RemarkableAuthenticationError("The tablet username or password is invalid")
+            raise RemarkableAuthenticationError(
+                "The pairing username or password is invalid. Use the credentials shown "
+                "by the klaus-remarkable action in reManager, not the tablet SSH password."
+            )
         if status != 200:
             raise RemarkableMissingServiceError(
                 f"The Klaus tablet service returned HTTP {status}"
@@ -233,7 +236,10 @@ class RemarkableClient:
                 cancel_event=cancel_event,
             )
         if status in {401, 403}:
-            raise RemarkableAuthenticationError("The tablet username or password is invalid")
+            raise RemarkableAuthenticationError(
+                "The pairing username or password is invalid. Use the credentials shown "
+                "by the klaus-remarkable action in reManager, not the tablet SSH password."
+            )
         if status != 200:
             raise RemarkableMissingServiceError(
                 f"The Klaus tablet service returned HTTP {status}"
