@@ -49,3 +49,13 @@ when it does re-sign. Rejected for now: reworking launcher.c from execv to
 fork+waitpid so the bundle stays the responsible process — more invasive, and
 the stamp fix removes the common trigger. Revisit if grants still break, or
 sign with a stable self-signed certificate instead.
+
+## 2026-08-24 — Development installs do not invoke ad-hoc codesign
+
+Jamf Protect can flag the installer's `codesign --sign -` command through its
+`AdhocCodeSigningWithCodesign` rule. The installer should now rely on the
+ad-hoc signature that the Apple linker adds to the arm64 launcher. It should
+not run the detected command. Developers can set `KLAUS_CODESIGN_IDENTITY`
+when they have a certificate. The installer must reject `-` as an identity.
+The build stamp should include this signing mode and a new format marker. The
+marker should force one replacement of an app installed by the old path.

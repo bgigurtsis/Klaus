@@ -153,6 +153,8 @@ open "$HOME/Applications/Klaus.app"
 ```
 
 The app points to this checkout. Rerun the installer after you move the repository.
+The local installer should avoid an explicit ad-hoc `codesign` command.
+Developers can set `KLAUS_CODESIGN_IDENTITY` to a Keychain identity name.
 
 ## Project
 

@@ -12,6 +12,12 @@ source_root="$(cd "$script_dir/.." && pwd)"
 app_parent="${1:-$HOME/Applications}"
 app_path="$app_parent/Klaus.app"
 staging_path="$app_parent/.Klaus.app.tmp.$$"
+codesign_identity="${KLAUS_CODESIGN_IDENTITY:-}"
+
+if [[ "$codesign_identity" == "-" ]]; then
+    echo "KLAUS_CODESIGN_IDENTITY must name a certificate, not '-'." >&2
+    exit 1
+fi
 
 cleanup() {
     rm -rf "$staging_path"
@@ -24,14 +30,15 @@ if [[ ! -x "$source_root/.venv/bin/klaus" ]]; then
     exit 1
 fi
 
-# Re-signing invalidates TCC grants (Screen Recording, mic), because the
-# ad-hoc signature identity is a hash of the binary. Skip the reinstall
-# entirely when none of the app's inputs changed, so grants survive.
+# Rebuilding the launcher can invalidate TCC grants (Screen Recording, mic).
+# The installer should skip unchanged inputs to preserve existing grants.
 build_stamp="$(cat \
     "$source_root/packaging/macos/launcher.c" \
     "$source_root/packaging/macos/Info.plist" \
     "$source_root/klaus/ui/icon.png" \
-    <(printf '%s\n' "$source_root") | shasum -a 256 | cut -d' ' -f1)"
+    <(printf '%s\n%s\n%s\n' \
+        "$source_root" "$codesign_identity" "installer-signing-v2") \
+    | shasum -a 256 | cut -d' ' -f1)"
 stamp_file="$app_path/Contents/Resources/build-stamp"
 if [[ -f "$stamp_file" ]] && [[ "$(cat "$stamp_file")" == "$build_stamp" ]]; then
     echo "Klaus.app is up to date at $app_path (skipped reinstall to keep"
@@ -57,7 +64,9 @@ printf 'APPL????' >"$staging_path/Contents/PkgInfo"
 printf '%s\n' "$build_stamp" >"$staging_path/Contents/Resources/build-stamp"
 
 plutil -lint "$staging_path/Contents/Info.plist" >/dev/null
-codesign --force --deep --sign - "$staging_path"
+if [[ -n "$codesign_identity" ]]; then
+    codesign --force --deep --sign "$codesign_identity" "$staging_path"
+fi
 
 rm -rf "$app_path"
 mv "$staging_path" "$app_path"
@@ -70,6 +79,8 @@ fi
 
 echo "Installed Klaus at $app_path"
 echo "Open it from Finder, Spotlight, or with: open \"$app_path\""
-echo "Note: the app was re-signed, which resets macOS privacy grants."
-echo "If the Screen Recording banner appears, toggle Klaus off and on under"
-echo "System Settings > Privacy & Security > Screen & System Audio Recording."
+if [[ -n "$codesign_identity" ]]; then
+    echo "Signed Klaus with identity: $codesign_identity"
+fi
+echo "If macOS asks again after a launcher change, renew Klaus's access under"
+echo "System Settings > Privacy & Security."
