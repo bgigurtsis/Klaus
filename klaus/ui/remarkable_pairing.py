@@ -31,7 +31,8 @@ class RemarkablePairingDialog(QDialog):
 
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Enter the details shown by the klaus-remarkable action in reManager. "
+            "Use this manual fallback if Pair with Klaus in reManager is unavailable. "
+            "Enter the details shown by the klaus-remarkable package action. "
             "Klaus will test the service and pin this tablet's certificate."
         )
         intro.setWordWrap(True)

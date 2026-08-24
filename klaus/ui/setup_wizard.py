@@ -613,7 +613,7 @@ class SetupWizard(QMainWindow):
             "Audio only: keep No reading source selected.\n"
             "Physical paper: Klaus opens Apple's Desk View setup for you.\n"
             "On screen: keep any app window frontmost and select text when useful.\n"
-            "Paper Pure: pair the service details shown in reManager."
+            "Paper Pure: open klaus-remarkable in reManager and choose Pair with Klaus."
         )
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip.setStyleSheet(
