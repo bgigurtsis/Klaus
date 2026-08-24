@@ -82,3 +82,15 @@ not run the detected command. Developers can set `KLAUS_CODESIGN_IDENTITY`
 when they have a certificate. The installer must reject `-` as an identity.
 The build stamp should include this signing mode and a new format marker. The
 marker should force one replacement of an app installed by the old path.
+
+## 2026-08-24 — Sidebar and settings quieted to match the capsule
+
+The sidebar's boxes were competing: filled accent + New, bold emphasized
+combo, an always-visible empty preview card, shouting uppercase labels. Now:
+sentence-case muted labels, badge as a colored word (inline style, states
+Off/Waiting/Live in camera_widget._STATUS_STYLES), preview hidden until a
+source is running, + New as an outline pill. The one filled-accent control
+per surface rule: Save in settings, wizard next/primary — nothing in the
+sidebar. Single-line QLineEdits are pills; QPlainTextEdit keeps a 12px
+rectangle (a pill collapses visually on multi-line fields). Revisit hiding
+the preview if users forget a source is selected while it's warming up.
