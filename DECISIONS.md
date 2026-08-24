@@ -50,6 +50,29 @@ fork+waitpid so the bundle stays the responsible process — more invasive, and
 the stamp fix removes the common trigger. Revisit if grants still break, or
 sign with a stable self-signed certificate instead.
 
+## 2026-08-24 — Voice dock redesigned as a single-line capsule; pill language app-wide
+
+Chose the "Capsule" direction from five mocked proposals (hairline, capsule,
+terminal status line, orb, composer-field). The dock is now one 52px pill:
+state dot + state word + muted hint on the left, controls on the right; while
+thinking/answering the capsule border tints toward the interrupt pink and the
+right side collapses to a single small Stop pill. Deliberate removals: the
+38px orb, the second text line, the "Switch to hands-free" hint sentence (now
+a tooltip on the keycap and mode button), and the two-row compact reflow —
+the capsule hides hint/stats/keycap progressively instead. Stop dropped the
+alarm reds (#b91c1c) for LISTENING_COLOR pink: interrupting is a mic-hot
+action, not an error. Buttons, combos, tabs, and chat example chips moved to
+matching pill radii (half their height — Qt renders radius > height/2 badly,
+so each radius is tuned per control, not a shared token). Rejected: the orb
+variant (needs a custom-painted widget for its animation to earn the space)
+and the terminal status line (no clickable Stop). Revisit if the pink border
+tint reads as an error state in use.
+
+Also done: the QSS finally split out of theme.py per the 2026-08-23 entry —
+tokens/helpers stay in theme.py (~142 lines), main-window QSS in theme_qss.py
+(~687), dialog/wizard QSS in theme_qss_dialogs.py (~181), all under the
+800-line ceiling.
+
 ## 2026-08-24 — Development installs do not invoke ad-hoc codesign
 
 Jamf Protect can flag the installer's `codesign --sign -` command through its

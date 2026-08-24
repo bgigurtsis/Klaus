@@ -21,8 +21,8 @@ def test_voice_dock_makes_interruption_primary(qt_app) -> None:
     dock.set_state("speaking")
 
     assert dock._state_label.text() == "Answering"
-    assert "Speak to interrupt" in dock._detail_label.text()
-    assert dock._stop_btn.text() == "Interrupt"
+    assert "Speak over me to interrupt" in dock._detail_label.text()
+    assert dock._stop_btn.text() == "Stop"
     assert dock._stop_btn.isHidden() is False
 
 
@@ -34,7 +34,7 @@ def test_voice_dock_explains_each_input_mode(qt_app) -> None:
 
     assert dock._mode_btn.text() == "Push to talk"
     assert dock._detail_label.text() == "Hold F2 to ask a question"
-    assert "hands-free" in dock._hotkey_label.text()
+    assert "hands-free" in dock._mode_btn.toolTip()
 
 
 def test_interrupted_stream_stays_visible_and_marked(qt_app) -> None:
