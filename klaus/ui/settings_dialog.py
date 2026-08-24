@@ -67,7 +67,8 @@ class SettingsDialog(QDialog):
         self._mic_populated = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(12)
 
         self._tabs = QTabWidget()
         self._tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
@@ -99,7 +100,7 @@ class SettingsDialog(QDialog):
     def _build_voice_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         model_label = QLabel("Conversation model")
@@ -109,6 +110,7 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(model_label)
         self._live_model_combo = QComboBox()
+        self._enable_combo_popup_hover(self._live_model_combo)
         for model, details in config.LIVE_MODELS.items():
             self._live_model_combo.addItem(details["label"], model)
         selected_model = self._live_model_combo.findData(config.LIVE_MODEL)
@@ -126,6 +128,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(QLabel("Reasoning effort"))
         self._reasoning_effort_combo = QComboBox()
+        self._enable_combo_popup_hover(self._reasoning_effort_combo)
         for effort in ("low", "medium", "high"):
             self._reasoning_effort_combo.addItem(effort.capitalize(), effort)
         selected_effort = self._reasoning_effort_combo.findData(config.REASONING_EFFORT)
@@ -143,6 +146,7 @@ class SettingsDialog(QDialog):
         layout.addSpacing(8)
         layout.addWidget(QLabel("Voice"))
         self._voice_combo = QComboBox()
+        self._enable_combo_popup_hover(self._voice_combo)
         self._populate_voices(config.LIVE_MODEL)
         layout.addWidget(self._voice_combo)
         self._on_live_model_changed()
@@ -196,7 +200,7 @@ class SettingsDialog(QDialog):
     def _build_keys_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         self._key_edits: dict[str, QLineEdit] = {}
@@ -317,7 +321,7 @@ class SettingsDialog(QDialog):
     def _build_camera_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         layout.addWidget(QLabel("Reading source"))
@@ -386,7 +390,7 @@ class SettingsDialog(QDialog):
     def _build_profile_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         label = QLabel("Your background")
@@ -487,7 +491,7 @@ class SettingsDialog(QDialog):
     def _build_mic_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(6, 18, 6, 8)
         layout.setSpacing(10)
 
         layout.addWidget(QLabel("Input device"))

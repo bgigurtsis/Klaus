@@ -24,6 +24,21 @@ if [[ ! -x "$source_root/.venv/bin/klaus" ]]; then
     exit 1
 fi
 
+# Re-signing invalidates TCC grants (Screen Recording, mic), because the
+# ad-hoc signature identity is a hash of the binary. Skip the reinstall
+# entirely when none of the app's inputs changed, so grants survive.
+build_stamp="$(cat \
+    "$source_root/packaging/macos/launcher.c" \
+    "$source_root/packaging/macos/Info.plist" \
+    "$source_root/klaus/ui/icon.png" \
+    <(printf '%s\n' "$source_root") | shasum -a 256 | cut -d' ' -f1)"
+stamp_file="$app_path/Contents/Resources/build-stamp"
+if [[ -f "$stamp_file" ]] && [[ "$(cat "$stamp_file")" == "$build_stamp" ]]; then
+    echo "Klaus.app is up to date at $app_path (skipped reinstall to keep"
+    echo "Screen Recording and microphone permissions intact)."
+    exit 0
+fi
+
 mkdir -p "$app_parent"
 mkdir -p "$staging_path/Contents/MacOS" "$staging_path/Contents/Resources"
 
@@ -39,6 +54,8 @@ printf 'APPL????' >"$staging_path/Contents/PkgInfo"
     "$source_root/klaus/ui/icon.png" \
     "$staging_path/Contents/Resources/Klaus.icns"
 
+printf '%s\n' "$build_stamp" >"$staging_path/Contents/Resources/build-stamp"
+
 plutil -lint "$staging_path/Contents/Info.plist" >/dev/null
 codesign --force --deep --sign - "$staging_path"
 
@@ -53,3 +70,6 @@ fi
 
 echo "Installed Klaus at $app_path"
 echo "Open it from Finder, Spotlight, or with: open \"$app_path\""
+echo "Note: the app was re-signed, which resets macOS privacy grants."
+echo "If the Screen Recording banner appears, toggle Klaus off and on under"
+echo "System Settings > Privacy & Security > Screen & System Audio Recording."

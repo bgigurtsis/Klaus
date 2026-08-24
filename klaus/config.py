@@ -47,16 +47,16 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Microphone device index (default: -1, uses system default)
 # mic_index = -1
 
-# Live conversation model (default: Gemini Live)
+# Live conversation model (default: GPT Live 2.1 mini)
 # Options: gemini-3.1-flash-live-preview, gpt-realtime-2.1, gpt-realtime-2.1-mini
-# live_model = "gemini-3.1-flash-live-preview"
+# live_model = "gpt-realtime-2.1-mini"
 
-# Reasoning effort (default: low)
+# Reasoning effort (default: high)
 # Options: low, medium, high. Higher settings may take longer and cost more.
-# reasoning_effort = "low"
+# reasoning_effort = "high"
 
 # Live voice. Gemini defaults to Kore. GPT Realtime defaults to cedar.
-# voice = "Kore"
+# voice = "cedar"
 
 # Input mode (default: voice_activation)
 # Options: voice_activation, push_to_talk
@@ -190,7 +190,8 @@ LIVE_MODELS: dict[str, dict[str, str]] = {
         "description": "GPT Realtime 2.1 mini",
     },
 }
-DEFAULT_LIVE_MODEL = GEMINI_LIVE_MODEL
+DEFAULT_LIVE_MODEL = "gpt-realtime-2.1-mini"
+DEFAULT_REASONING_EFFORT = "high"
 # Compatibility alias for integrations that import the historical OpenAI model constant.
 REALTIME_MODEL = "gpt-realtime-2.1"
 _DEFAULT_PTT_KEY = "§"
@@ -289,7 +290,12 @@ def _as_reasoning_effort(value: object, default: str) -> str:
 
 _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("live_model", "live_model", DEFAULT_LIVE_MODEL, _as_live_model),
-    _SettingSpec("reasoning_effort", "reasoning_effort", "low", _as_reasoning_effort),
+    _SettingSpec(
+        "reasoning_effort",
+        "reasoning_effort",
+        DEFAULT_REASONING_EFFORT,
+        _as_reasoning_effort,
+    ),
     _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
     _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
@@ -550,6 +556,11 @@ def _settings_from_config(user_config: dict) -> RuntimeSettings:
         if spec.env_var and not raw:
             raw = os.getenv(spec.env_var, "")
         values[spec.runtime_field] = spec.coerce(raw, spec.default)
+
+    if "voice" not in user_config:
+        values["voice"] = (
+            "Kore" if values["live_model"] == GEMINI_LIVE_MODEL else "cedar"
+        )
 
     values["gemini_api_key"] = resolved_api_keys["gemini"]
     values["openai_api_key"] = resolved_api_keys["openai"]

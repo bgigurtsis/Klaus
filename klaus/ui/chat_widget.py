@@ -28,6 +28,7 @@ from klaus.ui.shared.relative_time import format_relative_time_with_tooltip
 logger = logging.getLogger(__name__)
 
 _SCROLL_THRESHOLD = 30
+_COLUMN_MAX_WIDTH = 860
 
 
 class MessageCard(QFrame):
@@ -217,8 +218,25 @@ class ChatWidget(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
 
+        # Messages live in a centered column so user and assistant cards read
+        # as one thread instead of hugging opposite edges of a wide window.
         self._container = QWidget()
-        self._layout = QVBoxLayout(self._container)
+        container_layout = QHBoxLayout(self._container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
+        column = QWidget()
+        column.setMaximumWidth(_COLUMN_MAX_WIDTH)
+        column.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
+        # The large stretch factor lets the column take all width up to its
+        # cap; only the overflow splits between the side stretches.
+        container_layout.addStretch(1)
+        container_layout.addWidget(column, stretch=1000)
+        container_layout.addStretch(1)
+
+        self._layout = QVBoxLayout(column)
         self._layout.setContentsMargins(32, 26, 32, 24)
         self._layout.setSpacing(20)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -431,12 +449,14 @@ class ChatWidget(QWidget):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        # Large stretch factor: the card takes width up to its cap before the
+        # alignment stretch absorbs the remainder.
         if role == "user":
-            layout.addStretch()
-            layout.addWidget(card)
+            layout.addStretch(1)
+            layout.addWidget(card, 1000)
         else:
-            layout.addWidget(card)
-            layout.addStretch()
+            layout.addWidget(card, 1000)
+            layout.addStretch(1)
         return row
 
     def _hide_empty(self) -> None:

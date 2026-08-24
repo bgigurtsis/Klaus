@@ -409,8 +409,8 @@ class SetupWizard(QMainWindow):
         )
         layout.addWidget(heading)
         description = QLabel(
-            "Gemini Live is the default and can use Google Search. GPT Live does not "
-            "offer web search in Klaus."
+            "GPT Live 2.1 mini is the default. Choose Gemini Live when you need "
+            "Google Search grounding."
         )
         description.setWordWrap(True)
         description.setStyleSheet(

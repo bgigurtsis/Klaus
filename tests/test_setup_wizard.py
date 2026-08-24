@@ -29,13 +29,15 @@ def test_welcome_page_explains_features_and_first_actions(qt_app) -> None:
     wizard.close()
 
 
-def test_live_model_step_defaults_to_gemini_and_exposes_effort(qt_app) -> None:
+def test_live_model_step_defaults_to_mini_with_high_effort(qt_app, monkeypatch) -> None:
+    monkeypatch.setattr("klaus.config.LIVE_MODEL", "gpt-realtime-2.1-mini")
+    monkeypatch.setattr("klaus.config.REASONING_EFFORT", "high")
     wizard = SetupWizard()
 
-    assert wizard._live_model_combo.currentData() == "gemini-3.1-flash-live-preview"
-    assert wizard._reasoning_effort_combo.currentData() == "low"
-    assert "required" in wizard._key_names["gemini"].text()
-    assert "optional" in wizard._key_names["openai"].text()
+    assert wizard._live_model_combo.currentData() == "gpt-realtime-2.1-mini"
+    assert wizard._reasoning_effort_combo.currentData() == "high"
+    assert "required" in wizard._key_names["openai"].text()
+    assert "optional" in wizard._key_names["gemini"].text()
 
     wizard._live_model_combo.setCurrentIndex(
         wizard._live_model_combo.findData("gpt-realtime-2.1-mini")
@@ -112,6 +114,19 @@ def test_settings_voice_controls_fit_their_font(qt_app) -> None:
         dialog._voice_combo,
     ):
         assert combo.height() >= combo.fontMetrics().height() + 8
+
+    dialog.close()
+
+
+def test_settings_voice_dropdowns_track_hovered_items(qt_app) -> None:
+    dialog = SettingsDialog()
+
+    for combo in (
+        dialog._live_model_combo,
+        dialog._reasoning_effort_combo,
+        dialog._voice_combo,
+    ):
+        assert combo.view().hasMouseTracking()
 
     dialog.close()
 
