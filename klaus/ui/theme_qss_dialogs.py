@@ -30,11 +30,20 @@ QDialog {{
     background-color: {SURFACE};
     color: {TEXT_PRIMARY};
 }}
-QLineEdit, QPlainTextEdit {{
+QLineEdit {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 9px;
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-size: {FONT_SIZE_SMALL + 1}px;
+    selection-background-color: {USER_BG};
+}}
+QPlainTextEdit {{
+    background-color: {SURFACE_RAISED};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 12px;
     padding: 7px 11px;
     font-size: {FONT_SIZE_SMALL + 1}px;
     selection-background-color: {USER_BG};

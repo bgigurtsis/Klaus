@@ -145,11 +145,11 @@ QComboBox QAbstractItemView::item:selected:hover {{
 }}
 #reading-source-combo {{
     background-color: {SURFACE_RAISED};
-    border: 1px solid {BORDER_EMPHASIS};
+    border: 1px solid {BORDER_DEFAULT};
     border-radius: 17px;
-    padding: 7px 14px;
-    font-size: {FONT_SIZE_BODY}px;
-    font-weight: 600;
+    padding: 5px 14px;
+    font-size: {FONT_SIZE_SMALL}px;
+    font-weight: 500;
 }}
 #reading-source-combo:hover, #reading-source-combo:on {{
     background-color: {SURFACE_OVERLAY};
@@ -207,18 +207,18 @@ QPushButton:focus {{
     border-color: {ACCENT};
     outline: none;
 }}
-#wizard-primary-btn, #wizard-next-btn, #session-new-btn,
+#wizard-primary-btn, #wizard-next-btn,
 #desk-view-confirm-button {{
     background-color: {ACCENT};
     color: {ACCENT_TEXT};
     border: none;
     font-weight: 700;
 }}
-#wizard-primary-btn:hover, #wizard-next-btn:hover, #session-new-btn:hover,
+#wizard-primary-btn:hover, #wizard-next-btn:hover,
 #desk-view-confirm-button:hover {{
     background-color: {ACCENT_HOVER};
 }}
-#wizard-primary-btn:pressed, #wizard-next-btn:pressed, #session-new-btn:pressed,
+#wizard-primary-btn:pressed, #wizard-next-btn:pressed,
 #desk-view-confirm-button:pressed {{
     background-color: {ACCENT_PRESSED};
 }}
@@ -251,8 +251,8 @@ QCheckBox::indicator:checked {{
 }}
 #klaus-title {{
     color: {TEXT_PRIMARY};
-    font-size: {FONT_SIZE_HEADING}px;
-    font-weight: bold;
+    font-size: {FONT_SIZE_BODY + 1}px;
+    font-weight: 700;
     letter-spacing: -0.2px;
     background: transparent;
     border: none;
@@ -268,8 +268,8 @@ QCheckBox::indicator:checked {{
     color: {ACCENT_TEXT};
     background: {ACCENT};
     border: none;
-    border-radius: 9px;
-    font-size: 15px;
+    border-radius: 8px;
+    font-size: 13px;
     font-weight: 800;
 }}
 #klaus-brand-subtitle {{
@@ -337,41 +337,49 @@ QSplitter::handle {{
 
 /* ===== Camera preview ===== */
 #camera-preview {{
-    background-color: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 14px;
+    background-color: {SURFACE};
+    border: 1px solid {BORDER_MUTED};
+    border-radius: 12px;
     color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_SMALL + 1}px;
+    font-size: {FONT_SIZE_SMALL}px;
 }}
 #reading-context-title {{
-    color: {TEXT_SECONDARY};
-    font-size: {FONT_SIZE_CAPTION}px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
+    color: {TEXT_MUTED};
+    font-size: {FONT_SIZE_CAPTION - 1}px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
     background: transparent;
 }}
 #reading-context-badge {{
-    color: {KLAUS_ACCENT};
-    background: {KLAUS_BG};
-    border: 1px solid {KLAUS_BTN_BORDER};
-    border-radius: 9px;
-    padding: 3px 8px;
-    font-size: 11px;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: {FONT_SIZE_CAPTION - 1}px;
+    font-weight: 600;
 }}
 
 /* ===== Session panel ===== */
 #session-panel-title {{
     color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_SMALL}px;
-    font-weight: bold;
-    letter-spacing: 1px;
+    font-size: {FONT_SIZE_CAPTION - 1}px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
     background: transparent;
     border: none;
 }}
 #session-new-btn {{
-    border-radius: 14px;
-    padding: 6px 14px;
+    color: {TEXT_SECONDARY};
+    background-color: transparent;
+    border: 1px solid {BORDER_DEFAULT};
+    border-radius: 16px;
+    padding: 0 14px;
     font-size: {FONT_SIZE_CAPTION}px;
+    font-weight: 600;
+}}
+#session-new-btn:hover {{
+    color: {TEXT_PRIMARY};
+    background-color: {SURFACE_OVERLAY};
+    border-color: {BORDER_EMPHASIS};
 }}
 #session-list {{
     background: transparent;

@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
 
         brand_mark = QLabel("K")
         brand_mark.setObjectName("klaus-brand-mark")
-        brand_mark.setFixedSize(32, 32)
+        brand_mark.setFixedSize(26, 26)
         brand_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         identity_row.addWidget(brand_mark)
 

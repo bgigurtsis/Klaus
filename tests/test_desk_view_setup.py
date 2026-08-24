@@ -87,7 +87,7 @@ def test_startup_launches_selected_desk_view(mock_launch, qt_app) -> None:
     with patch.object(QTimer, "singleShot") as mock_single_shot:
         widget.set_camera(camera)
 
-    assert widget._status_badge.text() == "WAITING"
+    assert widget._status_badge.text() == "Waiting"
     callback = mock_single_shot.call_args.args[1]
     callback()
     mock_launch.assert_called_once_with(widget)
@@ -119,4 +119,4 @@ def test_preview_only_marks_desk_view_live_after_a_frame(qt_app) -> None:
         widget.set_camera(camera)
     widget._update_frame()
 
-    assert widget._status_badge.text() == "LIVE"
+    assert widget._status_badge.text() == "Live"

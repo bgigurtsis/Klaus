@@ -78,7 +78,7 @@ class SessionPanel(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(4, 0, 4, 0)
 
-        title = QLabel("YOUR LIBRARY")
+        title = QLabel("Library")
         title.setObjectName("session-panel-title")
         header.addWidget(title)
         header.addStretch()

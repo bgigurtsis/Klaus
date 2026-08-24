@@ -37,18 +37,19 @@ class CameraWidget(QWidget):
         layout.setSpacing(8)
 
         header = QHBoxLayout()
-        heading = QLabel("READING CONTEXT")
+        heading = QLabel("Reading context")
         heading.setObjectName("reading-context-title")
         header.addWidget(heading)
         header.addStretch()
-        self._status_badge = QLabel("OFF")
+        self._status_badge = QLabel()
         self._status_badge.setObjectName("reading-context-badge")
         header.addWidget(self._status_badge)
         layout.addLayout(header)
+        self._set_status("off")
 
         self._source_combo = QComboBox()
         self._source_combo.setObjectName("reading-source-combo")
-        self._source_combo.setFixedHeight(38)
+        self._source_combo.setFixedHeight(34)
         source_view = QListView()
         source_view.setObjectName("reading-source-menu")
         source_view.setMouseTracking(True)
@@ -70,8 +71,21 @@ class CameraWidget(QWidget):
         self._video_label.setMinimumSize(270, 160)
         self._video_label.setMaximumHeight(204)
         self._video_label.setText("No reading context\nSelect a source to begin")
+        self._video_label.setVisible(False)
         layout.addWidget(self._video_label)
         self.setMaximumWidth(self.PREVIEW_WIDTH)
+
+    _STATUS_STYLES = {
+        "off": ("Off", theme.IDLE_COLOR),
+        "waiting": ("Waiting", theme.THINKING_COLOR),
+        "live": ("Live", theme.SPEAKING_COLOR),
+    }
+
+    def _set_status(self, status: str) -> None:
+        """Show the reading-context state as a small colored word."""
+        label, color = self._STATUS_STYLES[status]
+        self._status_badge.setText(label)
+        self._status_badge.setStyleSheet(f"color: {color};")
 
     def set_camera(self, camera) -> None:
         """Bind a Camera instance and start preview if running."""
@@ -79,14 +93,15 @@ class CameraWidget(QWidget):
         self.set_source_selection(camera.device_index if camera is not None else -1)
         if camera and camera.is_running:
             self._video_label.setText(camera.waiting_message)
-            self._status_badge.setText("WAITING")
+            self._video_label.setVisible(True)
+            self._set_status("waiting")
             self._timer.start(33)
             if camera.device_index == DESK_VIEW_SOURCE_INDEX:
                 QTimer.singleShot(0, self._launch_desk_view_if_current)
         else:
             self._timer.stop()
-            self._status_badge.setText("OFF")
-            self._video_label.setText("No reading source selected")
+            self._set_status("off")
+            self._video_label.setVisible(False)
 
     def _launch_desk_view_if_current(self) -> None:
         if (
@@ -134,11 +149,11 @@ class CameraWidget(QWidget):
             return
         frame = self._camera.get_frame_rgb()
         if frame is None:
-            self._status_badge.setText("WAITING")
+            self._set_status("waiting")
             self._video_label.setText(self._camera.waiting_message)
             return
 
-        self._status_badge.setText("LIVE")
+        self._set_status("live")
 
         h, w, ch = frame.shape
         if w > self.PREVIEW_WIDTH:
