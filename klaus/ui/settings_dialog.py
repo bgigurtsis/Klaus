@@ -334,7 +334,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._camera_combo)
 
         hint = QLabel(
-            "Choose Desk View for paper, Active window for a Mac app, or pair a Paper Pure."
+            "Choose no source for audio-only questions, Desk View for paper, "
+            "Active window for a Mac app, or pair a Paper Pure."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(

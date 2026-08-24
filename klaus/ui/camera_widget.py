@@ -12,7 +12,10 @@ from klaus.macos_reading_source import (
     ACTIVE_READING_WINDOW_SOURCE_INDEX,
     DESK_VIEW_SOURCE_INDEX,
 )
-from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
+from klaus.reading_source import (
+    NO_READING_SOURCE_INDEX,
+    REMARKABLE_PAPER_PURE_SOURCE_INDEX,
+)
 from klaus.ui import theme
 from klaus.ui.desk_view_setup import launch_desk_view_setup
 
@@ -56,6 +59,10 @@ class CameraWidget(QWidget):
         source_view.setMouseTracking(True)
         source_view.setUniformItemSizes(True)
         self._source_combo.setView(source_view)
+        self._source_combo.addItem(
+            "No reading source  ·  audio only",
+            NO_READING_SOURCE_INDEX,
+        )
         self._source_combo.addItem("Desk View  ·  paper", DESK_VIEW_SOURCE_INDEX)
         self._source_combo.addItem(
             "Active window  ·  any app",
@@ -132,6 +139,7 @@ class CameraWidget(QWidget):
         if self._source_combo is None:
             return
         special_sources = {
+            NO_READING_SOURCE_INDEX,
             DESK_VIEW_SOURCE_INDEX,
             ACTIVE_READING_WINDOW_SOURCE_INDEX,
             REMARKABLE_PAPER_PURE_SOURCE_INDEX,

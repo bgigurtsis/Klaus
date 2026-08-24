@@ -40,10 +40,10 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Toggle input mode hotkey (default: §; press Shift+§ to toggle)
 # toggle_key = "§"
 
-# Reading source index (default: -2)
+# Reading source index (default: -1)
 # macOS: -2 uses Desk View; -3 uses the active reading window; -1 disables capture.
 # reMarkable Paper Pure: -4 uses the paired tablet screen.
-# camera_index = -2
+# camera_index = -1
 
 # Paper Pure connection. Klaus stores the password in Apple Keychain.
 # remarkable_address = "https://10.11.99.1:2001"
@@ -64,9 +64,9 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 # Live voice. Gemini defaults to Kore. GPT Realtime defaults to cedar.
 # voice = "cedar"
 
-# Input mode (default: voice_activation)
+# Input mode (default: push_to_talk)
 # Options: voice_activation, push_to_talk
-# input_mode = "voice_activation"
+# input_mode = "push_to_talk"
 
 # Voice activation sensitivity 0-3 (default: 3, higher = more aggressive filtering)
 # vad_sensitivity = 3
@@ -309,7 +309,7 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("obsidian_vault_path", "obsidian_vault_path", "", _as_str, "OBSIDIAN_VAULT_PATH"),
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
     _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
-    _SettingSpec("camera_device_index", "camera_index", -2, _as_int),
+    _SettingSpec("camera_device_index", "camera_index", -1, _as_int),
     _SettingSpec(
         "remarkable_address",
         "remarkable_address",
@@ -325,7 +325,7 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     ),
     _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
     _SettingSpec("voice", "voice", "Kore", _as_str),
-    _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
+    _SettingSpec("input_mode", "input_mode", "push_to_talk", _as_str),
     _SettingSpec("vad_sensitivity", "vad_sensitivity", 3, _as_int),
     _SettingSpec("vad_silence_timeout", "vad_silence_timeout", 1.0, _as_float),
     _SettingSpec("vad_early_stt_timeout", "vad_early_stt_timeout", 0.6, _as_float),

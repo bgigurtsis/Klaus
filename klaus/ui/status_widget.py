@@ -29,8 +29,8 @@ class StatusWidget(QWidget):
     _STATES = {
         "idle": {
             "push_to_talk": (
-                "Ready",
-                "Hold {hotkey} to ask a question",
+                "Push to talk",
+                "Hold {hotkey} to talk",
                 theme.IDLE_COLOR,
             ),
             "voice_activation": (
@@ -79,7 +79,7 @@ class StatusWidget(QWidget):
         self,
         hotkey: str = "F2",
         toggle_key: str = "F3",
-        mode: str = "voice_activation",
+        mode: str = "push_to_talk",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -128,13 +128,6 @@ class StatusWidget(QWidget):
         self._stats_label.setObjectName("klaus-stats")
         row.addWidget(self._stats_label)
 
-        self._hotkey_keycap = QLabel(self._toggle_key)
-        self._hotkey_keycap.setObjectName("klaus-hotkey-keycap")
-        self._hotkey_keycap.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hotkey_keycap.setMaximumWidth(110)
-        self._resize_hotkey_keycap()
-        row.addWidget(self._hotkey_keycap)
-
         self._mode_btn = QPushButton()
         self._mode_btn.setObjectName("klaus-mode-btn")
         self._mode_btn.setFixedHeight(32)
@@ -165,7 +158,6 @@ class StatusWidget(QWidget):
         busy = self._current_state in self._BUSY_STATES
         self._detail_label.setVisible(width >= 560)
         self._stats_label.setVisible(width >= 680 and not busy)
-        self._hotkey_keycap.setVisible(width >= 620 and not busy)
         self._mode_btn.setVisible(not busy)
         self._stop_btn.setVisible(busy)
 
@@ -209,22 +201,12 @@ class StatusWidget(QWidget):
         """Update hotkey labels shown in the status bar."""
         self._hotkey = hotkey
         self._toggle_key = toggle_key
-        self._hotkey_keycap.setText(self._toggle_key)
-        self._resize_hotkey_keycap()
         self._update_switch_hints()
         self._apply_state(self._current_state)
 
     def _update_switch_hints(self) -> None:
         action = self._MODE_ACTIONS.get(self._mode, "Switch voice input mode")
         current = self._MODE_LABELS.get(self._mode, "Voice")
-        self._mode_btn.setText(action)
-        tooltip = f"Current mode: {current}. Shortcut: {self._toggle_key}."
+        self._mode_btn.setText(f"{self._toggle_key}  ·  {action}")
+        tooltip = f"Current mode: {current}. Press {self._toggle_key} to {action.lower()}."
         self._mode_btn.setToolTip(tooltip)
-        self._hotkey_keycap.setToolTip(tooltip)
-
-    def _resize_hotkey_keycap(self) -> None:
-        """Keep the full shortcut visible inside its padded keycap."""
-        text_width = self._hotkey_keycap.fontMetrics().horizontalAdvance(
-            self._hotkey_keycap.text()
-        )
-        self._hotkey_keycap.setMinimumWidth(min(110, max(44, text_width + 20)))

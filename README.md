@@ -96,7 +96,7 @@ the tablet certificate and asks you to pair again if that certificate changes.
 
 ### Control the conversation
 
-Klaus starts in hands-free mode. Hold `§` for push-to-talk. Press `Shift+§` to switch modes. Start speaking over an answer to interrupt it.
+Klaus starts in push-to-talk mode. Hold `§` to talk. Press `Shift+§` to switch to hands-free mode. Start speaking over an answer to interrupt it.
 
 ### Save an Obsidian note
 
@@ -140,11 +140,11 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 | `live_model` | `gpt-realtime-2.1-mini` | Choose Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini |
 | `reasoning_effort` | `high` | Choose `low`, `medium`, or `high` reasoning effort |
 | `voice` | `cedar` for GPT, `Kore` for Gemini | Choose the voice available for the selected live model |
-| `camera_index` | `-2` | Use Desk View with `-2`, active window with `-3`, Paper Pure with `-4`, or audio only with `-1` |
+| `camera_index` | `-1` | Start without a reading source, or use Active window with `-3`, Desk View with `-2`, or Paper Pure with `-4` |
 | `remarkable_address` | `https://10.11.99.1:2001` | Set the paired USB or Wi-Fi service address |
 | `remarkable_username` | `klaus` | Set the service username shown by the tablet package |
 | `remarkable_certificate_sha256` | empty | Pin the certificate after successful pairing |
-| `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
+| `input_mode` | `push_to_talk` | Use push-to-talk or hands-free input |
 | `log_level` | `INFO` | Set log detail |
 
 ## Build from source

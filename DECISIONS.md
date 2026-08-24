@@ -108,6 +108,14 @@ the action ("Switch to push to talk"); the current mode lives in the tooltip.
 Rejected: labeling the button with the current mode — that read as a state
 badge, which is what confused in the first place.
 
+## 2026-08-25 — Push-to-talk and audio-only startup defaults
+
+New setups start in push-to-talk mode without a reading source. The main
+reading-source menu keeps No reading source as a permanent option.
+
+The mode button includes its shortcut and action in one label. Push-to-talk
+idle state also names the mode and tells the user to hold `§` to talk.
+
 ## 2026-08-24 — Ad-hoc alerts persist; sign with a stable self-signed certificate
 
 Removing the installer's `codesign --sign -` call (earlier today) did not stop

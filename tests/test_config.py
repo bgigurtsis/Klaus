@@ -100,12 +100,13 @@ def test_unknown_input_mode_fails():
         config.save_input_mode("always_recording")
 
 
-def test_defaults_use_realtime_and_desk_view():
+def test_defaults_use_realtime_push_to_talk_and_no_reading_source():
     settings = config._settings_from_config({})
-    assert settings.camera_device_index == -2
+    assert settings.camera_device_index == -1
     assert settings.live_model == "gpt-realtime-2.1-mini"
     assert settings.reasoning_effort == "high"
     assert settings.voice == "cedar"
+    assert settings.input_mode == "push_to_talk"
     assert settings.barge_in_enabled is False
 
 
