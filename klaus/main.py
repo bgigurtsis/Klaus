@@ -1007,7 +1007,7 @@ class KlausApp:
         if guidance is None:
             self._show_device_switch_error(
                 "Reading Source Unavailable",
-                "Could not switch to that source. Reverted to the previous source.",
+                f"{error}\n\nKlaus reverted to the previous reading source.",
             )
             return
         self._window.show_permission_warning(

@@ -45,6 +45,7 @@ def list_camera_devices() -> list[CameraDevice]:
         ACTIVE_READING_WINDOW_SOURCE_INDEX,
         DESK_VIEW_SOURCE_INDEX,
     )
+    from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
 
     return [
         CameraDevice(
@@ -62,6 +63,14 @@ def list_camera_devices() -> list[CameraDevice]:
             height=0,
             backend="CoreGraphics + Accessibility",
             source="active_reading_window",
+        ),
+        CameraDevice(
+            index=REMARKABLE_PAPER_PURE_SOURCE_INDEX,
+            display_name="reMarkable Paper Pure",
+            width=1404,
+            height=1872,
+            backend="goMarkableStream HTTPS",
+            source="remarkable_paper_pure",
         ),
     ]
 

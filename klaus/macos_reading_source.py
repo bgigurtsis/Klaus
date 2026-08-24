@@ -9,11 +9,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from klaus.reading_source import (
+    ACTIVE_READING_WINDOW_SOURCE_INDEX,
+    DESK_VIEW_SOURCE_INDEX,
+    NO_READING_SOURCE_INDEX,
+)
 
-NO_READING_SOURCE_INDEX = -1
-DESK_VIEW_SOURCE_INDEX = -2
-ACTIVE_READING_WINDOW_SOURCE_INDEX = -3
+logger = logging.getLogger(__name__)
 
 DESK_VIEW_MODE = "desk_view"
 ACTIVE_READING_WINDOW_MODE = "active_reading_window"
@@ -290,3 +292,9 @@ class MacOSReadingSource:
     def target(self) -> WindowTarget | None:
         with self._lock:
             return self._target
+
+    @property
+    def waiting_message(self) -> str:
+        if self._mode == DESK_VIEW_MODE:
+            return "Desk View is not running"
+        return "Keep the window you want to read frontmost"

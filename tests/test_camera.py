@@ -1,6 +1,7 @@
 """Tests for macOS reading-window capture."""
 
 import base64
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -29,7 +30,7 @@ def test_active_window_text_refreshes_frame():
     frame = np.ones((100, 200, 3), dtype=np.uint8)
     source.capture_frame.return_value = frame
     source.capture_selected_text.return_value = "selected passage"
-    camera._window_source = source
+    camera._reading_source = source
 
     assert camera.capture_text_context() == "selected passage"
     assert np.array_equal(camera.get_frame(), frame)
@@ -56,3 +57,27 @@ def test_window_source_starts_and_stops():
         assert camera.is_running is True
         camera.stop()
         assert camera.is_running is False
+
+
+def test_remarkable_source_starts_and_refreshes_each_question():
+    frame = np.ones((80, 60, 3), dtype=np.uint8)
+    with (
+        patch("klaus.camera.config.get_remarkable_password", return_value="secret"),
+        patch(
+            "klaus.camera.config.get_runtime_settings",
+            return_value=SimpleNamespace(
+                remarkable_address="https://tablet:2001",
+                remarkable_username="klaus",
+                remarkable_certificate_sha256="abc",
+            ),
+        ),
+        patch("klaus.camera.RemarkableClient"),
+        patch("klaus.camera.RemarkableReadingSource") as source_class,
+    ):
+        source_class.return_value.capture_frame.return_value = frame
+        camera = Camera(device_index=-4)
+        camera.start()
+        initial_calls = source_class.return_value.capture_frame.call_count
+        camera.capture_text_context()
+        assert source_class.return_value.capture_frame.call_count == initial_calls + 1
+        camera.stop()

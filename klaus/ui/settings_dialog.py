@@ -36,6 +36,8 @@ from klaus.ui.shared.key_validation import (
     validate_api_key,
 )
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
+from klaus.ui.remarkable_pairing import open_remarkable_pairing
+from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +334,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._camera_combo)
 
         hint = QLabel(
-            "Choose Desk View to open its setup. Keep the app you want Klaus to read frontmost."
+            "Choose Desk View for paper, Active window for a Mac app, or pair a Paper Pure."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
@@ -340,6 +342,15 @@ class SettingsDialog(QDialog):
             "background: transparent; border: none;"
         )
         layout.addWidget(hint)
+
+        tablet_row = QHBoxLayout()
+        self._remarkable_status = QLabel()
+        self._refresh_remarkable_status()
+        tablet_row.addWidget(self._remarkable_status, stretch=1)
+        pair_button = QPushButton("Pair Paper Pure...")
+        pair_button.clicked.connect(self._pair_remarkable)
+        tablet_row.addWidget(pair_button)
+        layout.addLayout(tablet_row)
 
         layout.addStretch()
         return page
@@ -381,9 +392,29 @@ class SettingsDialog(QDialog):
         if cam_idx is None:
             cam_idx = -1
         cam_idx = int(cam_idx)
+        if (
+            cam_idx == REMARKABLE_PAPER_PURE_SOURCE_INDEX
+            and not config.REMARKABLE_CERTIFICATE_SHA256
+            and not self._pair_remarkable()
+        ):
+            self.set_camera_selection(self._active_camera_index or -1)
+            return
         self._active_camera_index = cam_idx
         config.set_camera_index(cam_idx, persist=True)
         self.camera_device_changed.emit(cam_idx)
+
+    def _refresh_remarkable_status(self) -> None:
+        if config.REMARKABLE_CERTIFICATE_SHA256:
+            text = f"Paired: {config.REMARKABLE_USERNAME} at {config.REMARKABLE_ADDRESS}"
+        else:
+            text = "Paper Pure is not paired"
+        self._remarkable_status.setText(text)
+
+    def _pair_remarkable(self) -> bool:
+        paired = open_remarkable_pairing(self)
+        if paired:
+            self._refresh_remarkable_status()
+        return paired
 
     # -- Profile tab --
 

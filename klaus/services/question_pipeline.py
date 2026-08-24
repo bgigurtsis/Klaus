@@ -211,11 +211,12 @@ class QuestionPipeline:
 
         exchange_id = ""
         if context.current_session_id:
+            persist_images = getattr(self._camera, "should_persist_images", True)
             record = self._memory.save_exchange(
                 session_id=context.current_session_id,
                 user_text=exchange.user_text,
                 assistant_text=exchange.assistant_text,
-                image_base64=exchange.image_base64,
+                image_base64=exchange.image_base64 if persist_images else None,
                 searches=exchange.searches,
                 note_file_path=(
                     self._notes.current_path if exchange.notes_file_changed else None

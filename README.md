@@ -81,6 +81,19 @@ Desk View needs strong, even lighting to read small text.
 3. Keep that window in front.
 4. Select text when you want Klaus to use an exact passage.
 
+### Read a reMarkable Paper Pure
+
+1. Install `klaus-remarkable` through reManager after adding its Vellum package source.
+2. Run `/home/root/.vellum/bin/klaus-remarkable-pairing` from reManager's terminal.
+3. Open **Settings > Reading** in Klaus and choose **Pair Paper Pure**.
+4. Enter the tablet address, username, and pairing password shown by the command.
+5. Choose **reMarkable Paper Pure** as the reading source.
+
+Klaus previews the current tablet screen about once each second. It captures a
+fresh frame after speech ends, before it sends the question to the selected
+model. Pairing tests the service version, login, and PNG decoding. Klaus pins
+the tablet certificate and asks you to pair again if that certificate changes.
+
 ### Control the conversation
 
 Klaus starts in hands-free mode. Hold `§` for push-to-talk. Press `Shift+§` to switch modes. Start speaking over an answer to interrupt it.
@@ -127,7 +140,10 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 | `live_model` | `gpt-realtime-2.1-mini` | Choose Gemini Live, GPT Live 2.1, or GPT Live 2.1 mini |
 | `reasoning_effort` | `high` | Choose `low`, `medium`, or `high` reasoning effort |
 | `voice` | `cedar` for GPT, `Kore` for Gemini | Choose the voice available for the selected live model |
-| `camera_index` | `-2` | Use Desk View with `-2`, the active window with `-3`, or audio only with `-1` |
+| `camera_index` | `-2` | Use Desk View with `-2`, active window with `-3`, Paper Pure with `-4`, or audio only with `-1` |
+| `remarkable_address` | `https://10.11.99.1:2001` | Set the paired USB or Wi-Fi service address |
+| `remarkable_username` | `klaus` | Set the service username shown by the tablet package |
+| `remarkable_certificate_sha256` | empty | Pin the certificate after successful pairing |
 | `input_mode` | `voice_activation` | Use hands-free or push-to-talk input |
 | `log_level` | `INFO` | Set log detail |
 

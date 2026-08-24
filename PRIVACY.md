@@ -5,7 +5,7 @@ Klaus runs on your Mac and sends live requests to the provider you select.
 ## Data sent to providers
 
 Klaus may send recorded question audio and reading context to Gemini or OpenAI.
-Reading context may include text selected in any app, an active-window image, or a camera image.
+Reading context may include selected text, an active-window image, a Desk View image, or a Paper Pure screenshot.
 
 Gemini Live can use Google Search grounding. GPT Live does not offer web search in Klaus.
 
@@ -15,9 +15,12 @@ Gemini and OpenAI handling follows each provider's terms, privacy policy, and ac
 
 Klaus stores settings in `~/.klaus/config.toml`.
 Klaus stores its API key in Apple Keychain.
+Klaus also stores the Paper Pure pairing password in Apple Keychain.
+Klaus stores the tablet address, username, and certificate fingerprint in its settings.
 
 Klaus stores session titles, transcripts, answers, and image hashes in `~/.klaus/klaus.db`.
 Klaus does not store captured page images in that database.
+Klaus keeps Paper Pure preview frames in memory and discards them after use.
 Klaus may write notes into the Obsidian vault that you configure.
 Logs may contain vault paths, device details, timing, and error messages.
 
