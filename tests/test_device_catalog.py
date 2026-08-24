@@ -5,12 +5,13 @@ from unittest.mock import patch
 from klaus.device_catalog import format_camera_label, list_camera_devices, list_input_devices
 
 
-def test_lists_only_current_macos_reading_sources():
+def test_lists_current_reading_sources():
     sources = list_camera_devices()
-    assert [source.index for source in sources] == [-2, -3]
+    assert [source.index for source in sources] == [-2, -3, -4]
     assert [format_camera_label(source) for source in sources] == [
         "Desk View (physical papers)",
         "Active macOS window (any app)",
+        "reMarkable Paper Pure",
     ]
 
 

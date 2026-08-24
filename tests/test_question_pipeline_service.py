@@ -175,3 +175,34 @@ def test_cancel_active_calls_realtime_brain():
     pipeline.cancel_active()
 
     brain.cancel_current.assert_called_once()
+
+
+def test_tablet_capture_runs_after_speech_transcription_and_is_not_persisted():
+    order: list[str] = []
+    stt = MagicMock()
+    stt.transcribe.side_effect = lambda _wav: order.append("transcribe") or "Read this"
+    camera = MagicMock(should_persist_images=False)
+    camera.capture_thumbnail_bytes.return_value = b"preview"
+    camera.capture_text_context.side_effect = lambda: order.append("fresh screenshot")
+    camera.capture_base64_jpeg.return_value = "tablet-image"
+    brain = MagicMock()
+    brain.decide_route.return_value = _route()
+    brain.ask_audio.return_value = SimpleNamespace(
+        notes_file_changed=False,
+        assistant_text="Answer",
+        user_text="Read this",
+        image_base64="tablet-image",
+        searches=[],
+    )
+    memory = MagicMock()
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+
+    _pipeline(stt, camera, brain, memory=memory).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    assert order == ["transcribe", "fresh screenshot"]
+    assert brain.ask_audio.call_args.kwargs["image_base64"] == "tablet-image"
+    assert memory.save_exchange.call_args.kwargs["image_base64"] is None

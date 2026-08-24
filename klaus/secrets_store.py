@@ -6,6 +6,7 @@ KEYCHAIN_ACCOUNT_BY_SLUG: dict[str, str] = {
     "gemini": "gemini",
     "openai": "openai",
 }
+REMARKABLE_PASSWORD_ACCOUNT = "remarkable-paper-pure-password"
 
 
 class SecretsStoreError(RuntimeError):
@@ -64,3 +65,33 @@ def delete_api_key(slug: str) -> None:
         return
     except Exception as exc:  # pragma: no cover - backend errors are environment-specific
         raise SecretsStoreError(f"Failed deleting {slug} from Keychain: {exc}") from exc
+
+
+def get_remarkable_password() -> str:
+    """Read the Paper Pure pairing password from Apple Keychain."""
+    keyring = _load_keyring()
+    try:
+        value = keyring.get_password(KEYCHAIN_SERVICE, REMARKABLE_PASSWORD_ACCOUNT)
+    except Exception as exc:  # pragma: no cover - backend errors are environment-specific
+        raise SecretsStoreError(f"Failed reading Paper Pure password from Keychain: {exc}") from exc
+    return str(value or "")
+
+
+def set_remarkable_password(value: str) -> None:
+    """Write the Paper Pure pairing password to Apple Keychain."""
+    keyring = _load_keyring()
+    try:
+        keyring.set_password(KEYCHAIN_SERVICE, REMARKABLE_PASSWORD_ACCOUNT, value)
+    except Exception as exc:  # pragma: no cover - backend errors are environment-specific
+        raise SecretsStoreError(f"Failed writing Paper Pure password to Keychain: {exc}") from exc
+
+
+def delete_remarkable_password() -> None:
+    """Delete the Paper Pure pairing password from Apple Keychain."""
+    keyring = _load_keyring()
+    try:
+        keyring.delete_password(KEYCHAIN_SERVICE, REMARKABLE_PASSWORD_ACCOUNT)
+    except keyring.errors.PasswordDeleteError:
+        return
+    except Exception as exc:  # pragma: no cover - backend errors are environment-specific
+        raise SecretsStoreError(f"Failed deleting Paper Pure password from Keychain: {exc}") from exc

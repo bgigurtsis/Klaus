@@ -42,7 +42,13 @@ _DEFAULT_CONFIG_TEMPLATE = """\
 
 # Reading source index (default: -2)
 # macOS: -2 uses Desk View; -3 uses the active reading window; -1 disables capture.
+# reMarkable Paper Pure: -4 uses the paired tablet screen.
 # camera_index = -2
+
+# Paper Pure connection. Klaus stores the password in Apple Keychain.
+# remarkable_address = "https://10.11.99.1:2001"
+# remarkable_username = "klaus"
+# remarkable_certificate_sha256 = ""
 
 # Microphone device index (default: -1, uses system default)
 # mic_index = -1
@@ -214,6 +220,9 @@ class RuntimeSettings:
     push_to_talk_key: str
     toggle_key: str
     camera_device_index: int
+    remarkable_address: str
+    remarkable_username: str
+    remarkable_certificate_sha256: str
     mic_device_index: int
     voice: str
     input_mode: str
@@ -301,6 +310,19 @@ _RUNTIME_SETTING_SPECS: tuple[_SettingSpec, ...] = (
     _SettingSpec("push_to_talk_key", "hotkey", _DEFAULT_PTT_KEY, _as_str),
     _SettingSpec("toggle_key", "toggle_key", _DEFAULT_TOGGLE_KEY, _as_str),
     _SettingSpec("camera_device_index", "camera_index", -2, _as_int),
+    _SettingSpec(
+        "remarkable_address",
+        "remarkable_address",
+        "https://10.11.99.1:2001",
+        _as_str,
+    ),
+    _SettingSpec("remarkable_username", "remarkable_username", "klaus", _as_str),
+    _SettingSpec(
+        "remarkable_certificate_sha256",
+        "remarkable_certificate_sha256",
+        "",
+        _as_str,
+    ),
     _SettingSpec("mic_device_index", "mic_index", -1, _as_int),
     _SettingSpec("voice", "voice", "Kore", _as_str),
     _SettingSpec("input_mode", "input_mode", "voice_activation", _as_str),
@@ -464,6 +486,9 @@ OBSIDIAN_VAULT_PATH: str
 PUSH_TO_TALK_KEY: str
 TOGGLE_KEY: str
 CAMERA_DEVICE_INDEX: int
+REMARKABLE_ADDRESS: str
+REMARKABLE_USERNAME: str
+REMARKABLE_CERTIFICATE_SHA256: str
 MIC_DEVICE_INDEX: int
 VOICE: str
 INPUT_MODE: str
@@ -495,6 +520,9 @@ _RUNTIME_EXPORTS: dict[str, str] = {
     "PUSH_TO_TALK_KEY": "push_to_talk_key",
     "TOGGLE_KEY": "toggle_key",
     "CAMERA_DEVICE_INDEX": "camera_device_index",
+    "REMARKABLE_ADDRESS": "remarkable_address",
+    "REMARKABLE_USERNAME": "remarkable_username",
+    "REMARKABLE_CERTIFICATE_SHA256": "remarkable_certificate_sha256",
     "MIC_DEVICE_INDEX": "mic_device_index",
     "VOICE": "voice",
     "INPUT_MODE": "input_mode",
@@ -765,6 +793,33 @@ def set_camera_index(index: int, persist: bool = True) -> None:
 def save_camera_index(index: int) -> None:
     """Persist the chosen camera index to config.toml."""
     set_camera_index(index, persist=True)
+
+
+def get_remarkable_password() -> str:
+    """Read the Paper Pure password from Apple Keychain."""
+    return secrets_store.get_remarkable_password()
+
+
+def save_remarkable_connection(
+    address: str,
+    username: str,
+    password: str,
+    certificate_sha256: str,
+) -> None:
+    """Persist public pairing data and store the password in Apple Keychain."""
+    secrets_store.set_remarkable_password(password)
+    _set_top_level_value("remarkable_address", f'"{_escape_toml_basic_string(address)}"')
+    _set_top_level_value("remarkable_username", f'"{_escape_toml_basic_string(username)}"')
+    _set_top_level_value(
+        "remarkable_certificate_sha256",
+        f'"{_escape_toml_basic_string(certificate_sha256)}"',
+    )
+
+
+def clear_remarkable_connection() -> None:
+    """Remove the Paper Pure password and certificate pin."""
+    secrets_store.delete_remarkable_password()
+    _set_top_level_value("remarkable_certificate_sha256", '""')
 
 
 def set_mic_index(index: int, persist: bool = True) -> None:

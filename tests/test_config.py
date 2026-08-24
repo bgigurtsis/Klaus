@@ -37,6 +37,23 @@ def test_set_api_key_writes_only_to_keychain(monkeypatch, config_dir):
     assert "sk-test-key" not in config_dir.read_text(encoding="utf-8")
 
 
+def test_paper_pure_password_writes_only_to_keychain(monkeypatch, config_dir):
+    saved: list[str] = []
+    monkeypatch.setattr(config.secrets_store, "set_remarkable_password", saved.append)
+    config.save_remarkable_connection(
+        "https://10.11.99.1:2001",
+        "klaus",
+        "private-pairing-password",
+        "a" * 64,
+    )
+    values = tomllib.loads(config_dir.read_text(encoding="utf-8"))
+    assert saved == ["private-pairing-password"]
+    assert "private-pairing-password" not in config_dir.read_text(encoding="utf-8")
+    assert values["remarkable_address"] == "https://10.11.99.1:2001"
+    assert values["remarkable_username"] == "klaus"
+    assert values["remarkable_certificate_sha256"] == "a" * 64
+
+
 def test_save_api_key_propagates_keychain_errors(monkeypatch):
     def unavailable(*_args):
         raise config.secrets_store.SecretsStoreError("Keychain disabled")

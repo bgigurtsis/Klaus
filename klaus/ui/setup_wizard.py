@@ -46,6 +46,8 @@ from klaus.ui.shared.key_validation import (
     validate_api_key,
 )
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
+from klaus.ui.remarkable_pairing import open_remarkable_pairing
+from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
 
 logger = logging.getLogger(__name__)
 
@@ -609,7 +611,8 @@ class SetupWizard(QMainWindow):
 
         tip = QLabel(
             "Physical paper: Klaus opens Apple's Desk View setup for you.\n"
-            "On screen: keep any app window frontmost and select text when useful."
+            "On screen: keep any app window frontmost and select text when useful.\n"
+            "Paper Pure: pair the service details shown in reManager."
         )
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip.setStyleSheet(
@@ -639,9 +642,13 @@ class SetupWizard(QMainWindow):
             idx = -1
         self._collected["camera_index"] = idx
         if idx != -1:
-            self._camera_preview.start(idx)
             if idx == -2:
                 launch_desk_view_setup(self)
+            if idx == REMARKABLE_PAPER_PURE_SOURCE_INDEX:
+                if not open_remarkable_pairing(self):
+                    self._camera_combo.setCurrentIndex(0)
+                    return
+            self._camera_preview.start(idx)
         else:
             self._camera_preview.stop()
 
