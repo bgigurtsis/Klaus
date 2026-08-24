@@ -93,8 +93,8 @@ QComboBox {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 9px;
-    padding: 5px 12px;
+    border-radius: 16px;
+    padding: 5px 14px;
     font-size: {FONT_SIZE_SMALL}px;
     min-height: 26px;
     min-width: 180px;
@@ -139,8 +139,8 @@ QComboBox QAbstractItemView::item:selected:hover {{
 #reading-source-combo {{
     background-color: {SURFACE_RAISED};
     border: 1px solid {BORDER_EMPHASIS};
-    border-radius: 9px;
-    padding: 7px 12px;
+    border-radius: 17px;
+    padding: 7px 14px;
     font-size: {FONT_SIZE_BODY}px;
     font-weight: 600;
 }}
@@ -178,8 +178,8 @@ QPushButton {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 9px;
-    padding: 7px 14px;
+    border-radius: 16px;
+    padding: 7px 16px;
     font-size: {FONT_SIZE_SMALL}px;
     font-weight: 600;
 }}
@@ -362,8 +362,8 @@ QSplitter::handle {{
     border: none;
 }}
 #session-new-btn {{
-    border-radius: 8px;
-    padding: 6px 12px;
+    border-radius: 14px;
+    padding: 6px 14px;
     font-size: {FONT_SIZE_CAPTION}px;
 }}
 #session-list {{
@@ -488,7 +488,7 @@ QMenu::item:selected {{
     color: {TEXT_SECONDARY};
     background: {SURFACE_RAISED};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 10px 12px;
     font-size: {FONT_SIZE_CAPTION}px;
 }}
@@ -666,7 +666,7 @@ QTabBar::tab {{
     font-weight: 600;
     margin-right: 4px;
     margin-bottom: 8px;
-    border-radius: 9px;
+    border-radius: 15px;
 }}
 QTabBar::tab:selected {{
     background-color: {SURFACE_RAISED};
@@ -734,8 +734,8 @@ QMessageBox QLabel {{
     background: transparent;
 }}
 #desk-view-confirm-button {{
-    border-radius: 9px;
-    padding: 9px 18px;
+    border-radius: 19px;
+    padding: 9px 20px;
     font-size: {FONT_SIZE_SMALL + 1}px;
 }}
 QInputDialog {{
@@ -786,8 +786,8 @@ QInputDialog QLabel {{
     border: none;
 }}
 #wizard-primary-btn {{
-    border-radius: 9px;
-    padding: 10px 24px;
+    border-radius: 20px;
+    padding: 10px 26px;
     font-size: {FONT_SIZE_BODY}px;
 }}
 #wizard-link-btn {{
@@ -805,7 +805,7 @@ QInputDialog QLabel {{
     background-color: {SURFACE_RAISED};
     color: {TEXT_SECONDARY};
     border: 1px solid {BORDER_DEFAULT};
-    border-radius: {RADIUS_SM}px;
+    border-radius: 17px;
     padding: 8px 20px;
     font-size: {FONT_SIZE_SMALL}px;
 }}
@@ -814,7 +814,7 @@ QInputDialog QLabel {{
     border-color: {BORDER_EMPHASIS};
 }}
 #wizard-next-btn {{
-    border-radius: 9px;
+    border-radius: 17px;
     padding: 8px 24px;
     font-size: {FONT_SIZE_SMALL}px;
 }}
