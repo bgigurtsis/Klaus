@@ -9,6 +9,7 @@ import pytest
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
+from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
 from klaus.ui.camera_widget import CameraWidget
 from klaus.ui.desk_view_setup import (
     _launch_native_desk_view,
@@ -120,3 +121,20 @@ def test_preview_only_marks_desk_view_live_after_a_frame(qt_app) -> None:
     widget._update_frame()
 
     assert widget._status_badge.text() == "Live"
+
+
+def test_paper_pure_stays_available_in_reading_source_selector(qt_app) -> None:
+    widget = CameraWidget()
+
+    widget.set_source_selection(REMARKABLE_PAPER_PURE_SOURCE_INDEX)
+    widget.set_source_selection(REMARKABLE_PAPER_PURE_SOURCE_INDEX)
+
+    combo = widget._source_combo
+    matching_items = [
+        index
+        for index in range(combo.count())
+        if combo.itemData(index) == REMARKABLE_PAPER_PURE_SOURCE_INDEX
+    ]
+    assert matching_items == [2]
+    assert combo.currentData() == REMARKABLE_PAPER_PURE_SOURCE_INDEX
+    assert combo.currentText() == "reMarkable Paper Pure  ·  tablet"

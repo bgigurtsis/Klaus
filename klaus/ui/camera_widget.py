@@ -12,6 +12,7 @@ from klaus.macos_reading_source import (
     ACTIVE_READING_WINDOW_SOURCE_INDEX,
     DESK_VIEW_SOURCE_INDEX,
 )
+from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
 from klaus.ui import theme
 from klaus.ui.desk_view_setup import launch_desk_view_setup
 
@@ -59,6 +60,10 @@ class CameraWidget(QWidget):
         self._source_combo.addItem(
             "Active window  ·  any app",
             ACTIVE_READING_WINDOW_SOURCE_INDEX,
+        )
+        self._source_combo.addItem(
+            "reMarkable Paper Pure  ·  tablet",
+            REMARKABLE_PAPER_PURE_SOURCE_INDEX,
         )
         self._source_combo.activated.connect(self._on_source_activated)
         layout.addWidget(self._source_combo)
@@ -129,6 +134,7 @@ class CameraWidget(QWidget):
         special_sources = {
             DESK_VIEW_SOURCE_INDEX,
             ACTIVE_READING_WINDOW_SOURCE_INDEX,
+            REMARKABLE_PAPER_PURE_SOURCE_INDEX,
         }
         for item_index in range(self._source_combo.count() - 1, -1, -1):
             if self._source_combo.itemData(item_index) not in special_sources:
