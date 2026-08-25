@@ -365,3 +365,39 @@ captured exchange, which we accepted over a two-blob schema migration.
 Rejected: keeping 320 px and passing live full-res bytes alongside it —
 history reloaded from the DB would stay blurry. Revisit if the DB grows
 enough to slow session loads; the knobs are the 2048 cap and q85.
+
+## 2026-08-25 — Self-reply loop: calibration blind spot + transcript echo guard
+
+With barge-in on and the drain fix in place, Klaus still answered itself:
+the gated detector fired on its own speech mid-answer, cancelled the turn,
+and primed the echo as the next question. Root cause of the gate leak:
+responses usually open with near-silence, so the 600 ms bleed calibration
+measured room noise and set the floor there; every later loud word passed
+the RMS check, and reverberant echo scored under the 0.75 waveform-match
+threshold. Two changes:
+
+1. Calibration now only counts frames while the playback reference is
+   audible (last 1 s of written samples above −50 dBFS), so the floor is
+   measured from real bleed, not leading silence (`_playback_is_audible`,
+   audio.py).
+2. A transcript echo guard as the catch-all: the coordinator keeps the
+   last 4,000 chars of assistant text; within 6 s of assistant activity, a
+   voice transcript whose words are ≥80 % contained in that text (exact
+   phrase match under 3 words) is discarded before routing
+   (`discard_if_echo` on PipelineContext, `echo_discarded` guard stat).
+   Acoustic gates will always leak occasionally; matching against what
+   Klaus literally just said is the reliable backstop. The 6 s window
+   keeps genuine follow-ups that reuse Klaus's vocabulary from being
+   swallowed later.
+
+Rejected: adaptive/continuous floor tracking during playback — bleed and
+user speech are indistinguishable to the RMS+VAD gate, so any floor that
+learns from "non-candidate" frames either learns nothing (bleed classifies
+as speech) or learns the user's voice. Knobs: 0.8 overlap, 6 s window,
+−50 dBFS audibility, all module constants in turn_coordinator/audio.
+
+Separately: clicks/pops during playback are suspected output-buffer
+underruns; `stream.write()` returns an underflow flag which is now counted
+and logged (WARNING) per event. Diagnose from the log before fixing.
+audio.py is at 781 lines — next change there should carry out the
+VoiceActivatedRecorder split proposed in the closing ceiling audit.

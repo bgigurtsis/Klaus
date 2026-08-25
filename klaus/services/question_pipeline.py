@@ -136,6 +136,9 @@ class PipelineContext:
     cancel_event: threading.Event | None = None
     transcriber: Callable[[bytes], "str | Transcription"] | None = None
     speech_ended_at: float | None = None
+    # Returns True when a transcript is an echo of the assistant's own
+    # speech picked up by the mic; the turn is discarded before routing.
+    discard_if_echo: Callable[[str], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +178,10 @@ class QuestionPipeline:
         timings.transcript_ready = time.perf_counter()
         if not transcript:
             logger.info("Empty transcript, returning to idle")
+            hooks.on_state("idle")
+            return
+        if context.discard_if_echo is not None and context.discard_if_echo(transcript):
+            logger.info("Discarding echo of assistant speech: %r", transcript)
             hooks.on_state("idle")
             return
         if cancel_event is not None and cancel_event.is_set():

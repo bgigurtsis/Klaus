@@ -291,6 +291,8 @@ class TestBargeInGate:
         rec._gate_vad = MagicMock()
         rec._gate_vad.is_speech.return_value = True
         rec.enter_gated_mode()
+        # Calibration only counts frames while playback is audible.
+        rec.observe_playback(np.full(16_000, 3_000, dtype=np.int16), 16_000)
         return rec
 
     def test_loud_speech_triggers_barge_in_after_calibration(self):
@@ -319,6 +321,7 @@ class TestBargeInGate:
         rec._gate_vad = MagicMock()
         rec._gate_vad.is_speech.return_value = True
         rec.enter_gated_mode()
+        rec.observe_playback(np.full(16_000, 3_000, dtype=np.int16), 16_000)
         playback = np.full(FRAME_SIZE, 100, dtype=np.int16)
         speech = np.full(FRAME_SIZE, 200, dtype=np.int16)
 
@@ -401,6 +404,35 @@ class TestBargeInGate:
 
         assert len(barge) == 1
         assert rec._gated is False
+
+    def test_calibration_waits_for_audible_playback(self):
+        """A response that opens with silence must not calibrate the floor
+        at room noise — calibration starts once playback is audible."""
+        barge: list[np.ndarray] = []
+        rec = _make_vad_recorder(
+            on_barge_in=barge.append,
+            barge_in_min_voiced_ms=90,
+            barge_in_rms_margin_dbfs=6.0,
+            min_rms_dbfs=-60.0,
+        )
+        rec._gate_vad = MagicMock()
+        rec._gate_vad.is_speech.return_value = True
+        rec.enter_gated_mode()
+
+        room_noise = np.full(FRAME_SIZE, 10, dtype=np.int16)
+        for _ in range(rec._gate_calib_frames):
+            rec._process_gate_frame(room_noise)
+        assert rec._gate_calib == []
+
+        rec.observe_playback(np.full(16_000, 3_000, dtype=np.int16), 16_000)
+        bleed = np.full(FRAME_SIZE, 2_000, dtype=np.int16)
+        for _ in range(rec._gate_calib_frames):
+            rec._process_gate_frame(bleed)
+        for _ in range(10):
+            rec._process_gate_frame(bleed)
+
+        assert not barge
+        assert rec._gated is True
 
     def test_prime_with_seed_starts_utterance(self):
         started = MagicMock()

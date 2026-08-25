@@ -166,6 +166,56 @@ def test_replay_waits_for_drain_before_resuming_mic() -> None:
     ]
 
 
+def test_echo_of_assistant_speech_is_discarded() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock()
+    )
+    coordinator._on_assistant_text_delta(
+        "That was just a descriptive summary of what I saw in your workspace."
+    )
+
+    assert coordinator._is_echo_of_assistant(
+        "a descriptive summary of what I saw in your workspace"
+    )
+    with coordinator._guard_stats_lock:
+        assert coordinator._guard_stats["echo_discarded"] == 1
+
+
+def test_genuine_question_with_novel_words_is_not_echo() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock()
+    )
+    coordinator._on_assistant_text_delta(
+        "The resolution mention was based on that screenshot and context."
+    )
+
+    assert not coordinator._is_echo_of_assistant(
+        "why did you bring up the resolution at all just now"
+    )
+
+
+def test_echo_match_expires_outside_window() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock()
+    )
+    coordinator._on_assistant_text_delta("the exact same words as before")
+    coordinator._assistant_active_at = 0.0  # long ago
+
+    assert not coordinator._is_echo_of_assistant("the exact same words as before")
+
+
+def test_short_echo_requires_exact_phrase() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock()
+    )
+    coordinator._on_assistant_text_delta("I noticed an audio-focused section.")
+
+    assert coordinator._is_echo_of_assistant("audio focused")
+    # Substring of a longer word must not match ("yes" vs "yesterday").
+    coordinator._on_assistant_text_delta(" That was yesterday.")
+    assert not coordinator._is_echo_of_assistant("yes")
+
+
 def test_barge_in_increments_guard_stat() -> None:
     turn_state = TurnState()
     coordinator = _coordinator(

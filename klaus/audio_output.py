@@ -46,6 +46,7 @@ class AudioOutput:
         self._playback_observer = playback_observer
         self._stream_latency = _FALLBACK_LATENCY_S
         self._drain_deadline = 0.0
+        self._underflow_count = 0
 
     def set_playback_observer(
         self,
@@ -109,7 +110,13 @@ class AudioOutput:
         while offset < len(audio) and self._is_current(playback_id):
             end = min(offset + WRITE_BLOCK_FRAMES, len(audio))
             try:
-                stream.write(audio[offset:end])
+                underflowed = stream.write(audio[offset:end])
+                if underflowed is True:
+                    self._underflow_count += 1
+                    logger.warning(
+                        "Audio output underflow #%d (buffer ran dry; audible as a click)",
+                        self._underflow_count,
+                    )
             except Exception:
                 if not self._is_current(playback_id):
                     logger.debug("Audio write ended during cancellation", exc_info=True)

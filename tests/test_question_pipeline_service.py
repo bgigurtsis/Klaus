@@ -68,6 +68,26 @@ def test_empty_transcript_returns_idle():
     assert states == ["idle"]
 
 
+def test_echo_transcript_is_discarded_before_routing():
+    stt = MagicMock()
+    stt.transcribe.return_value = "what I said a moment ago"
+    brain = MagicMock()
+    states: list[str] = []
+
+    _pipeline(stt, MagicMock(), brain).run(
+        b"wav",
+        context=PipelineContext(
+            input_mode="voice_activation",
+            current_session_id=None,
+            discard_if_echo=lambda transcript: True,
+        ),
+        hooks=_hooks(on_state=states.append),
+    )
+
+    assert states == ["idle"]
+    brain.decide_route.assert_not_called()
+
+
 def test_realtime_turn_persists_exchange_and_streams_answer():
     stt = MagicMock()
     stt.transcribe.return_value = "Explain this"

@@ -288,6 +288,21 @@ class VoiceActivatedRecorder:
             max_samples = sample_rate * self._playback_max_seconds
             self._playback_samples = combined[-max_samples:]
 
+    def _playback_is_audible(self, window_seconds: float = 1.0) -> bool:
+        """Whether the last second of played audio carries real energy.
+
+        The reference is written ahead of the speaker by the output buffer,
+        so this is a coarse proxy for "Klaus is making sound right now".
+        """
+        with self._playback_lock:
+            reference = self._playback_samples
+            rate = self._playback_sample_rate
+            if rate is None or reference.size == 0:
+                return False
+            tail = reference[-int(rate * window_seconds):]
+            tail_rms = self._compute_rms_dbfs(tail)
+        return tail_rms >= -50.0
+
     def _matches_recent_playback(self, candidate: np.ndarray) -> bool:
         """Return whether a mic segment matches Klaus's recent output waveform."""
         with self._playback_lock:
@@ -487,6 +502,11 @@ class VoiceActivatedRecorder:
         rms_dbfs = self._compute_rms_dbfs(frame)
 
         if len(self._gate_calib) < self._gate_calib_frames:
+            # Responses often open with near-silence; calibrating on that
+            # window would set the floor at room noise and let every loud
+            # word pass. Only count frames while playback is audible.
+            if not self._playback_is_audible():
+                return
             self._gate_calib.append(rms_dbfs)
             if len(self._gate_calib) == self._gate_calib_frames:
                 bleed = float(np.percentile(self._gate_calib, 90))

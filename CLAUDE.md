@@ -48,7 +48,7 @@ both engines stream 24 kHz PCM speech directly.
 | `hotkeys.py` | ~250 | pynput import gating and `HotkeyListener` (global PTT/toggle keys) |
 | `config.py` | ~680 | Config interpretation: `RuntimeSettings` driven by `_RUNTIME_SETTING_SPECS` (exports generate from the spec table; consistency test in `test_config.py`), dynamic system prompt, thin `save_*` validators |
 | `config_store.py` | ~180 | Config persistence: data-dir paths, default template, TOML parsing, raw read/write, `set_top_level_value` |
-| `audio.py` | ~760 | `PushToTalkRecorder`, `VoiceActivatedRecorder` (confirmed onset, speculative maybe-end, gated barge-in with bleed calibration and echo rejection, `prime_with_seed`) |
+| `audio.py` | ~780 | `PushToTalkRecorder`, `VoiceActivatedRecorder` (confirmed onset, speculative maybe-end, gated barge-in with audible-playback bleed calibration and echo rejection, `prime_with_seed`); at the split threshold — see closing ceiling audit |
 | `realtime.py` | ~700 | `RealtimeBrain`: persistent OpenAI Realtime WebSocket, audio+context turns, streamed PCM/transcripts, cancel + unplayed-audio truncation, `warm_up()`, single retry of connection drops with zero output; `build_live_brain()` picks the engine by provider |
 | `gemini_live.py` | ~460 | `GeminiLiveBrain`: per-turn Gemini Live session (`asyncio.run` in a thread), local `_history` resent each turn, Google Search tool, same zero-output single-retry |
 | `audio_output.py` | ~195 | Shared PCM playback over one persistent output stream; cues are skipped while a response streams; drain-deadline estimate + `wait_for_drain()` so teardown outlasts the speaker tail; `stop()` closes the stream for immediate silence |
@@ -72,7 +72,7 @@ both engines stream 24 kHz PCM speech directly.
 | Module | Lines | Purpose |
 |--------|------:|---------|
 | `question_pipeline.py` | ~350 | One turn: transcribe (speculative-aware) → route ∥ context capture → image or selected text → streamed answer → persist; `TurnTimings` + rolling p50/p95 aggregator |
-| `turn_coordinator.py` | ~290 | VAD/PTT/barge-in/replay/stop glue and guard stats; reads hot-swappable deps through getters |
+| `turn_coordinator.py` | ~380 | VAD/PTT/barge-in/replay/stop glue, guard stats, transcript echo guard; reads hot-swappable deps through getters |
 | `session_service.py` | ~190 | Session CRUD, activation flow, notes rebinding behind a `SessionView` of UI callables |
 | `turn_state.py` | ~150 | Locked owner of turn flags, per-turn cancel event, barge-in seed, queued PTT wav |
 | `device_switch.py` | ~130 | Camera/mic live-switch with rollback (refused mid-turn except forced pairing refresh) |
@@ -130,7 +130,10 @@ both engines stream 24 kHz PCM speech directly.
   echo rejection); trigger cancels the turn and primes the recorder with the
   buffered speech. Teardown waits for the output stream's drain estimate
   before disarming the gate, so the audible tail of an answer cannot start
-  a new turn. No acoustic echo cancellation.
+  a new turn. Gate calibration only counts frames while playback is audible
+  (responses open with silence). A transcript echo guard discards voice
+  turns whose words are mostly what Klaus just said (6 s window). No
+  acoustic echo cancellation.
 - **Cancellable turns**: fresh `threading.Event` per turn; Stop pill, PTT
   keypress, and barge-in set it. Realtime sends `response.cancel` and
   truncates unheard server audio at the played position; Gemini closes its

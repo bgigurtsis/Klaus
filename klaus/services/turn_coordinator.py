@@ -9,7 +9,9 @@ device switches and settings changes.
 from __future__ import annotations
 
 import logging
+import re
 import threading
+import time
 from collections.abc import Callable
 
 import klaus.config as config
@@ -34,7 +36,22 @@ def _new_guard_stats() -> dict[str, int]:
         "vad_discarded": 0,
         "quality_gate_discarded": 0,
         "barge_in": 0,
+        "echo_discarded": 0,
     }
+
+
+_WORD_RE = re.compile(r"[a-z0-9']+")
+# Keep roughly the last minute of assistant speech for echo matching.
+_RECENT_ASSISTANT_CHARS = 4_000
+# A transcript this similar to recent assistant speech is treated as echo.
+_ECHO_OVERLAP_THRESHOLD = 0.8
+# Echo can only arrive while Klaus speaks or shortly after; outside this
+# window a matching transcript is a genuine question reusing the same words.
+_ECHO_WINDOW_S = 6.0
+
+
+def _normalize_words(text: str) -> list[str]:
+    return _WORD_RE.findall(text.lower())
 
 
 class TurnCoordinator:
@@ -71,6 +88,8 @@ class TurnCoordinator:
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
         self._last_failed_wav: bytes | None = None
+        self._recent_assistant_text = ""
+        self._assistant_active_at = 0.0
 
     # -- Guard stats --
 
@@ -103,6 +122,35 @@ class TurnCoordinator:
             self._session_tag(),
             _format_guard_stats(snapshot),
         )
+
+    # -- Echo guard --
+
+    def _on_assistant_text_delta(self, text: str) -> None:
+        self._recent_assistant_text = (
+            self._recent_assistant_text + text
+        )[-_RECENT_ASSISTANT_CHARS:]
+        self._assistant_active_at = time.monotonic()
+        self._signals.assistant_text_delta.emit(text)
+
+    def _is_echo_of_assistant(self, transcript: str) -> bool:
+        """True when a voice transcript is Klaus's own speech from the mic."""
+        if time.monotonic() - self._assistant_active_at > _ECHO_WINDOW_S:
+            return False
+        words = _normalize_words(transcript)
+        recent_text = self._recent_assistant_text
+        if not words or not recent_text:
+            return False
+        if len(words) < 3:
+            # Too few words for overlap stats: require the exact phrase.
+            recent_joined = " ".join(_normalize_words(recent_text))
+            is_echo = f" {' '.join(words)} " in f" {recent_joined} "
+        else:
+            recent_words = set(_normalize_words(recent_text))
+            overlap = sum(1 for w in words if w in recent_words) / len(words)
+            is_echo = overlap >= _ECHO_OVERLAP_THRESHOLD
+        if is_echo:
+            self._increment_guard_stat(key="echo_discarded", event="echo_discard")
+        return is_echo
 
     # -- VAD callbacks (audio threads) --
 
@@ -240,6 +288,7 @@ class TurnCoordinator:
                 cancel_event=cancel_event,
                 transcriber=self._voice_transcriber() if voice_mode else None,
                 speech_ended_at=vad_recorder.last_voiced_at if voice_mode else None,
+                discard_if_echo=self._is_echo_of_assistant if voice_mode else None,
             )
             hooks = PipelineHooks(
                 on_state=self._signals.state_changed.emit,
@@ -248,7 +297,7 @@ class TurnCoordinator:
                 on_sessions_changed=self._signals.sessions_changed.emit,
                 on_exchange_count_updated=self._update_exchange_count,
                 on_speaking_started=self._on_pipeline_speaking_started,
-                on_assistant_text_delta=self._signals.assistant_text_delta.emit,
+                on_assistant_text_delta=self._on_assistant_text_delta,
                 on_cancelled=self._on_pipeline_cancelled,
             )
             self._get_pipeline().run(wav_bytes, context=context, hooks=hooks)
@@ -265,6 +314,7 @@ class TurnCoordinator:
                 # Keep the barge-in gate armed until the speaker buffer has
                 # drained: the audible tail must not reach the ungated VAD.
                 self._audio_output.wait_for_drain()
+                self._assistant_active_at = time.monotonic()
             seed, queued_wav = self._turn_state.end_turn()
             if voice_mode:
                 vad_recorder.exit_gated_mode()
@@ -277,6 +327,7 @@ class TurnCoordinator:
 
     def _on_pipeline_speaking_started(self) -> None:
         self._turn_state.speaking_started()
+        self._assistant_active_at = time.monotonic()
         if self._get_input_mode() == "voice_activation" and config.BARGE_IN_ENABLED:
             self._get_vad_recorder().enter_gated_mode()
         self._signals.state_changed.emit("speaking")
