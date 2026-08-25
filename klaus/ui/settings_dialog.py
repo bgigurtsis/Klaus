@@ -35,6 +35,7 @@ from klaus.ui.shared.key_validation import (
     KEY_PATTERNS,
     validate_api_key,
 )
+from klaus.permissions import MIC_UNAVAILABLE_MESSAGE
 from klaus.ui.shared.mic_level_monitor import MicLevelMonitor
 from klaus.ui.remarkable_pairing import open_remarkable_pairing
 from klaus.reading_source import REMARKABLE_PAPER_PURE_SOURCE_INDEX
@@ -542,6 +543,14 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel("Volume level"))
         layout.addWidget(self._mic_meter)
 
+        self._mic_error_label = QLabel(MIC_UNAVAILABLE_MESSAGE)
+        self._mic_error_label.setWordWrap(True)
+        self._mic_error_label.setStyleSheet(
+            f"color: {theme.ERROR_COLOR}; background: transparent; border: none;"
+        )
+        self._mic_error_label.setVisible(False)
+        layout.addWidget(self._mic_error_label)
+
         layout.addStretch()
         return page
 
@@ -570,7 +579,11 @@ class SettingsDialog(QDialog):
         self._stop_mic()
         device_idx = self._selected_mic_device()
         if self._mic_monitor.start(device_idx):
+            self._mic_error_label.setVisible(False)
             self._mic_timer.start(50)
+        else:
+            self._mic_meter.setValue(0)
+            self._mic_error_label.setVisible(True)
 
     def _populate_mics(self) -> None:
         self._mic_combo.blockSignals(True)

@@ -16,3 +16,13 @@ def test_screen_recording_failure_has_actionable_guidance() -> None:
 
 def test_unrelated_failure_has_no_permission_guidance() -> None:
     assert guidance_for_error("camera unavailable") is None
+
+
+def test_microphone_error_maps_to_guidance():
+    from klaus.permissions import guidance_for_error
+
+    guidance = guidance_for_error("Could not open the microphone input device")
+
+    assert guidance is not None
+    assert guidance.title == "Microphone Unavailable"
+    assert "Privacy_Microphone" in guidance.settings_url

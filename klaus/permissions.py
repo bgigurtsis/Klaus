@@ -8,6 +8,14 @@ from dataclasses import dataclass
 SCREEN_RECORDING_SETTINGS_URL = (
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 )
+MICROPHONE_SETTINGS_URL = (
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+)
+
+MIC_UNAVAILABLE_MESSAGE = (
+    "Could not open this microphone. Check that it is connected, and that "
+    "Klaus is allowed under System Settings > Privacy & Security > Microphone."
+)
 
 
 @dataclass(frozen=True)
@@ -33,5 +41,11 @@ def guidance_for_error(error: str) -> PermissionGuidance | None:
                 "again."
             ),
             settings_url=SCREEN_RECORDING_SETTINGS_URL,
+        )
+    if "microphone" in normalized or "input device" in normalized:
+        return PermissionGuidance(
+            title="Microphone Unavailable",
+            message=MIC_UNAVAILABLE_MESSAGE,
+            settings_url=MICROPHONE_SETTINGS_URL,
         )
     return None
