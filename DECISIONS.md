@@ -200,3 +200,22 @@ passing the app object (hidden coupling) and over re-wiring the coordinator
 on every swap (churn). KlausApp keeps thin @_safe_slot delegates so Qt signal
 connections and the safe-slot behavior stay in one place. Revisit the getter
 pattern if a coordinator dependency stops being hot-swappable.
+
+## 2026-08-25 — Latency pass: route-gated capture, persistent output stream
+
+The pipeline now routes before capturing (routing is a local scoring pass on
+both engines, so the old capture-concurrent-with-route thread was solving a
+problem that no longer exists): the full-window text-context capture is
+skipped on non-image routes, and the route thread is deleted. The audio
+output stream stays open across playbacks — the accept-tone earcon and the
+response no longer pay two device open/close cycles per turn — and cues are
+skipped (not preempting) while a response plays, removing the
+earcon-truncates-response hazard that was previously safe only by ordering.
+Cancel (stop) still closes the stream for immediate silence; it reopens
+lazily. Rejected: pre-encoding the API JPEG in the capture loop — each turn
+already encodes at most once, and a 5 fps background encode trades constant
+CPU for ~30 ms once per image turn. Also deliberately NOT changed yet:
+`latency="high"` on the output stream and a receive-side prebuffer — both are
+knobs to A/B against the TurnTimings baseline before touching (high latency
+masks network jitter today; a prebuffer only pays for itself if latency
+drops with it).
