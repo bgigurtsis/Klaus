@@ -49,20 +49,47 @@ class StepIndicator(QWidget):
                 dot.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px;")
 
 
+class DownloadCancelled(Exception):
+    """Raised inside the progress callback to abort the download."""
+
+
 class ModelDownloadThread(QThread):
-    """Downloads the Moonshine STT model in a background thread."""
+    """Downloads the Moonshine STT model in a background thread.
+
+    Emits ``progress`` with a 0..1 fraction as bytes arrive. ``cancel()``
+    aborts the download at the next chunk; the thread then finishes with
+    ``success=False`` and the error string ``"cancelled"``. Moonshine caches
+    completed files, so a retry after cancel resumes at file granularity.
+    """
 
     finished = pyqtSignal(bool, str)  # success, error_message
+    progress = pyqtSignal(float, str)  # fraction 0..1, current file name
 
     def __init__(self, language: str):
         super().__init__()
         self._language = language
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def run(self) -> None:
+        def on_progress(fraction: float, name: str) -> None:
+            if self._cancelled:
+                raise DownloadCancelled()
+            self.progress.emit(float(fraction), str(name))
+
         try:
             from moonshine_voice import get_model_for_language
-            get_model_for_language(self._language)
-            self.finished.emit(True, "")
+            get_model_for_language(self._language, on_progress=on_progress)
+            # Moonshine swallows exceptions from its optional spelling-model
+            # prefetch, so a cancel raised there still returns normally.
+            if self._cancelled:
+                self.finished.emit(False, "cancelled")
+            else:
+                self.finished.emit(True, "")
+        except DownloadCancelled:
+            self.finished.emit(False, "cancelled")
         except Exception as exc:
             self.finished.emit(False, str(exc))
 

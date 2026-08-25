@@ -169,3 +169,49 @@ def test_setup_persists_only_the_selected_provider_key(qt_app, monkeypatch) -> N
     assert saved_keys == [("openai", "sk-test-openai")]
     assert saved_model == ["gpt-realtime-2.1-mini"]
     wizard.close()
+
+
+def test_model_download_progress_updates_bar_and_status(qt_app) -> None:
+    wizard = SetupWizard()
+
+    wizard._model_progress.setRange(0, 1000)
+    wizard._on_model_download_progress(0.42, "model.bin")
+
+    assert wizard._model_progress.value() == 420
+    assert "42%" in wizard._model_status.text()
+    wizard.close()
+
+
+def test_model_download_cancel_shows_resume_hint_and_retry(qt_app) -> None:
+    wizard = SetupWizard()
+
+    wizard._on_model_download_done(False, "cancelled")
+
+    assert "Retry resumes" in wizard._model_status.text()
+    assert not wizard._model_retry_btn.isHidden()
+    assert wizard._model_cancel_btn.isHidden()
+    wizard.close()
+
+
+def test_model_download_thread_cancel_aborts_and_reports_cancelled(qt_app) -> None:
+    from klaus.ui.wizard_widgets import ModelDownloadThread
+
+    thread = ModelDownloadThread("en")
+    results: list[tuple[bool, str]] = []
+    thread.finished.connect(lambda ok, err: results.append((ok, err)))
+
+    def fake_download(language, on_progress=None):
+        for i in range(10):
+            on_progress(i / 10, "model.bin")
+
+    import moonshine_voice
+
+    original = moonshine_voice.get_model_for_language
+    moonshine_voice.get_model_for_language = fake_download
+    try:
+        thread.cancel()
+        thread.run()
+    finally:
+        moonshine_voice.get_model_for_language = original
+
+    assert results == [(False, "cancelled")]

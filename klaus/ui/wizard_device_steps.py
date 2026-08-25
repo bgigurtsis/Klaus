@@ -256,13 +256,23 @@ class DeviceStepsMixin:
         self._model_retry_btn.setVisible(False)
         layout.addWidget(self._model_retry_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        self._model_cancel_btn = QPushButton("Cancel")
+        self._model_cancel_btn.setObjectName("wizard-link-btn")
+        self._model_cancel_btn.setFixedWidth(120)
+        self._model_cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._model_cancel_btn.clicked.connect(self._cancel_model_download)
+        self._model_cancel_btn.setVisible(False)
+        layout.addWidget(self._model_cancel_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
         layout.addStretch()
         self._stack.addWidget(page)
         self._download_thread: ModelDownloadThread | None = None
 
     def _start_model_download(self) -> None:
         self._model_retry_btn.setVisible(False)
-        self._model_progress.setRange(0, 0)
+        self._model_cancel_btn.setVisible(True)
+        self._model_progress.setRange(0, 1000)
+        self._model_progress.setValue(0)
         self._model_status.setText("Downloading...")
         self._model_status.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
@@ -272,10 +282,22 @@ class DeviceStepsMixin:
 
         from klaus.config import STT_MOONSHINE_LANGUAGE
         self._download_thread = ModelDownloadThread(STT_MOONSHINE_LANGUAGE)
+        self._download_thread.progress.connect(self._on_model_download_progress)
         self._download_thread.finished.connect(self._on_model_download_done)
         self._download_thread.start()
 
+    def _cancel_model_download(self) -> None:
+        if self._download_thread is not None:
+            self._download_thread.cancel()
+        self._model_cancel_btn.setEnabled(False)
+
+    def _on_model_download_progress(self, fraction: float, _name: str) -> None:
+        self._model_progress.setValue(int(fraction * 1000))
+        self._model_status.setText(f"Downloading... {int(fraction * 100)}%")
+
     def _on_model_download_done(self, success: bool, error: str) -> None:
+        self._model_cancel_btn.setVisible(False)
+        self._model_cancel_btn.setEnabled(True)
         if success:
             self._model_progress.setRange(0, 1)
             self._model_progress.setValue(1)
@@ -285,6 +307,17 @@ class DeviceStepsMixin:
                 "background: transparent; border: none;"
             )
             QTimer.singleShot(600, lambda: self._set_step(5))
+        elif error == "cancelled":
+            self._model_progress.setRange(0, 1)
+            self._model_progress.setValue(0)
+            self._model_status.setText(
+                "Download cancelled. Completed files are kept, so Retry resumes."
+            )
+            self._model_status.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: {theme.FONT_SIZE_CAPTION}px; "
+                "background: transparent; border: none;"
+            )
+            self._model_retry_btn.setVisible(True)
         else:
             self._model_progress.setRange(0, 1)
             self._model_progress.setValue(0)
