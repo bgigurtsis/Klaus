@@ -2,16 +2,17 @@
 
 import sys
 
-import klaus.main as main_module
+import klaus.hotkeys as hotkeys_module
 import pytest
 from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import QApplication, QPushButton
-from klaus.main import (
+from klaus.hotkeys import (
+    HotkeyListener,
     _hotkey_action_for_press,
     _mark_key_pressed,
     _mark_key_released,
-    _should_disable_global_hotkeys,
+    should_disable_global_hotkeys,
 )
 from klaus.ui.main_window import MainWindow, hotkey_action_for_keypress
 
@@ -34,37 +35,37 @@ def send_key_event(
 def test_disables_global_hotkeys_on_macos_26_with_python_312(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(
-        main_module.platform,
+        hotkeys_module.platform,
         "mac_ver",
         lambda: ("26.5.2", ("", "", ""), "arm64"),
     )
     monkeypatch.delenv("KLAUS_FORCE_GLOBAL_HOTKEYS", raising=False)
 
-    assert _should_disable_global_hotkeys() is True
+    assert should_disable_global_hotkeys() is True
 
 
 def test_allows_global_hotkeys_before_macos_26(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(
-        main_module.platform,
+        hotkeys_module.platform,
         "mac_ver",
         lambda: ("15.7", ("", "", ""), "arm64"),
     )
     monkeypatch.delenv("KLAUS_FORCE_GLOBAL_HOTKEYS", raising=False)
 
-    assert _should_disable_global_hotkeys() is False
+    assert should_disable_global_hotkeys() is False
 
 
 def test_force_override_allows_global_hotkeys_on_macos_26(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(
-        main_module.platform,
+        hotkeys_module.platform,
         "mac_ver",
         lambda: ("26.5.2", ("", "", ""), "arm64"),
     )
     monkeypatch.setenv("KLAUS_FORCE_GLOBAL_HOTKEYS", "1")
 
-    assert _should_disable_global_hotkeys() is False
+    assert should_disable_global_hotkeys() is False
 
 
 def test_listener_plain_section_is_ptt_on_macos_shared_key() -> None:
@@ -186,3 +187,39 @@ def test_focused_child_cannot_consume_shift_section_hotkey(
 
     assert toggles == [True]
     window.close()
+
+
+def test_hotkey_listener_start_is_noop_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        hotkeys_module,
+        "should_disable_global_hotkeys",
+        lambda: True,
+    )
+    listener = HotkeyListener(
+        "§",
+        "§",
+        on_ptt_down=lambda: None,
+        on_ptt_up=lambda: None,
+        on_toggle=lambda: None,
+    )
+
+    listener.start()
+
+    assert listener._listener is None
+    listener.stop()
+
+
+def test_hotkey_listener_restart_updates_key_names() -> None:
+    listener = HotkeyListener(
+        "§",
+        "§",
+        on_ptt_down=lambda: None,
+        on_ptt_up=lambda: None,
+        on_toggle=lambda: None,
+    )
+
+    listener.restart("f2", "f3")
+
+    assert listener.ptt_key_name == "f2"
+    assert listener.toggle_key_name == "f3"
+    assert listener._listener is None

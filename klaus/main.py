@@ -4,125 +4,20 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import platform
 import sys
 import threading
 
-
-def _should_disable_global_hotkeys() -> bool:
-    """Return True when starting pynput global hotkeys is known to crash.
-
-    macOS 26 has a crash path in pynput/Carbon keyboard APIs across supported
-    Python versions (HIToolbox dispatch queue assertion). Keep the app alive
-    by disabling global hotkeys and relying on in-app Qt hotkeys.
-
-    Also used at import time to skip loading pynput altogether, since merely
-    importing pynput loads pyobjc extensions that trigger intermittent
-    segfaults in the ctypes layer on this platform combination.
-    """
-    if os.environ.get("KLAUS_FORCE_GLOBAL_HOTKEYS") == "1":
-        return False
-
-    mac_version = platform.mac_ver()[0]
-    try:
-        mac_major = int(mac_version.split(".", 1)[0])
-    except (TypeError, ValueError):
-        return False
-
-    return mac_major >= 26
-
-
-if not _should_disable_global_hotkeys():
-    from pynput.keyboard import Key, KeyCode, Listener as KeyboardListener
-    _PYNPUT_AVAILABLE = True
-    _SHIFT_KEYS: set = {Key.shift, Key.shift_l, Key.shift_r}
-else:
-    Key = KeyCode = KeyboardListener = None  # type: ignore[assignment,misc]
-    _PYNPUT_AVAILABLE = False
-    _SHIFT_KEYS = set()
-
-_PYNPUT_SHIFTED_VARIANTS: dict[str, str] = {
-    "±": "§",
-}
+from klaus.hotkeys import HotkeyListener, should_disable_global_hotkeys
 
 import klaus.config as config
 from klaus.permissions import guidance_for_error
-
-
-def _resolve_pynput_key(key_name: str) -> object:
-    """Convert a config key name (e.g. ``'F2'``) to a pynput key object.
-
-    Only valid when ``_PYNPUT_AVAILABLE`` is True.
-    """
-    try:
-        return getattr(Key, key_name.lower())
-    except AttributeError:
-        if len(key_name) == 1:
-            return KeyCode.from_char(key_name)
-        raise ValueError(f"Unknown hotkey: {key_name!r}")
-
-from klaus.stt import SpeechToText  # noqa: E402
+from klaus.stt import SpeechToText
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
-
-
-def _mark_key_pressed(pressed: set[object], key: object | None) -> bool:
-    """Track key presses and suppress repeated press events for held keys."""
-    if key is None:
-        return False
-    if key in pressed:
-        return False
-    pressed.add(key)
-    return True
-
-
-def _mark_key_released(pressed: set[object], key: object | None) -> None:
-    if key is None:
-        return
-    pressed.discard(key)
-
-
-def _is_shift_active(pressed: set[object]) -> bool:
-    return any(key in pressed for key in _SHIFT_KEYS)
-
-
-def _resolve_shifted_key(key: Key | KeyCode | None, shift_active: bool) -> Key | KeyCode | None:
-    """Map a shifted character back to its unshifted base key (e.g. ± → §)."""
-    if not shift_active or key is None:
-        return key
-    char = getattr(key, "char", None)
-    if char and char in _PYNPUT_SHIFTED_VARIANTS:
-        return KeyCode.from_char(_PYNPUT_SHIFTED_VARIANTS[char])
-    return key
-
-
-def _hotkey_action_for_press(
-    *,
-    key: Key | KeyCode | None,
-    ptt_key: Key | KeyCode,
-    toggle_key: Key | KeyCode,
-    shift_active: bool,
-) -> str | None:
-    """Classify a key press as ``ptt_down``, ``toggle``, or ``None``."""
-    if key is None:
-        return None
-
-    effective = _resolve_shifted_key(key, shift_active)
-    if effective != ptt_key and effective != toggle_key:
-        return None
-
-    if ptt_key == toggle_key and effective == ptt_key:
-        return "toggle" if shift_active else "ptt_down"
-
-    if effective == toggle_key:
-        return "toggle"
-    if effective == ptt_key:
-        return "ptt_down"
-    return None
 
 
 def _safe_slot(func):
@@ -206,15 +101,13 @@ class KlausApp:
         self._last_ui_state = "idle"
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
-        self._hotkey_listener = None
-        self._ptt_key_name = self._runtime_settings.push_to_talk_key
-        self._toggle_key_name = self._runtime_settings.toggle_key
-        if _PYNPUT_AVAILABLE:
-            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
-            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
-        else:
-            self._ptt_pynput_key = None
-            self._toggle_pynput_key = None
+        self._hotkeys = HotkeyListener(
+            self._runtime_settings.push_to_talk_key,
+            self._runtime_settings.toggle_key,
+            on_ptt_down=self._on_key_down,
+            on_ptt_up=self._on_key_up,
+            on_toggle=self._toggle_input_mode,
+        )
         self._active_camera_index: int = config.CAMERA_DEVICE_INDEX
         self._active_mic_device: int | None = _configured_mic_device()
 
@@ -297,7 +190,7 @@ class KlausApp:
     def run(self) -> None:
         logger.info("Klaus starting")
 
-        _skip_pyobjc = _should_disable_global_hotkeys()
+        _skip_pyobjc = should_disable_global_hotkeys()
         if not _skip_pyobjc:
             import ctypes, ctypes.util
             from Foundation import NSBundle, NSProcessInfo
@@ -349,10 +242,10 @@ class KlausApp:
                 sys.exit(0)
             self._runtime_settings = config.get_runtime_settings()
             self._input_mode = self._runtime_settings.input_mode
-            self._ptt_key_name = self._runtime_settings.push_to_talk_key
-            self._toggle_key_name = self._runtime_settings.toggle_key
-            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
-            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
+            self._hotkeys.set_keys(
+                self._runtime_settings.push_to_talk_key,
+                self._runtime_settings.toggle_key,
+            )
 
         self._init_components()
 
@@ -380,11 +273,13 @@ class KlausApp:
         self._window.camera_widget.set_camera(self._camera)
         if startup_reading_error:
             self._surface_reading_source_error(startup_reading_error)
-        self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
+        self._window.set_hotkeys(
+            self._hotkeys.ptt_key_name, self._hotkeys.toggle_key_name
+        )
 
         self._load_sessions()
 
-        self._start_hotkey_listener()
+        self._hotkeys.start()
         self._setup_input_mode()
         config.save_input_mode(self._input_mode)
         self._signals.mode_changed.emit(self._input_mode)
@@ -489,92 +384,14 @@ class KlausApp:
 
     # -- Input mode --
 
-    def _start_hotkey_listener(self) -> None:
-        """Start the pynput global hotkey listener.
-
-        On macOS this requires Accessibility permission, which is hard to grant
-        when running as a Python script.  If the listener fails to start we log
-        a warning but carry on -- the Qt in-app key events (keyPressEvent on
-        MainWindow) still work when the window is focused.
-        """
-        if _should_disable_global_hotkeys():
-            logger.warning(
-                "Global hotkeys disabled on macOS %s with Python %s due a known "
-                "pynput crash. In-app hotkeys still work when the Klaus window "
-                "is focused. Set KLAUS_FORCE_GLOBAL_HOTKEYS=1 to force-enable "
-                "them (may crash).",
-                platform.mac_ver()[0] or "unknown",
-                platform.python_version(),
-            )
-            logger.info(
-                "macOS: F-keys trigger system actions by default "
-                "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
-                "keys as standard function keys' in System Settings > Keyboard, "
-                "or set a different key in ~/.klaus/config.toml (toggle_key)."
-            )
-            return
-
-        ptt_key = self._ptt_pynput_key
-        toggle_key = self._toggle_pynput_key
-        pressed_keys: set[Key | KeyCode] = set()
-        ptt_key_armed = False
-
-        def on_press(key: Key | KeyCode | None) -> None:
-            nonlocal ptt_key_armed
-            if not _mark_key_pressed(pressed_keys, key):
-                return
-
-            action = _hotkey_action_for_press(
-                key=key,
-                ptt_key=ptt_key,
-                toggle_key=toggle_key,
-                shift_active=_is_shift_active(pressed_keys),
-            )
-            if action == "toggle":
-                self._toggle_input_mode()
-                return
-            if action == "ptt_down" and not ptt_key_armed:
-                ptt_key_armed = True
-                self._on_key_down()
-
-        def on_release(key: Key | KeyCode | None) -> None:
-            nonlocal ptt_key_armed
-            _mark_key_released(pressed_keys, key)
-            if key == ptt_key and ptt_key_armed:
-                ptt_key_armed = False
-                self._on_key_up()
-
-        try:
-            self._hotkey_listener = KeyboardListener(
-                on_press=on_press, on_release=on_release,
-            )
-            self._hotkey_listener.daemon = True
-            self._hotkey_listener.start()
-            logger.info(
-                "Global hotkey listener started (ptt=%s, toggle=%s)",
-                self._ptt_key_name,
-                self._toggle_key_name,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Global hotkey listener failed to start: %s. "
-                "In-app hotkeys still work when the Klaus window is focused.",
-                exc,
-            )
-
-        logger.info(
-            "macOS: F-keys trigger system actions by default "
-            "(F3 = Mission Control). Use Fn+key, enable 'Use F1, F2, etc. "
-            "keys as standard function keys' in System Settings > Keyboard, "
-            "or set a different key in ~/.klaus/config.toml (toggle_key)."
-        )
-
     def _setup_input_mode(self) -> None:
         """Activate the current input mode and deactivate the other."""
         if self._input_mode == "push_to_talk":
             if self._vad_recorder.is_running:
                 self._vad_recorder.stop()
-            logger.info("Input mode: push-to-talk (hotkey: %s)", self._ptt_key_name)
+            logger.info(
+                "Input mode: push-to-talk (hotkey: %s)", self._hotkeys.ptt_key_name
+            )
         else:
             self._vad_recorder.start()
             logger.info("Input mode: voice activation")
@@ -1126,16 +943,13 @@ class KlausApp:
 
         # Settings dialog saves + reloads config on accept.
         self._runtime_settings = config.get_runtime_settings()
-        self._ptt_key_name = self._runtime_settings.push_to_talk_key
-        self._toggle_key_name = self._runtime_settings.toggle_key
-        if _PYNPUT_AVAILABLE:
-            self._ptt_pynput_key = _resolve_pynput_key(self._ptt_key_name)
-            self._toggle_pynput_key = _resolve_pynput_key(self._toggle_key_name)
-        self._window.set_hotkeys(self._ptt_key_name, self._toggle_key_name)
-        if self._hotkey_listener:
-            self._hotkey_listener.stop()
-            self._hotkey_listener = None
-            self._start_hotkey_listener()
+        self._hotkeys.restart(
+            self._runtime_settings.push_to_talk_key,
+            self._runtime_settings.toggle_key,
+        )
+        self._window.set_hotkeys(
+            self._hotkeys.ptt_key_name, self._hotkeys.toggle_key_name
+        )
 
         vault = config.OBSIDIAN_VAULT_PATH or ""
         current_base = self._notes.base_path
@@ -1193,8 +1007,7 @@ class KlausApp:
         logger.info("Klaus shutting down")
         if getattr(self, "_pairing_server", None) is not None:
             self._pairing_server.stop()
-        if self._hotkey_listener:
-            self._hotkey_listener.stop()
+        self._hotkeys.stop()
         self._vad_recorder.stop()
         self._audio_output.stop()
         close_brain = getattr(self._brain, "close", None)
