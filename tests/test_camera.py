@@ -43,6 +43,15 @@ def test_frame_encodes_as_base64_jpeg():
         assert base64.b64decode(camera.capture_base64_jpeg()) == b"jpeg"
 
 
+def test_frame_encodes_as_jpeg_bytes():
+    camera = Camera(device_index=-2)
+    camera._frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    encoded = np.frombuffer(b"jpeg", dtype=np.uint8)
+
+    with patch("klaus.camera.cv2.imencode", return_value=(True, encoded)):
+        assert camera.capture_jpeg_bytes() == b"jpeg"
+
+
 def test_unsupported_reading_source_fails_cleanly():
     with pytest.raises(RuntimeError, match="Choose Desk View"):
         Camera(device_index=0).start()

@@ -107,6 +107,8 @@ def test_realtime_exposes_all_obsidian_tools_for_a_configured_vault(tmp_path) ->
         "read_note",
         "set_notes_file",
         "save_note",
+        "save_screenshot",
+        "save_chat_summary",
         "configure_note_capture",
     ]
 
@@ -152,3 +154,70 @@ def test_capture_requires_a_current_note_and_can_be_stopped(tmp_path) -> None:
         "Stopped automatic Obsidian capture for this chat."
     )
     assert notes.capture_exchange("Not saved", "Not saved") is None
+
+
+def test_save_screenshot_creates_attachment_and_embeds_it(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+    notes.set_pending_screenshot(b"jpeg-bytes")
+
+    result = notes.save_screenshot("Example diagram", "Research/Examples")
+
+    attachments = list((tmp_path / "Attachments" / "Klaus").glob("*.jpg"))
+    assert len(attachments) == 1
+    assert attachments[0].read_bytes() == b"jpeg-bytes"
+    content = (tmp_path / "Research" / "Examples.md").read_text(encoding="utf-8")
+    assert "Example diagram" in content
+    assert f"![[Attachments/Klaus/{attachments[0].name}]]" in content
+    assert result.startswith("Saved screenshot: Attachments/Klaus/")
+
+
+def test_screenshot_attachment_path_cannot_escape_through_a_symlink(
+    tmp_path,
+) -> None:
+    vault = tmp_path / "Vault"
+    outside = tmp_path / "Outside"
+    vault.mkdir()
+    outside.mkdir()
+    (vault / "Attachments").symlink_to(outside, target_is_directory=True)
+    notes = NotesManager(str(vault))
+    notes.set_pending_screenshot(b"jpeg")
+
+    result = notes.save_screenshot(file_path="Examples")
+
+    assert "must stay inside" in result
+    assert list(outside.iterdir()) == []
+
+
+def test_automatic_capture_can_include_screenshots(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+    result = notes.configure_capture(
+        "conversation",
+        "Study Session",
+        include_screenshots=True,
+    )
+    notes.reset_changed()
+
+    notes.capture_exchange("Explain this", "It is a diagram.", screenshot=b"jpeg")
+
+    content = (tmp_path / "Study Session.md").read_text(encoding="utf-8")
+    assert "with screenshots" in result
+    assert "![[Attachments/Klaus/" in content
+
+
+def test_chat_summary_stops_capture(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+    notes.configure_capture("conversation", "Study Session")
+    notes.reset_changed()
+
+    result = notes.save_chat_summary(
+        "### Key ideas\n\n- Entropy measures multiplicity."
+    )
+
+    content = (tmp_path / "Study Session.md").read_text(encoding="utf-8")
+    assert "## Session summary -" in content
+    assert "### Key ideas" in content
+    assert notes.capture_mode == "off"
+    assert notes.capture_changed is True
+    assert result == (
+        "Saved chat summary and stopped automatic capture: Study Session.md"
+    )

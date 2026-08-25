@@ -58,12 +58,33 @@ Use `configure_note_capture` when the user asks to save later turns automaticall
 - Use `conversation` when the user wants both their questions and Klaus's answers.
 - Use `off` when the user asks to stop saving.
 - Include `file_path` when the user names a target note.
+- Set `include_screenshots` to true when the user asks to capture screenshots too.
 - Ask for a target file when no current note exists.
 - Do not call `save_note` for each captured turn. Klaus appends captured turns after each completed response.
 - A command that starts, changes, or stops capture is not itself captured.
+
+## Save screenshots
+
+Use `save_screenshot` when the user asks to save the current view or screenshot.
+
+- Include `file_path` when the user names a target note.
+- Use a short factual caption when the user supplies useful context.
+- Do not claim success when no screenshot is available.
+- Klaus stores images under `Attachments/Klaus/` and embeds them in the note.
+
+## End a chat
+
+Use `save_chat_summary` when the user asks to wrap up or summarize the chat.
+
+- Summarize the supplied chat transcript, including earlier stored exchanges.
+- Use concise `### Key ideas`, `### Decisions`, and `### Open questions` sections.
+- Omit empty sections.
+- Do not invent decisions, sources, or follow-up work.
+- The tool stops automatic capture after it saves the summary.
 
 ## Finish
 
 Report the exact vault-relative file path after a successful save.
 State whether Klaus created the note or appended to it when the tool result provides that detail.
 When capture changes, state what later turns Klaus will save.
+Report the attachment path after saving a screenshot.

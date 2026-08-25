@@ -54,6 +54,11 @@ class TestSessions:
         assert mem.get_session_notes_capture_mode(session.id) == "conversation"
         assert mem.list_sessions()[0].notes_capture_mode == "conversation"
 
+        mem.set_session_notes_capture_screenshots(session.id, True)
+
+        assert mem.get_session_notes_capture_screenshots(session.id) is True
+        assert mem.list_sessions()[0].notes_capture_screenshots is True
+
     def test_delete_session(self, mem):
         session = mem.create_session("To Delete")
         mem.save_exchange(session.id, "Q?", "A.")

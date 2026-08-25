@@ -20,8 +20,9 @@ Klaus stores the tablet address, username, and certificate fingerprint in its se
 
 Klaus stores session titles, transcripts, answers, image hashes, and low-resolution chat thumbnails in `~/.klaus/klaus.db`.
 Klaus does not store full-resolution captured page images in that database.
-Klaus discards full-resolution Paper Pure frames after use.
 Klaus may write notes into the Obsidian vault that you configure.
+Klaus may save full-resolution screenshots under `Attachments/Klaus/` in that vault when you request screenshot capture.
+Klaus discards full-resolution Paper Pure frames unless you request screenshot capture into Obsidian.
 Logs may contain vault paths, device details, timing, and error messages.
 
 ## Your controls
@@ -30,6 +31,7 @@ You can disable camera access, selected-text access, or Obsidian integration.
 You can remove the Gemini or OpenAI key in Settings.
 You can delete `~/.klaus/klaus.db` to remove local session history.
 You can inspect or delete `~/.klaus/config.toml` and `~/Library/Logs/Klaus/`.
+You can delete saved screenshots and notes from your Obsidian vault.
 
 Deleting local data does not delete data that a provider may retain.
 Use the provider's controls for provider-side deletion requests.

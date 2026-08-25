@@ -178,6 +178,20 @@ Klaus can also keep saving later turns in the current chat:
 Question capture stores your prompts. Conversation capture stores each prompt and Klaus answer.
 The setting follows the chat when you switch chats or restart Klaus.
 
+Klaus can include the screenshots it uses:
+
+> Save every question, answer, and screenshot to Research/Study Session.md.
+
+> Take a screenshot and save it to Research/Examples.md.
+
+Klaus stores saved images under `Attachments/Klaus/` inside the vault and embeds them in the note.
+
+Klaus can also close a session with a structured summary:
+
+> End this chat and save a summary to Research/Study Session.md.
+
+The summary can include key ideas, decisions, and open questions. Saving it stops automatic capture for that chat.
+
 ## API keys and data
 
 | Provider | Required | Used for |

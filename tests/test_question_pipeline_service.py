@@ -212,6 +212,90 @@ def test_capture_configuration_turn_is_persisted_but_not_captured(tmp_path):
     memory.set_session_notes_capture_mode.assert_called_once_with(
         "session-1", "questions"
     )
+    memory.set_session_notes_capture_screenshots.assert_called_once_with(
+        "session-1", False
+    )
+
+
+def test_screenshot_request_saves_full_image_to_obsidian(tmp_path):
+    stt = MagicMock()
+    stt.transcribe.return_value = "Take a screenshot and save it to Examples"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    camera.capture_base64_jpeg.return_value = "anBlZw=="
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    notes = NotesManager(str(tmp_path))
+
+    def ask_audio(**_kwargs):
+        notes.reset_changed()
+        result = notes.save_screenshot("Current example", "Examples")
+        assert result.startswith("Saved screenshot:")
+        return SimpleNamespace(
+            notes_file_changed=True,
+            assistant_text="Saved the screenshot.",
+            user_text="Take a screenshot and save it to Examples",
+            image_base64=None,
+            searches=[],
+        )
+
+    brain.ask_audio.side_effect = ask_audio
+    memory = MagicMock()
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+
+    _pipeline(stt, camera, brain, memory=memory, notes=notes).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    attachment = next((tmp_path / "Attachments" / "Klaus").glob("*.jpg"))
+    assert attachment.read_bytes() == b"jpeg"
+    assert "![[Attachments/Klaus/" in (tmp_path / "Examples.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_end_chat_summary_receives_stored_history_and_stops_capture(tmp_path):
+    stt = MagicMock()
+    stt.transcribe.return_value = "End this chat and save a summary"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    notes = NotesManager(str(tmp_path))
+    notes.configure_capture("conversation", "Study Session")
+    memory = MagicMock()
+    memory.get_exchanges.return_value = [
+        SimpleNamespace(user_text="What is entropy?", assistant_text="Multiplicity."),
+    ]
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+
+    def ask_audio(**kwargs):
+        assert "What is entropy?" in kwargs["notes_context"]
+        notes.reset_changed()
+        notes.save_chat_summary("### Key ideas\n\n- Entropy tracks multiplicity.")
+        return SimpleNamespace(
+            notes_file_changed=True,
+            assistant_text="Saved the chat summary.",
+            user_text="End this chat and save a summary",
+            image_base64=None,
+            searches=[],
+        )
+
+    brain.ask_audio.side_effect = ask_audio
+
+    _pipeline(stt, camera, brain, memory=memory, notes=notes).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    content = (tmp_path / "Study Session.md").read_text(encoding="utf-8")
+    assert "Entropy tracks multiplicity" in content
+    assert notes.capture_mode == "off"
 
 
 def test_cancelled_realtime_turn_skips_persistence():

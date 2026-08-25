@@ -18,7 +18,9 @@ from klaus.notes import (
     CONFIGURE_NOTE_CAPTURE_TOOL,
     NotesManager,
     READ_NOTE_TOOL,
+    SAVE_CHAT_SUMMARY_TOOL,
     SAVE_NOTE_TOOL,
+    SAVE_SCREENSHOT_TOOL,
     SEARCH_NOTES_TOOL,
     SET_NOTES_FILE_TOOL,
 )
@@ -70,6 +72,8 @@ class GeminiLiveBrain:
                     _as_gemini_tool(READ_NOTE_TOOL),
                     _as_gemini_tool(SET_NOTES_FILE_TOOL),
                     _as_gemini_tool(SAVE_NOTE_TOOL),
+                    _as_gemini_tool(SAVE_SCREENSHOT_TOOL),
+                    _as_gemini_tool(SAVE_CHAT_SUMMARY_TOOL),
                     _as_gemini_tool(CONFIGURE_NOTE_CAPTURE_TOOL),
                 ]
             )
@@ -395,10 +399,21 @@ class GeminiLiveBrain:
             return self._notes.read_note(str(arguments.get("file_path", "")))
         if name == "save_note" and self._notes is not None:
             return self._notes.save_note(str(arguments.get("content", "")))
+        if name == "save_screenshot" and self._notes is not None:
+            return self._notes.save_screenshot(
+                str(arguments.get("caption", "")),
+                str(arguments.get("file_path", "")),
+            )
+        if name == "save_chat_summary" and self._notes is not None:
+            return self._notes.save_chat_summary(
+                str(arguments.get("summary", "")),
+                str(arguments.get("file_path", "")),
+            )
         if name == "configure_note_capture" and self._notes is not None:
             return self._notes.configure_capture(
                 str(arguments.get("mode", "")),
                 str(arguments.get("file_path", "")),
+                arguments.get("include_screenshots"),
             )
         return json.dumps({"error": f"Unknown or unavailable tool: {name}"})
 

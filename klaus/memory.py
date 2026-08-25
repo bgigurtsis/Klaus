@@ -22,6 +22,7 @@ class Session:
     updated_at: float
     notes_file: str | None = None
     notes_capture_mode: str = "off"
+    notes_capture_screenshots: bool = False
 
 
 @dataclass
@@ -54,7 +55,8 @@ class Memory:
                 title TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL,
-                notes_capture_mode TEXT NOT NULL DEFAULT 'off'
+                notes_capture_mode TEXT NOT NULL DEFAULT 'off',
+                notes_capture_screenshots INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS exchanges (
@@ -85,6 +87,7 @@ class Memory:
         """)
         self._migrate_sessions_notes_file()
         self._migrate_sessions_notes_capture_mode()
+        self._migrate_sessions_notes_capture_screenshots()
         self._migrate_exchanges_note_file_path()
         self._migrate_exchanges_thumbnail_bytes()
         self._conn.commit()
@@ -110,6 +113,21 @@ class Memory:
                 "ALTER TABLE sessions ADD COLUMN notes_capture_mode TEXT NOT NULL DEFAULT 'off'"
             )
             logger.info("Migrated sessions table: added notes_capture_mode column")
+
+    def _migrate_sessions_notes_capture_screenshots(self) -> None:
+        """Add the screenshot capture preference to existing databases."""
+        cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(sessions)").fetchall()
+        ]
+        if "notes_capture_screenshots" not in cols:
+            self._conn.execute(
+                "ALTER TABLE sessions ADD COLUMN notes_capture_screenshots "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+            logger.info(
+                "Migrated sessions table: added notes_capture_screenshots column"
+            )
 
     def _migrate_exchanges_note_file_path(self) -> None:
         """Add the note link target to exchanges created by note actions."""
@@ -161,6 +179,7 @@ class Memory:
                 updated_at=r["updated_at"],
                 notes_file=r["notes_file"],
                 notes_capture_mode=r["notes_capture_mode"],
+                notes_capture_screenshots=bool(r["notes_capture_screenshots"]),
             )
             for r in rows
         ]
@@ -211,6 +230,32 @@ class Memory:
         )
         self._conn.commit()
         logger.info("Set note capture for session %s: %s", session_id[:8], mode)
+
+    def get_session_notes_capture_screenshots(self, session_id: str) -> bool:
+        """Return whether a session automatically saves screenshots."""
+        row = self._conn.execute(
+            "SELECT notes_capture_screenshots FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        return bool(row["notes_capture_screenshots"]) if row else False
+
+    def set_session_notes_capture_screenshots(
+        self,
+        session_id: str,
+        enabled: bool,
+    ) -> None:
+        """Persist automatic screenshot capture for a session."""
+        self._conn.execute(
+            "UPDATE sessions SET notes_capture_screenshots = ?, updated_at = ? "
+            "WHERE id = ?",
+            (int(enabled), time.time(), session_id),
+        )
+        self._conn.commit()
+        logger.info(
+            "Set screenshot capture for session %s: %s",
+            session_id[:8],
+            enabled,
+        )
 
     # -- Exchanges --
 

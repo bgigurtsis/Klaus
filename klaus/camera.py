@@ -112,11 +112,18 @@ class Camera:
 
     def capture_base64_jpeg(self, quality: int = 90) -> str | None:
         """Grab the current frame and return it as a base64-encoded JPEG string."""
+        jpeg = self.capture_jpeg_bytes(quality)
+        if jpeg is None:
+            return None
+        return base64.b64encode(jpeg).decode("utf-8")
+
+    def capture_jpeg_bytes(self, quality: int = 90) -> bytes | None:
+        """Grab the current frame and return JPEG bytes."""
         frame = self.get_frame()
         if frame is None:
             return None
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-        return base64.b64encode(buf.tobytes()).decode("utf-8")
+        return buf.tobytes()
 
     def capture_thumbnail_bytes(self, max_width: int = 320) -> bytes | None:
         """Return a small JPEG thumbnail as raw bytes (for the chat feed)."""

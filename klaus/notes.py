@@ -54,6 +54,59 @@ SAVE_NOTE_TOOL = {
     },
 }
 
+SAVE_SCREENSHOT_TOOL = {
+    "name": "save_screenshot",
+    "description": (
+        "Save the screenshot captured for the current question into the Obsidian "
+        "vault and embed it in the current note. Use this when the user asks to "
+        "take, save, attach, or add a screenshot."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "caption": {
+                "type": "string",
+                "description": "Optional short Markdown caption for the screenshot.",
+            },
+            "file_path": {
+                "type": "string",
+                "description": (
+                    "Optional vault-relative note path. Provide it when the user "
+                    "names a target note."
+                ),
+            },
+        },
+    },
+}
+
+SAVE_CHAT_SUMMARY_TOOL = {
+    "name": "save_chat_summary",
+    "description": (
+        "Append a structured end-of-chat summary to an Obsidian note and stop "
+        "automatic capture. Use this when the user asks to end, wrap up, or "
+        "summarize the current chat into Obsidian."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": (
+                    "Markdown with concise Key ideas, Decisions, and Open questions "
+                    "sections. Omit empty sections and do not invent details."
+                ),
+            },
+            "file_path": {
+                "type": "string",
+                "description": (
+                    "Optional vault-relative note path. Use the current note when omitted."
+                ),
+            },
+        },
+        "required": ["summary"],
+    },
+}
+
 CONFIGURE_NOTE_CAPTURE_TOOL = {
     "name": "configure_note_capture",
     "description": (
@@ -75,6 +128,13 @@ CONFIGURE_NOTE_CAPTURE_TOOL = {
                 "description": (
                     "Optional vault-relative Markdown path. Provide it when starting "
                     "capture unless this chat already has a current notes file."
+                ),
+            },
+            "include_screenshots": {
+                "type": "boolean",
+                "description": (
+                    "Whether captured screenshots should also be saved and embedded "
+                    "during automatic capture."
                 ),
             },
         },
@@ -129,8 +189,11 @@ class NotesManager:
         self._base = Path(base_path).expanduser() if base_path else Path()
         self.current_file: str | None = None
         self.capture_mode = "off"
+        self.capture_screenshots = False
+        self._pending_screenshot: bytes | None = None
         self._changed = False
         self._capture_changed = False
+        self._screenshot_saved = False
         logger.info("NotesManager base path: %s", self._base)
 
     @property
@@ -158,11 +221,17 @@ class NotesManager:
     def reset_changed(self) -> None:
         self._changed = False
         self._capture_changed = False
+        self._screenshot_saved = False
 
     @property
     def capture_changed(self) -> bool:
         """True if automatic capture changed during the current turn."""
         return self._capture_changed
+
+    @property
+    def screenshot_saved(self) -> bool:
+        """True if the current turn already saved its screenshot explicitly."""
+        return self._screenshot_saved
 
     def set_file(self, relative_path: str) -> str:
         """Set the active notes file. Creates dirs and file if needed.
@@ -194,6 +263,10 @@ class NotesManager:
         action = "Created note" if created else "Using existing note"
         return f"{action}: {relative_path}"
 
+    def set_pending_screenshot(self, screenshot: bytes | None) -> None:
+        """Set the screenshot available to note tools for the current turn."""
+        self._pending_screenshot = screenshot
+
     def save_note(self, content: str) -> str:
         """Append content to the current notes file.
 
@@ -224,14 +297,25 @@ class NotesManager:
             logger.error("Failed to write note to %s: %s", full, e)
             return f"Error writing note: {e}"
 
+        self._changed = True
         action = "Created note" if is_empty else "Appended note"
         return f"{action}: {relative_path}"
 
-    def configure_capture(self, mode: str, file_path: str = "") -> str:
+    def configure_capture(
+        self,
+        mode: str,
+        file_path: str = "",
+        include_screenshots: bool | None = None,
+    ) -> str:
         """Configure deterministic note capture for the active chat."""
         normalized_mode = mode.strip().casefold()
         if normalized_mode not in {"questions", "conversation", "off"}:
             return "Error: Capture mode must be questions, conversation, or off."
+        if include_screenshots is not None and not isinstance(
+            include_screenshots,
+            bool,
+        ):
+            return "Error: include_screenshots must be true or false."
 
         if file_path.strip():
             result = self.set_file(file_path)
@@ -241,6 +325,8 @@ class NotesManager:
             return "Error: No notes file set. Ask the user which file to use."
 
         self.capture_mode = normalized_mode
+        if include_screenshots is not None:
+            self.capture_screenshots = include_screenshots
         self._changed = True
         self._capture_changed = True
         if normalized_mode == "off":
@@ -250,7 +336,11 @@ class NotesManager:
             if normalized_mode == "questions"
             else "questions and answers"
         )
-        return f"Automatic capture enabled for {captured}: {self.current_file}"
+        screenshots = " with screenshots" if self.capture_screenshots else ""
+        return (
+            f"Automatic capture enabled for {captured}{screenshots}: "
+            f"{self.current_file}"
+        )
 
     def capture_exchange(
         self,
@@ -258,6 +348,7 @@ class NotesManager:
         assistant_text: str,
         *,
         created_at: float | None = None,
+        screenshot: bytes | None = None,
     ) -> str | None:
         """Append one completed exchange when automatic capture is active."""
         if self.capture_mode == "off":
@@ -267,7 +358,89 @@ class NotesManager:
         content = f"## {timestamp:%Y-%m-%d %H:%M}\n\n**You:** {user_text.strip()}"
         if self.capture_mode == "conversation":
             content += f"\n\n**Klaus:** {assistant_text.strip()}"
+        if self.capture_screenshots and screenshot:
+            try:
+                attachment = self._write_screenshot_attachment(
+                    screenshot,
+                    created_at=created_at,
+                )
+            except OSError as exc:
+                return f"Error writing screenshot: {exc}"
+            content += f"\n\n![[{attachment}]]"
         return self.save_note(content)
+
+    def save_screenshot(self, caption: str = "", file_path: str = "") -> str:
+        """Save and embed the screenshot captured for the current turn."""
+        if file_path.strip():
+            result = self.set_file(file_path)
+            if result.startswith("Error:"):
+                return result
+        if not self.current_file:
+            return "Error: No notes file set. Ask the user which file to use."
+        if not self._pending_screenshot:
+            return "Error: No screenshot is available for this question."
+
+        try:
+            attachment = self._write_screenshot_attachment(self._pending_screenshot)
+        except OSError as exc:
+            return f"Error writing screenshot: {exc}"
+        content = "### Screenshot"
+        if caption.strip():
+            content += f"\n\n{caption.strip()}"
+        content += f"\n\n![[{attachment}]]"
+        result = self.save_note(content)
+        if result.startswith("Error:"):
+            return result
+        self._screenshot_saved = True
+        return f"Saved screenshot: {attachment}; embedded in {self.current_file}"
+
+    def save_chat_summary(self, summary: str, file_path: str = "") -> str:
+        """Save a structured chat summary and stop automatic capture."""
+        if file_path.strip():
+            result = self.set_file(file_path)
+            if result.startswith("Error:"):
+                return result
+        summary = summary.strip()
+        if not summary:
+            return "Error: Chat summary is empty."
+        timestamp = datetime.now()
+        result = self.save_note(
+            f"## Session summary - {timestamp:%Y-%m-%d %H:%M}\n\n{summary}"
+        )
+        if result.startswith("Error:"):
+            return result
+        self.capture_mode = "off"
+        self.capture_screenshots = False
+        self._capture_changed = True
+        return f"Saved chat summary and stopped automatic capture: {self.current_file}"
+
+    def _write_screenshot_attachment(
+        self,
+        screenshot: bytes,
+        *,
+        created_at: float | None = None,
+    ) -> str:
+        """Write screenshot bytes into the vault's Klaus attachment folder."""
+        base = self._base.resolve()
+        folder = (base / "Attachments" / "Klaus").resolve()
+        try:
+            folder.relative_to(base)
+        except ValueError as exc:
+            raise OSError(
+                "Screenshot attachment path must stay inside the Obsidian vault."
+            ) from exc
+        folder.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.fromtimestamp(created_at) if created_at else datetime.now()
+        stem = f"Klaus Screenshot {timestamp:%Y-%m-%d %H%M%S}"
+        full = folder / f"{stem}.jpg"
+        suffix = 2
+        while full.exists() or full.is_symlink():
+            full = folder / f"{stem}-{suffix}.jpg"
+            suffix += 1
+        full.write_bytes(screenshot)
+        relative = full.relative_to(base).as_posix()
+        logger.info("Saved Obsidian screenshot: %s", full)
+        return relative
 
     def search_notes(self, query: str, *, limit: int = 8) -> str:
         """Find vault notes by path or text without leaving the vault root."""
