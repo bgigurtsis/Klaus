@@ -51,7 +51,7 @@ both engines stream 24 kHz PCM speech directly.
 | `audio.py` | ~760 | `PushToTalkRecorder`, `VoiceActivatedRecorder` (confirmed onset, speculative maybe-end, gated barge-in with bleed calibration and echo rejection, `prime_with_seed`) |
 | `realtime.py` | ~700 | `RealtimeBrain`: persistent OpenAI Realtime WebSocket, audio+context turns, streamed PCM/transcripts, cancel + unplayed-audio truncation, `warm_up()`, single retry of connection drops with zero output; `build_live_brain()` picks the engine by provider |
 | `gemini_live.py` | ~460 | `GeminiLiveBrain`: per-turn Gemini Live session (`asyncio.run` in a thread), local `_history` resent each turn, Google Search tool, same zero-output single-retry |
-| `audio_output.py` | ~170 | Shared PCM playback over one persistent output stream; cues are skipped while a response streams; `stop()` closes the stream for immediate silence |
+| `audio_output.py` | ~195 | Shared PCM playback over one persistent output stream; cues are skipped while a response streams; drain-deadline estimate + `wait_for_drain()` so teardown outlasts the speaker tail; `stop()` closes the stream for immediate silence |
 | `stt.py` | ~210 | Moonshine local transcription with download retry/backoff; `AsyncSpeechToText` loads the model on a background thread (`transcribe` blocks until ready) |
 | `memory.py` | ~270 | SQLite sessions/exchanges persistence |
 | `camera.py` | ~180 | Shared capture loop (5 fps window / 1 fps tablet), auto-rotation, base64/thumbnail export, `capture_text_context` |
@@ -128,7 +128,9 @@ both engines stream 24 kHz PCM speech directly.
   stays open during playback in a gated mode (max-aggressiveness VAD + RMS
   floor calibrated from playback bleed + sustained voiced run + waveform
   echo rejection); trigger cancels the turn and primes the recorder with the
-  buffered speech. No acoustic echo cancellation.
+  buffered speech. Teardown waits for the output stream's drain estimate
+  before disarming the gate, so the audible tail of an answer cannot start
+  a new turn. No acoustic echo cancellation.
 - **Cancellable turns**: fresh `threading.Event` per turn; Stop pill, PTT
   keypress, and barge-in set it. Realtime sends `response.cancel` and
   truncates unheard server audio at the played position; Gemini closes its

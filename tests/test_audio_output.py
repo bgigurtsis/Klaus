@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import queue
+import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from klaus.audio_output import AudioOutput
+from klaus.audio_output import DRAIN_MARGIN_S, AudioOutput
 
 
 @patch("klaus.audio_output.sd.OutputStream")
@@ -88,3 +89,79 @@ def test_written_audio_is_reported_to_playback_observer(output_stream) -> None:
     reported, rate = observer.call_args.args
     np.testing.assert_array_equal(reported, audio)
     assert rate == 24_000
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_write_sets_drain_deadline_from_stream_latency(output_stream) -> None:
+    stream = MagicMock(closed=False, latency=0.3)
+    output_stream.return_value = stream
+    output = AudioOutput()
+
+    before = time.monotonic()
+    output.play_pcm(np.arange(100, dtype=np.int16))
+    after = time.monotonic()
+
+    assert output._stream_latency == 0.3
+    assert before + 0.3 + DRAIN_MARGIN_S <= output._drain_deadline
+    assert output._drain_deadline <= after + 0.3 + DRAIN_MARGIN_S
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_wait_for_drain_returns_immediately_when_nothing_written(
+    output_stream,
+) -> None:
+    output = AudioOutput()
+
+    start = time.monotonic()
+    output.wait_for_drain(timeout=1.0)
+
+    assert time.monotonic() - start < 0.1
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_stop_clears_drain_deadline(output_stream) -> None:
+    stream = MagicMock(closed=False, latency=0.9)
+    output_stream.return_value = stream
+    output = AudioOutput()
+    output.play_pcm(np.arange(100, dtype=np.int16))
+    assert output._drain_deadline > time.monotonic()
+
+    output.stop()
+
+    start = time.monotonic()
+    output.wait_for_drain(timeout=1.0)
+    assert time.monotonic() - start < 0.1
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_wait_for_drain_respects_timeout(output_stream) -> None:
+    output = AudioOutput()
+    output._drain_deadline = time.monotonic() + 30.0
+
+    start = time.monotonic()
+    output.wait_for_drain(timeout=0.1)
+
+    elapsed = time.monotonic() - start
+    assert 0.05 <= elapsed < 0.5
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_unreadable_stream_latency_falls_back(output_stream) -> None:
+    stream = MagicMock(closed=False, latency="high")
+    output_stream.return_value = stream
+    output = AudioOutput()
+
+    output.play_pcm(np.arange(100, dtype=np.int16))
+
+    assert output._stream_latency == 0.5
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_extreme_stream_latency_is_clamped(output_stream) -> None:
+    stream = MagicMock(closed=False, latency=5.0)
+    output_stream.return_value = stream
+    output = AudioOutput()
+
+    output.play_pcm(np.arange(100, dtype=np.int16))
+
+    assert output._stream_latency == 1.0

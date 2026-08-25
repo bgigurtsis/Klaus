@@ -256,9 +256,10 @@ class VoiceActivatedRecorder:
         """Listen for barge-in speech while Klaus plays audio.
 
         The mic stream stays open, but frames must pass a stricter gate
-        (max-aggressiveness VAD, RMS above the calibrated playback-bleed
-        floor, sustained voiced run) before on_barge_in fires. Calibration
-        uses the first ~600ms of frames after entering the mode.
+        (VAD at aggressiveness min(sensitivity, 2), RMS above the calibrated
+        playback-bleed floor, sustained voiced run) before on_barge_in
+        fires. Calibration uses the first ~600ms of frames after entering
+        the mode.
         """
         self._gate_calib = []
         self._gate_floor_dbfs = self._min_rms_dbfs

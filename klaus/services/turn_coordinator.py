@@ -23,11 +23,17 @@ from klaus.services.turn_state import TurnState
 logger = logging.getLogger(__name__)
 
 
+def _format_guard_stats(stats: dict[str, int]) -> str:
+    """Render guard stats as key=value pairs for one log line."""
+    return " ".join(f"{key}={value}" for key, value in stats.items())
+
+
 def _new_guard_stats() -> dict[str, int]:
     """Create a fresh per-session STT guard stats dict."""
     return {
         "vad_discarded": 0,
         "quality_gate_discarded": 0,
+        "barge_in": 0,
     }
 
 
@@ -78,10 +84,9 @@ class TurnCoordinator:
             self._guard_stats = _new_guard_stats()
             snapshot = dict(self._guard_stats)
         logger.info(
-            "STT guard stats reset (session=%s): vad_discarded=%d | quality_gate_discarded=%d",
+            "STT guard stats reset (session=%s): %s",
             self._session_tag(),
-            snapshot["vad_discarded"],
-            snapshot["quality_gate_discarded"],
+            _format_guard_stats(snapshot),
         )
 
     def _increment_guard_stat(self, key: str, event: str, reason: str = "-") -> None:
@@ -92,12 +97,11 @@ class TurnCoordinator:
             self._guard_stats[key] += 1
             snapshot = dict(self._guard_stats)
         logger.info(
-            "STT guard event=%s reason=%s session=%s vad_discarded=%d quality_gate_discarded=%d",
+            "STT guard event=%s reason=%s session=%s %s",
             event,
             reason,
             self._session_tag(),
-            snapshot["vad_discarded"],
-            snapshot["quality_gate_discarded"],
+            _format_guard_stats(snapshot),
         )
 
     # -- VAD callbacks (audio threads) --
@@ -136,6 +140,7 @@ class TurnCoordinator:
         """The user talked over Klaus: cancel the turn, keep the seed audio."""
         if not self._turn_state.barge_in(seed):
             return
+        self._increment_guard_stat(key="barge_in", event="barge_in")
         logger.info("Barge-in: interrupting playback")
         # Cancellation closes the output stream, so keep it off the audio callback.
         threading.Thread(
@@ -256,6 +261,10 @@ class TurnCoordinator:
         else:
             self._last_failed_wav = None
         finally:
+            if voice_mode:
+                # Keep the barge-in gate armed until the speaker buffer has
+                # drained: the audible tail must not reach the ungated VAD.
+                self._audio_output.wait_for_drain()
             seed, queued_wav = self._turn_state.end_turn()
             if voice_mode:
                 vad_recorder.exit_gated_mode()
@@ -291,6 +300,8 @@ class TurnCoordinator:
         try:
             self._get_brain().speak_text(text)
         finally:
+            if voice_mode:
+                self._audio_output.wait_for_drain()
             seed = self._turn_state.end_replay()
             if voice_mode:
                 vad_recorder.exit_gated_mode()

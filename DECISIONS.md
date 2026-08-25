@@ -321,3 +321,33 @@ band; proposed splits, none urgent:
 The final before/after latency table still needs Billy's 10 live turns per
 engine (the TurnTimings aggregator logs p50/p95 every 10 turns); the code
 side of the roadmap is complete apart from the D1–D10 owner decisions.
+
+## 2026-08-25 — Barge-in self-trigger: wait for the speaker to drain
+
+With barge-in on, Klaus's own answer started a new turn a bit after playback
+finished. Cause: the output stream opens with `latency="high"` and is never
+drained, so `ask_audio` returns (and teardown disarms the bleed-calibrated
+barge-in gate) while the OS buffer is still playing the tail through the
+speaker. The tail then fell to the ungated path — 450 ms settle plus a linear
+cross-correlation echo match (0.75 threshold) that room reverb slips under.
+
+Decision: estimate drain in `AudioOutput` (deadline = last write +
+`stream.latency` + 150 ms margin, sound because `write()` blocks until buffer
+space exists) and have the coordinator call `wait_for_drain()` before
+`end_turn()`, so the gate stays armed until the tail is inaudible. A real
+barge-in during the tail still works: turn_state is still speaking, and the
+cancel path (`AudioOutput.stop()`) clears the deadline and unblocks the wait.
+Applied to non-barge-in voice mode and replay too; PTT skips the wait.
+
+Rejected: draining the stream (`stream.stop()`) at end of playback — races
+the cross-thread cancel close and adds stopped-but-open state to the
+persistent-stream design (see the 2026-08-25 latency-pass entry); lengthening
+the hardcoded 450 ms/1200 ms windows — that extends exactly the path whose
+echo matcher is the unreliable defense. Both windows stay as backstops.
+
+Deferred owner decisions: gate VAD at `Vad(3)` instead of
+`Vad(min(sensitivity, 2))` (docstring corrected to match the code); making
+the 150 ms drain margin configurable. Revisit if Bluetooth sinks (buffering
+PortAudio cannot see) still leak a tail past the estimate — the margin
+constant is the knob. Also added a `barge_in` guard-stat counter so false
+triggers are visible in logs.

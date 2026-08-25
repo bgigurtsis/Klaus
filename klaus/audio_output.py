@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 import numpy as np
@@ -14,6 +15,21 @@ logger = logging.getLogger(__name__)
 
 PCM_SAMPLE_RATE = 24_000
 WRITE_BLOCK_FRAMES = 2_048
+# Extra wall-clock allowance past the stream's reported latency before the
+# hardware buffer is assumed drained (audible playback lags the last write).
+DRAIN_MARGIN_S = 0.15
+_FALLBACK_LATENCY_S = 0.5
+
+
+def _clamp_latency(stream: sd.OutputStream) -> float:
+    """Read the stream's output latency, clamped to a sane range."""
+    try:
+        latency = float(stream.latency)
+    except (TypeError, ValueError):
+        return _FALLBACK_LATENCY_S
+    if not 0.0 < latency < 10.0:
+        return _FALLBACK_LATENCY_S
+    return min(max(latency, 0.05), 1.0)
 
 
 class AudioOutput:
@@ -28,6 +44,8 @@ class AudioOutput:
         self._playback_id = 0
         self._stream_playback_active = False
         self._playback_observer = playback_observer
+        self._stream_latency = _FALLBACK_LATENCY_S
+        self._drain_deadline = 0.0
 
     def set_playback_observer(
         self,
@@ -70,6 +88,7 @@ class AudioOutput:
                 latency="high",
             )
             self._stream.start()
+            self._stream_latency = _clamp_latency(self._stream)
             logger.info("Opened audio output stream (%d Hz, %d ch)", rate, channels)
             return self._stream
 
@@ -96,6 +115,11 @@ class AudioOutput:
                     logger.debug("Audio write ended during cancellation", exc_info=True)
                     break
                 raise
+            # write() blocks until buffer space exists, so at most one
+            # latency-worth of audio remains unplayed after it returns.
+            self._drain_deadline = (
+                time.monotonic() + self._stream_latency + DRAIN_MARGIN_S
+            )
             self._report_playback(audio[offset:end], PCM_SAMPLE_RATE)
             offset = end
         return offset
@@ -148,9 +172,24 @@ class AudioOutput:
         if stream is not None:
             self._write_audio(stream, audio, playback_id)
 
+    def wait_for_drain(self, timeout: float = 2.0) -> None:
+        """Block until the hardware buffer has likely finished playing.
+
+        The deadline is an estimate from the last write plus the stream
+        latency; stop() clears it, so a cancel unblocks any waiter.
+        """
+        give_up_at = time.monotonic() + timeout
+        while True:
+            now = time.monotonic()
+            deadline = self._drain_deadline
+            if now >= deadline or now >= give_up_at:
+                return
+            time.sleep(min(deadline - now, give_up_at - now, 0.05))
+
     def stop(self) -> None:
         """Stop playback and close the output stream."""
         with self._stream_lock:
             self._playback_id += 1
+            self._drain_deadline = 0.0
             self._close_stream_locked()
         logger.info("Audio playback interrupted")
