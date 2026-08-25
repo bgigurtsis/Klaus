@@ -81,70 +81,79 @@ Desk View needs strong, even lighting to read small text.
 3. Keep that window in front.
 4. Select text when you want Klaus to use an exact passage.
 
-### Read a reMarkable Paper Pure
+### Quick setup for reMarkable Paper Pure
 
-Requirements:
+Klaus currently supports reMarkable Paper Pure on software 3.27.x. It does not
+support reMarkable 1, reMarkable 2, Paper Pro, Paper Pro Move, or Paper Pure
+3.28 yet.
 
-- A Mac running macOS 12 or later with Klaus installed.
-- A reMarkable Paper Pure running reMarkable OS 3.27.x.
-- Developer Mode enabled and the tablet SSH password available.
-- An awake, unlocked tablet connected by USB-C or reachable over Wi-Fi.
-- One completed reManager setup so the tablet has Vellum and Xovi.
-- Internet access on the Mac for the verified streamer download.
+Initial setup needs a USB-C cable, Developer Mode, the tablet's SSH password,
+[reManager](https://github.com/rmitchellscott/reManager), and an open copy of
+Klaus. Developer Mode may reset the tablet. Sync or export your files before
+you enable it, and follow the warning shown on the tablet.
 
-Enabling Developer Mode may reset the tablet. Sync or export important files
-before following the warning shown by the tablet.
+1. Install reManager on the Mac.
 
-Open Klaus. Download and run the standalone installer:
+   ```sh
+   brew install --cask remanager
+   ```
+
+2. Connect Paper Pure by USB. In reManager, add `root@10.11.99.1` with the SSH
+   password shown by Developer Mode.
+3. Let reManager install [Vellum](https://github.com/vellum-dev/vellum-cli)
+   when it prompts you.
+4. Leave Klaus open. Download this repository and run its setup script.
+
+   ```sh
+   git clone --depth 1 https://github.com/bgigurtsis/Klaus.git
+   cd Klaus
+   ./scripts/setup-remarkable-paper-pure.sh
+   ```
+
+The script may pair Klaus through the tablet's Wi-Fi hostname or Wi-Fi address.
+After setup succeeds, disconnect USB-C and keep the Mac and tablet on the same
+network. USB-C should only be needed again if you reinstall the tablet service.
+
+The script checks the model and tablet software before it changes anything. It
+downloads a pinned Paper Pure build of goMarkableStream and verifies its
+SHA-512 hash. It then installs the signed Vellum dependencies, builds two local
+packages from the files under `packaging/remarkable/`, starts the tablet
+service, and pairs Klaus through its private local socket. You do not need a
+custom reManager build or another Vellum package source.
+
+Vellum labels the two Klaus packages as untrusted because the script builds
+them locally instead of downloading them from Vellum's signed package index.
+The script uses `--allow-untrusted` only for those two packages. It verifies the
+downloaded service against the hash stored in the setup script first.
+
+To check the tablet and download without installing anything, run:
 
 ```sh
-curl --fail --location \
-  https://raw.githubusercontent.com/bgigurtsis/Klaus/main/scripts/install-remarkable-paperpure.sh \
-  --output /tmp/install-klaus-paper-pure.sh
-bash /tmp/install-klaus-paper-pure.sh
+./scripts/setup-remarkable-paper-pure.sh --dry-run
 ```
 
-The downloaded script fetches its small support files from the same Klaus
-revision and verifies every file before use. You can inspect the script before
-running it. If you already have a Klaus checkout, run:
+If the tablet cannot download a dependency, install `framebuffer-spy`,
+`xovi-message-broker`, and `mount-utils` from reManager's **Mods** tab. Then run
+the setup script again. For a Wi-Fi connection, pass the tablet host:
 
 ```sh
-./scripts/install-remarkable-paperpure.sh
+./scripts/setup-remarkable-paper-pure.sh --host remarkable.local.
 ```
 
-Enter the tablet SSH password when SSH asks for it. The installer downloads the
-Paper Pure service, verifies its checksum, installs its Vellum dependencies,
-starts the service, and pairs it with Klaus. It sends the generated service
-password straight to Klaus without displaying or copying it. Run the same
-command again to update or repair the service.
-
-For a tablet reached over Wi-Fi, provide both addresses:
+If Klaus was closed during setup, open **Settings > Reading**, choose **Pair
+manually...**, and enter the private values from this command:
 
 ```sh
-./scripts/install-remarkable-paperpure.sh \
-  --host root@192.168.1.50 \
-  --address https://192.168.1.50:2001
+ssh root@10.11.99.1 /home/root/.vellum/bin/klaus-remarkable-pairing
 ```
 
-The tablet must use reMarkable OS 3.27 until the Paper Pure streamer supports a
-newer release. If dependency installation fails over USB, connect the tablet to
-Wi-Fi or install `mount-utils`, `framebuffer-spy`, and `xovi-message-broker` in
-reManager before rerunning the command.
-
-When the packages become available in the public Vellum repository, reManager
-can replace this manual install path. Its **Pair with Klaus** action uses the
-same private pairing channel.
-
-Klaus tests the service, pins the certificate, stores the password in Apple
-Keychain, and selects **reMarkable Paper Pure**. You only need to pair again
-after the package credentials or tablet certificate change. The reManager
-package can also provide **Show pairing details** and **Pair manually** as a
-fallback.
+Do not share that command's output. Klaus stores the password in Apple
+Keychain and pins the tablet certificate. You normally pair again only after
+the package credentials or tablet certificate changes.
 
 Klaus previews the current tablet screen about once each second. It captures a
 fresh frame after speech ends, before it sends the question to the selected
-model. Pairing tests the service version, login, and PNG decoding. Klaus pins
-the tablet certificate and asks you to pair again if that certificate changes.
+model.
 
 ### Control the conversation
 
@@ -193,7 +202,7 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 | `reasoning_effort` | `high` | Choose `low`, `medium`, or `high` reasoning effort |
 | `voice` | `cedar` for GPT, `Kore` for Gemini | Choose the voice available for the selected live model |
 | `camera_index` | `-1` | Start without a reading source, or use Active window with `-3`, Desk View with `-2`, or Paper Pure with `-4` |
-| `remarkable_address` | `https://10.11.99.1:2001` | Set the paired USB or Wi-Fi service address |
+| `remarkable_address` | `https://10.11.99.1:2001` | Store the paired Wi-Fi service address; old USB pairings may fall back to `remarkable.local.` |
 | `remarkable_username` | `klaus` | Set the service username shown by the tablet package |
 | `remarkable_certificate_sha256` | empty | Pin the certificate after successful pairing |
 | `input_mode` | `push_to_talk` | Use push-to-talk or hands-free input |

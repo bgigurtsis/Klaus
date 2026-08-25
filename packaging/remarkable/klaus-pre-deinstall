@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+reboot_required=0
+systemctl disable --now klaus-remarkable.service 2>/dev/null || true
+[ ! -x /home/root/xovi/stock ] || /home/root/xovi/stock
+if grep -q '^overlay.*/etc' /proc/mounts; then
+	mount --make-private /etc
+fi
+if ! /home/root/.vellum/bin/mount-rw; then
+	sleep 2
+	/home/root/.vellum/bin/mount-rw
+fi
+trap '/home/root/.vellum/bin/mount-restore' EXIT
+rm -f /etc/systemd/system/klaus-remarkable.service
+rm -f /etc/systemd/system/multi-user.target.wants/klaus-remarkable.service
+if ! /home/root/.vellum/bin/mount-restore; then
+	reboot_required=1
+fi
+trap - EXIT
+[ ! -x /home/root/xovi/start ] || /home/root/xovi/start
+systemctl daemon-reload
+if [ "$reboot_required" = "1" ]; then
+	echo "Restart Paper Pure to restore its read-only system."
+fi
+
+if [ "${VELLUM_PURGE:-0}" = "1" ]; then
+	rm -rf /home/root/.config/klaus-remarkable
+fi

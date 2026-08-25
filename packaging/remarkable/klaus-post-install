@@ -1,0 +1,54 @@
+#!/bin/sh
+set -eu
+
+config_dir=/home/root/.config/klaus-remarkable
+config=$config_dir/service.env
+if [ ! -s "$config" ]; then
+	umask 077
+	mkdir -p "$config_dir"
+	password=$(dd if=/dev/urandom bs=24 count=1 2>/dev/null | base64 | tr -d '\n=')
+	cat > "$config" <<EOF
+RK_SERVER_BIND_ADDR=:2001
+RK_SERVER_USERNAME=klaus
+RK_SERVER_PASSWORD=$password
+RK_HTTPS=true
+RK_TLS_AUTO_GENERATE=true
+RK_TLS_CERT_DIR=$config_dir/certs
+RK_JWT_ENABLED=true
+RK_JWT_SECRET_DIR=$config_dir/secrets
+RK_JWT_TOKEN_LIFETIME=1h
+RK_TAILSCALE_ENABLED=false
+EOF
+	chmod 600 "$config"
+fi
+
+reboot_required=0
+[ ! -x /home/root/xovi/stock ] || /home/root/xovi/stock
+if grep -q '^overlay.*/etc' /proc/mounts; then
+	mount --make-private /etc
+fi
+if ! /home/root/.vellum/bin/mount-rw; then
+	sleep 2
+	/home/root/.vellum/bin/mount-rw
+fi
+trap '/home/root/.vellum/bin/mount-restore' EXIT
+mkdir -p /etc/systemd/system/multi-user.target.wants
+rm -f /etc/systemd/system/klaus-remarkable.service
+cp /home/root/.vellum/share/klaus-remarkable/klaus-remarkable.service \
+	/etc/systemd/system/klaus-remarkable.service
+chmod 644 /etc/systemd/system/klaus-remarkable.service
+ln -sfn /etc/systemd/system/klaus-remarkable.service \
+	/etc/systemd/system/multi-user.target.wants/klaus-remarkable.service
+if ! /home/root/.vellum/bin/mount-restore; then
+	reboot_required=1
+fi
+trap - EXIT
+[ ! -x /home/root/xovi/start ] || /home/root/xovi/start
+systemctl daemon-reload
+systemctl enable --now klaus-remarkable.service
+if [ "$reboot_required" = "1" ]; then
+	echo "Restart Paper Pure to restore its read-only system."
+fi
+
+echo "Klaus Paper Pure service installed."
+echo "Use klaus-remarkable-pairing to view private pairing details."

@@ -11,6 +11,7 @@ import threading
 from unittest.mock import MagicMock, patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -188,6 +189,45 @@ def test_cancelled_request_does_not_connect(remarkable_server):
     cancelled.set()
     with pytest.raises(RemarkableCancelledError):
         _client(remarkable_server).screenshot_png(cancelled)
+
+
+def test_existing_usb_pairing_falls_back_to_wifi_hostname(monkeypatch):
+    client = RemarkableClient(
+        "https://10.11.99.1:2001",
+        "klaus",
+        "secret",
+        "a" * 64,
+        retries=0,
+    )
+    attempts: list[tuple[str, int]] = []
+
+    class FakeConnection:
+        def __init__(self, host, port, _fingerprint, _timeout):
+            attempts.append((host, port))
+            self.host = host
+
+        def request(self, *_args, **_kwargs):
+            if self.host == "10.11.99.1":
+                raise OSError("USB disconnected")
+
+        def getresponse(self):
+            return SimpleNamespace(
+                status=200,
+                getheaders=lambda: [],
+                read=lambda: b"ok",
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(remarkable_module, "_PinnedHTTPSConnection", FakeConnection)
+
+    status, _headers, payload = client._request("GET", "/version")
+
+    assert status == 200
+    assert payload == b"ok"
+    assert attempts == [("10.11.99.1", 2001), ("remarkable.local.", 2001)]
+    assert client._targets()[0] == ("remarkable.local.", 2001)
 
 
 def test_transient_network_failure_retries_once():

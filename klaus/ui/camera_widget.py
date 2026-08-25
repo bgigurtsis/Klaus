@@ -18,6 +18,7 @@ from klaus.reading_source import (
 )
 from klaus.ui import theme
 from klaus.ui.desk_view_setup import launch_desk_view_setup
+from klaus.ui.image_viewer import ClickableImageLabel, show_image_viewer
 
 
 class CameraWidget(QWidget):
@@ -75,7 +76,7 @@ class CameraWidget(QWidget):
         self._source_combo.activated.connect(self._on_source_activated)
         layout.addWidget(self._source_combo)
 
-        self._video_label = QLabel()
+        self._video_label = ClickableImageLabel()
         self._video_label.setObjectName("camera-preview")
         self._video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._video_label.setWordWrap(True)
@@ -84,6 +85,13 @@ class CameraWidget(QWidget):
         self._video_label.setMaximumHeight(204)
         self._video_label.setText("No reading context\nSelect a source to begin")
         self._video_label.setVisible(False)
+        self._video_label.image_clicked.connect(
+            lambda pixmap: show_image_viewer(
+                pixmap,
+                parent=self,
+                title="Reading context",
+            )
+        )
         layout.addWidget(self._video_label)
         self.setMaximumWidth(self.PREVIEW_WIDTH)
 
@@ -164,12 +172,24 @@ class CameraWidget(QWidget):
         frame = self._camera.get_frame_rgb()
         if frame is None:
             self._set_status("waiting")
+            self._video_label.clear_zoom_pixmap()
             self._video_label.setText(self._camera.waiting_message)
             return
 
         self._set_status("live")
 
+        frame = np.ascontiguousarray(frame)
         h, w, ch = frame.shape
+        bytes_per_line = ch * w
+        full_image = QImage(
+            frame.data,
+            w,
+            h,
+            bytes_per_line,
+            QImage.Format.Format_RGB888,
+        )
+        self._video_label.set_zoom_pixmap(QPixmap.fromImage(full_image))
+
         preview_rect = self._video_label.contentsRect()
         max_width = max(1, preview_rect.width())
         max_height = max(1, preview_rect.height())

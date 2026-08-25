@@ -31,8 +31,8 @@ class RemarkablePairingDialog(QDialog):
 
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Use this manual fallback if Pair with Klaus in reManager is unavailable. "
-            "Enter the details shown by the klaus-remarkable package action. "
+            "Use this fallback if the README setup script could not pair automatically. "
+            "Enter the details shown by klaus-remarkable-pairing on the tablet. "
             "Klaus will test the service and pin this tablet's certificate."
         )
         intro.setWordWrap(True)
@@ -40,7 +40,7 @@ class RemarkablePairingDialog(QDialog):
 
         form = QFormLayout()
         self.address_edit = QLineEdit(config.REMARKABLE_ADDRESS)
-        self.address_edit.setPlaceholderText("https://10.11.99.1:2001")
+        self.address_edit.setPlaceholderText("https://remarkable.local.:2001")
         self.username_edit = QLineEdit(config.REMARKABLE_USERNAME)
         self.username_edit.setPlaceholderText("klaus")
         self.password_edit = QLineEdit()
