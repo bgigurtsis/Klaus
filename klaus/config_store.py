@@ -110,6 +110,9 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # Play short audio cues on capture/cancel state changes.
 # earcons_enabled = true
 
+# UI text zoom factor (default: 1.0)
+# ui_font_scale = 1.0
+
 # Optional: describe your background so Klaus can tailor explanations.
 # user_background = ""
 # Optional: path to your Obsidian vault folder for the notes feature.

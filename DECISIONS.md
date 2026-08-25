@@ -284,3 +284,18 @@ and thin `save_*` validators that delegate. The old private names
 nothing downstream moves. Turn B (making `_SettingSpec` generate the
 dataclass fields, export map, and template section) is what gets the file
 under 600.
+
+## 2026-08-25 — config split, Turn B: spec table drives exports
+
+The 33-line export-annotations block and the 34-entry `_RUNTIME_EXPORTS`
+dict are gone: exports now generate from `_RUNTIME_SETTING_SPECS`
+(upper-cased runtime field) plus a 4-entry `_EXTRA_EXPORTS` for the fields
+built outside the spec table (API keys, user background, system prompt).
+Kept explicit rather than generated: the `RuntimeSettings` dataclass —
+`make_dataclass` would kill IDE navigation and typing for zero lines saved
+that matter. Instead a consistency test holds the spec table, dataclass,
+template, and exports together, which closes the drift bug class
+(`ui_font_scale` really was missing from the template; fixed). config.py is
+at 684 lines — above the 600 target, below the 800 ceiling; the remaining
+bulk is the system prompt body (~120 lines), which moves out only if the
+file grows again.

@@ -359,74 +359,23 @@ _api_keys: dict = {}
 _api_key_sources: dict[str, str] = {slug: "missing" for slug in API_KEY_SLUGS}
 _runtime_settings: RuntimeSettings
 
-# Set by _apply_runtime_settings.
-GEMINI_API_KEY: str
-OPENAI_API_KEY: str
-LIVE_MODEL: str
-REASONING_EFFORT: str
-OBSIDIAN_VAULT_PATH: str
-PUSH_TO_TALK_KEY: str
-TOGGLE_KEY: str
-CAMERA_DEVICE_INDEX: int
-REMARKABLE_ADDRESS: str
-REMARKABLE_USERNAME: str
-REMARKABLE_CERTIFICATE_SHA256: str
-MIC_DEVICE_INDEX: int
-VOICE: str
-INPUT_MODE: str
-VAD_SENSITIVITY: int
-VAD_SILENCE_TIMEOUT: float
-VAD_EARLY_STT_TIMEOUT: float
-VAD_MIN_DURATION: float
-VAD_MIN_VOICED_RATIO: float
-VAD_MIN_VOICED_FRAMES: int
-VAD_MIN_RMS_DBFS: float
-VAD_MIN_VOICED_RUN_FRAMES: int
-VAD_START_TRIGGER_MS: int
-STT_MOONSHINE_MODEL: str
-STT_MOONSHINE_LANGUAGE: str
-BARGE_IN_ENABLED: bool
-BARGE_IN_MIN_VOICED_MS: int
-BARGE_IN_RMS_MARGIN_DBFS: float
-EARCONS_ENABLED: bool
-USER_BACKGROUND: str
-SYSTEM_PROMPT: str
-
-
-_RUNTIME_EXPORTS: dict[str, str] = {
+# Module-level exports (config.CAMERA_DEVICE_INDEX, config.SYSTEM_PROMPT, …)
+# are assigned by _apply_runtime_settings from this map. Every setting spec
+# exports as the upper-cased runtime field; _EXTRA_EXPORTS lists the fields
+# that _settings_from_config fills outside the spec table. Adding a setting
+# to _RUNTIME_SETTING_SPECS is enough to export it — a consistency test in
+# tests/test_config.py holds the spec table, the RuntimeSettings dataclass,
+# and the config.toml template together.
+_EXTRA_EXPORTS: dict[str, str] = {
     "GEMINI_API_KEY": "gemini_api_key",
     "OPENAI_API_KEY": "openai_api_key",
-    "LIVE_MODEL": "live_model",
-    "REASONING_EFFORT": "reasoning_effort",
-    "OBSIDIAN_VAULT_PATH": "obsidian_vault_path",
-    "PUSH_TO_TALK_KEY": "push_to_talk_key",
-    "TOGGLE_KEY": "toggle_key",
-    "CAMERA_DEVICE_INDEX": "camera_device_index",
-    "REMARKABLE_ADDRESS": "remarkable_address",
-    "REMARKABLE_USERNAME": "remarkable_username",
-    "REMARKABLE_CERTIFICATE_SHA256": "remarkable_certificate_sha256",
-    "MIC_DEVICE_INDEX": "mic_device_index",
-    "VOICE": "voice",
-    "INPUT_MODE": "input_mode",
-    "VAD_SENSITIVITY": "vad_sensitivity",
-    "VAD_SILENCE_TIMEOUT": "vad_silence_timeout",
-    "VAD_EARLY_STT_TIMEOUT": "vad_early_stt_timeout",
-    "VAD_MIN_DURATION": "vad_min_duration",
-    "VAD_MIN_VOICED_RATIO": "vad_min_voiced_ratio",
-    "VAD_MIN_VOICED_FRAMES": "vad_min_voiced_frames",
-    "VAD_MIN_RMS_DBFS": "vad_min_rms_dbfs",
-    "VAD_MIN_VOICED_RUN_FRAMES": "vad_min_voiced_run_frames",
-    "VAD_START_TRIGGER_MS": "vad_start_trigger_ms",
-    "STT_MOONSHINE_MODEL": "stt_moonshine_model",
-    "STT_MOONSHINE_LANGUAGE": "stt_moonshine_language",
-    "BARGE_IN_ENABLED": "barge_in_enabled",
-    "BARGE_IN_MIN_VOICED_MS": "barge_in_min_voiced_ms",
-    "BARGE_IN_RMS_MARGIN_DBFS": "barge_in_rms_margin_dbfs",
-    "EARCONS_ENABLED": "earcons_enabled",
-    "UI_FONT_SCALE": "ui_font_scale",
     "USER_BACKGROUND": "user_background",
     "SYSTEM_PROMPT": "system_prompt",
 }
+_RUNTIME_EXPORTS: dict[str, str] = {
+    spec.runtime_field.upper(): spec.runtime_field
+    for spec in _RUNTIME_SETTING_SPECS
+} | _EXTRA_EXPORTS
 
 
 def _resolve_api_key(slug: str) -> tuple[str, str]:

@@ -123,3 +123,19 @@ def test_live_model_and_reasoning_effort_persist(config_dir):
         saved = tomllib.load(file)
     assert saved["live_model"] == "gpt-realtime-2.1-mini"
     assert saved["reasoning_effort"] == "high"
+
+
+def test_setting_specs_are_the_single_source_of_truth():
+    """Every setting exists in the spec table, the dataclass, the template,
+    and the module exports — adding one place is enough; drift fails here."""
+    from dataclasses import fields
+
+    spec_fields = {s.runtime_field for s in config._RUNTIME_SETTING_SPECS}
+    dataclass_fields = {f.name for f in fields(config.RuntimeSettings)}
+    extras = set(config._EXTRA_EXPORTS.values())
+
+    assert spec_fields | extras == dataclass_fields
+
+    for spec in config._RUNTIME_SETTING_SPECS:
+        assert spec.config_key in config._DEFAULT_CONFIG_TEMPLATE, spec.config_key
+        assert hasattr(config, spec.runtime_field.upper()), spec.runtime_field
