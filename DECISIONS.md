@@ -219,3 +219,17 @@ CPU for ~30 ms once per image turn. Also deliberately NOT changed yet:
 knobs to A/B against the TurnTimings baseline before touching (high latency
 masks network jitter today; a prebuffer only pays for itself if latency
 drops with it).
+
+## 2026-08-25 — setup_wizard.py split into shell + mixins + widgets
+
+setup_wizard.py was 1033 lines, over the 800 ceiling. Split into a 173-line
+shell (navigation, `_finish_setup`) plus `wizard_widgets.py` (StepIndicator,
+ModelDownloadThread, CameraPreview — underscore prefixes dropped so they are
+importable), `wizard_content_steps.py` (welcome/API-keys/about-you/done), and
+`wizard_device_steps.py` (camera/mic/model-download). The step builders moved
+as mixins rather than standalone widgets because every page reads and writes
+shared wizard state (`_collected`, `_stack`, `_next_btn`) — turning each page
+into its own QWidget would have meant threading eight callbacks through
+constructors for zero behavioral gain. Revisit if a page ever needs reuse
+outside the wizard. Bonus fix in the move: the API-key "Get a key" link now
+imports QUrl normally instead of via `__import__`.
