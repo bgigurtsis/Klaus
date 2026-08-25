@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+config=/home/root/.config/klaus-remarkable/service.env
+if [ ! -r "$config" ]; then
+	echo "Klaus pairing credentials are missing." >&2
+	exit 1
+fi
+
+value() {
+	sed -n "s/^$1=//p" "$config" | head -n 1
+}
+
+username=$(value RK_SERVER_USERNAME)
+password=$(value RK_SERVER_PASSWORD)
+wifi_addresses=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
+
+echo "Klaus reMarkable pairing"
+echo "USB address: https://10.11.99.1:2001"
+for address in $wifi_addresses; do
+	echo "Wi-Fi address: https://$address:2001"
+done
+echo "Username: $username"
+echo "Pairing password: $password"
+echo "Keep this output private. Klaus stores the password in Apple Keychain."

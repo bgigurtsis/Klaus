@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+drop_in=/etc/systemd/system/xochitl.service.d/00-xovi.conf
+
+if [ -f "$drop_in" ]; then
+	exit 0
+fi
+
+if [ ! -x /home/root/xovi/start ]; then
+	echo "Xovi is not installed. Install Xovi before starting Klaus Paper Pure." >&2
+	exit 1
+fi
+
+/home/root/xovi/start
