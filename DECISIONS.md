@@ -233,3 +233,18 @@ into its own QWidget would have meant threading eight callbacks through
 constructors for zero behavioral gain. Revisit if a page ever needs reuse
 outside the wizard. Bonus fix in the move: the API-key "Get a key" link now
 imports QUrl normally instead of via `__import__`.
+
+## 2026-08-25 — Single-retry policy for dropped turns and STT download
+
+Both engines now retry a failed turn exactly once, and only when the failure
+produced zero output (no audio frame played, no transcript delta shown). A
+drop after output started surfaces as an error instead — replaying would speak
+and print a duplicate half-answer. On the OpenAI side the closed-connection
+path raises a dedicated `ConnectionDropped` and the retry set is connection
+errors only; Gemini opens a fresh session per turn anyway, so its retry
+catches any pre-output exception. The Moonshine model fetch in `stt.py`
+retries transient `OSError`s three times with linear backoff — Moonshine
+caches completed files, so retries resume rather than restart the 245 MB
+download. Rejected: resuming a mid-answer turn by asking the model to
+"continue" — no reliable way to splice the audio, and the transcript would
+not match what was spoken.

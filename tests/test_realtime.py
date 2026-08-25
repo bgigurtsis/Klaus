@@ -450,3 +450,54 @@ def test_warm_up_connects_off_the_turn_path():
 
     assert connected.wait(timeout=2.0)
     assert brain.last_connect_ms is not None
+
+
+def test_mid_stream_drop_before_output_retries_once() -> None:
+    dropped = _FakeWebSocket([])
+    dropped.events.append("")  # empty recv signals a closed connection
+    completed = _FakeWebSocket(
+        [
+            {"type": "response.output_audio_transcript.delta", "delta": "Answer."},
+            {"type": "response.done", "response": {"status": "completed", "output": []}},
+        ]
+    )
+    sockets = iter([dropped, completed])
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: next(sockets),
+    )
+
+    exchange = brain.ask_audio(
+        wav_bytes=_wav_bytes(np.array([1, 2, 3], dtype=np.int16), sample_rate=24_000),
+        question="Explain",
+        route_decision=_route(),
+    )
+
+    assert exchange.assistant_text == "Answer."
+    assert dropped.closed
+
+
+def test_mid_stream_drop_after_output_is_not_retried() -> None:
+    dropped = _FakeWebSocket(
+        [{"type": "response.output_audio_transcript.delta", "delta": "Half an"}]
+    )
+    dropped.events.append("")
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: dropped,
+    )
+
+    from klaus.realtime import ConnectionDropped
+
+    with pytest.raises(ConnectionDropped):
+        brain.ask_audio(
+            wav_bytes=_wav_bytes(
+                np.array([1, 2, 3], dtype=np.int16), sample_rate=24_000
+            ),
+            question="Explain",
+            route_decision=_route(),
+        )

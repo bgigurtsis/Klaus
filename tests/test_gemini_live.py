@@ -145,3 +145,55 @@ def test_cancel_before_session_loop_starts_still_aborts_turn():
 
     assert brain._cancelled(None) is True
     assert brain._cancelled(threading.Event()) is True
+
+
+def _min_wav() -> bytes:
+    import io as _io
+    import wave as _wave
+
+    import numpy as _np
+
+    buf = _io.BytesIO()
+    with _wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(24_000)
+        wf.writeframes(_np.array([1, 2, 3], dtype=_np.int16).tobytes())
+    return buf.getvalue()
+
+
+def test_turn_failure_before_output_retries_once(monkeypatch) -> None:
+    brain = GeminiLiveBrain(notes=None, audio_output=_AudioOutput())
+    attempts: list[int] = []
+
+    async def fake_run_turn(**kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise OSError("socket closed")
+        return "Recovered answer."
+
+    monkeypatch.setattr(brain, "_run_turn", fake_run_turn)
+
+    exchange = brain.ask_audio(wav_bytes=_min_wav(), question="Explain")
+
+    assert exchange.assistant_text == "Recovered answer."
+    assert len(attempts) == 2
+
+
+def test_turn_failure_after_output_is_not_retried(monkeypatch) -> None:
+    brain = GeminiLiveBrain(notes=None, audio_output=_AudioOutput())
+    attempts: list[int] = []
+
+    async def fake_run_turn(*, on_text_delta, **kwargs):
+        attempts.append(1)
+        on_text_delta("Half an")
+        raise OSError("socket closed")
+
+    monkeypatch.setattr(brain, "_run_turn", fake_run_turn)
+
+    import pytest as _pytest
+
+    with _pytest.raises(OSError):
+        brain.ask_audio(wav_bytes=_min_wav(), question="Explain")
+
+    assert len(attempts) == 1

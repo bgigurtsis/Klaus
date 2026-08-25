@@ -61,15 +61,9 @@ class SpeechToText:
         elif "model" in params:
             kwargs["model"] = self._settings.stt_moonshine_model
 
-        try:
-            model_path, model_arch = get_model_for_language(
-                self._settings.stt_moonshine_language, **kwargs
-            )
-        except TypeError:
-            # Older moonshine-voice versions may not expose model selection.
-            model_path, model_arch = get_model_for_language(
-                self._settings.stt_moonshine_language
-            )
+        model_path, model_arch = self._get_model_with_retry(
+            get_model_for_language, kwargs
+        )
         transcriber = Transcriber(
             model_path=model_path, model_arch=model_arch
         )
@@ -81,6 +75,35 @@ class SpeechToText:
             model_path,
         )
         return transcriber
+
+    def _get_model_with_retry(self, get_model_for_language: Any, kwargs: dict) -> Any:
+        """Fetch the model, retrying transient download failures with backoff.
+
+        Moonshine caches completed files, so each retry resumes at file
+        granularity rather than starting the 245 MB download over.
+        """
+        last_error: Exception | None = None
+        for attempt in range(3):
+            if attempt:
+                delay = 2.0 * attempt
+                logger.warning(
+                    "Moonshine model download failed (%s); retrying in %.0fs",
+                    last_error,
+                    delay,
+                )
+                time.sleep(delay)
+            try:
+                return get_model_for_language(
+                    self._settings.stt_moonshine_language, **kwargs
+                )
+            except TypeError:
+                # Older moonshine-voice versions may not expose model selection.
+                return get_model_for_language(self._settings.stt_moonshine_language)
+            except OSError as exc:
+                last_error = exc
+        raise RuntimeError(
+            f"Could not download the Moonshine speech model: {last_error}"
+        ) from last_error
 
     def _transcribe_moonshine(self, wav_bytes: bytes) -> str:
         """Run Moonshine Voice on WAV bytes, return transcript text."""

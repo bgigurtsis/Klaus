@@ -130,23 +130,48 @@ class GeminiLiveBrain:
         if not wav_to_pcm24k(wav_bytes):
             raise ValueError("The recorded question did not contain audio")
 
+        delivered = threading.Event()
+
+        def wrapped_text_delta(delta: str) -> None:
+            delivered.set()
+            if on_text_delta:
+                on_text_delta(delta)
+
+        def wrapped_first_audio() -> None:
+            delivered.set()
+            if on_first_audio:
+                on_first_audio()
+
         with self._turn_lock:
             self.last_connect_ms = None
             self._cancel_event.clear()
             if self._notes:
                 self._notes.reset_changed()
-            answer = asyncio.run(
-                self._run_turn(
-                    question=question,
-                    image_base64=image_base64 if route.use_image else None,
-                    reading_text=reading_text if route.use_image else None,
-                    instructions=self._turn_instructions(route, notes_context),
-                    on_text_delta=on_text_delta,
-                    on_speaking_started=on_speaking_started,
-                    on_first_audio=on_first_audio,
-                    external_cancel_event=cancel_event,
-                )
-            )
+            for attempt in range(2):
+                try:
+                    answer = asyncio.run(
+                        self._run_turn(
+                            question=question,
+                            image_base64=image_base64 if route.use_image else None,
+                            reading_text=reading_text if route.use_image else None,
+                            instructions=self._turn_instructions(route, notes_context),
+                            on_text_delta=wrapped_text_delta,
+                            on_speaking_started=on_speaking_started,
+                            on_first_audio=wrapped_first_audio,
+                            external_cancel_event=cancel_event,
+                        )
+                    )
+                    break
+                except AskCancelled:
+                    raise
+                except Exception as exc:
+                    # Retry once, but only when the failed attempt produced no
+                    # output — replaying a half-heard answer would duplicate it.
+                    if attempt or delivered.is_set() or self._cancelled(cancel_event):
+                        raise
+                    logger.warning(
+                        "Gemini turn failed before any output (%s); retrying once", exc
+                    )
             if self._cancelled(cancel_event):
                 raise AskCancelled()
             self._history.extend(

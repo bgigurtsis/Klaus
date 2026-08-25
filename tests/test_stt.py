@@ -101,3 +101,33 @@ class TestSpeechToText:
             result = stt.transcribe(_make_wav_bytes())
 
         assert result == ""
+
+
+class TestModelDownloadRetry:
+    def test_transient_download_failure_is_retried(self, monkeypatch):
+        monkeypatch.setattr("klaus.stt.time.sleep", lambda _s: None)
+        patcher, _ = _patch_moonshine()
+        with patcher:
+            stt = SpeechToText()
+        calls = []
+
+        def flaky(language, **kwargs):
+            calls.append(language)
+            if len(calls) < 3:
+                raise OSError("connection reset")
+            return ("/fake/model", "5")
+
+        assert stt._get_model_with_retry(flaky, {}) == ("/fake/model", "5")
+        assert len(calls) == 3
+
+    def test_persistent_download_failure_raises_runtime_error(self, monkeypatch):
+        monkeypatch.setattr("klaus.stt.time.sleep", lambda _s: None)
+        patcher, _ = _patch_moonshine()
+        with patcher:
+            stt = SpeechToText()
+
+        def always_fails(language, **kwargs):
+            raise OSError("no route to host")
+
+        with pytest.raises(RuntimeError, match="Moonshine speech model"):
+            stt._get_model_with_retry(always_fails, {})

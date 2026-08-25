@@ -88,6 +88,13 @@ def _as_realtime_tool(tool: dict) -> dict:
     }
 
 
+class ConnectionDropped(RuntimeError):
+    """The realtime WebSocket closed while a turn was in flight."""
+
+
+_RETRYABLE_ERRORS = (OSError, websocket.WebSocketException, ConnectionDropped)
+
+
 class RealtimeBrain:
     """Run Klaus turns through one persistent GPT Realtime conversation."""
 
@@ -115,6 +122,7 @@ class RealtimeBrain:
         self._last_item_id: str | None = None
         self._last_content_index = 0
         self._played_frames = 0
+        self._turn_delivered = False
         self.last_connect_ms: float | None = None
         self._tools = self._build_tools()
 
@@ -208,7 +216,53 @@ class RealtimeBrain:
         route_decision: RouteDecision | None = None,
         cancel_event: threading.Event | None = None,
     ) -> Exchange:
-        """Send one recorded question and stream back natural speech."""
+        """Send one recorded question and stream back natural speech.
+
+        A connection drop before any audio or transcript reached the user is
+        retried once on a fresh connection; a drop after output started is
+        surfaced so the answer is not duplicated.
+        """
+        kwargs = dict(
+            wav_bytes=wav_bytes,
+            question=question,
+            image_base64=image_base64,
+            reading_text=reading_text,
+            notes_context=notes_context,
+            on_text_delta=on_text_delta,
+            on_speaking_started=on_speaking_started,
+            on_first_audio=on_first_audio,
+            route_decision=route_decision,
+            cancel_event=cancel_event,
+        )
+        for attempt in range(2):
+            self._turn_delivered = False
+            try:
+                return self._ask_audio_once(**kwargs)
+            except AskCancelled:
+                raise
+            except _RETRYABLE_ERRORS as exc:
+                if attempt or self._turn_delivered:
+                    raise
+                logger.warning(
+                    "Realtime turn dropped before any output (%s); retrying once", exc
+                )
+                self.close()
+        raise AssertionError("unreachable")
+
+    def _ask_audio_once(
+        self,
+        *,
+        wav_bytes: bytes,
+        question: str,
+        image_base64: str | None = None,
+        reading_text: str | None = None,
+        notes_context: str | None = None,
+        on_text_delta: Callable[[str], None] | None = None,
+        on_speaking_started: Callable[[], None] | None = None,
+        on_first_audio: Callable[[], None] | None = None,
+        route_decision: RouteDecision | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> Exchange:
         route = route_decision or default_route_decision()
         pcm = wav_to_pcm24k(wav_bytes)
         if not pcm:
@@ -267,6 +321,7 @@ class RealtimeBrain:
             audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
 
             def playback_started() -> None:
+                self._turn_delivered = True
                 if on_speaking_started:
                     on_speaking_started()
                 if on_first_audio:
@@ -324,8 +379,10 @@ class RealtimeBrain:
                     elif event_type == "response.output_audio_transcript.delta":
                         delta = str(event.get("delta", ""))
                         transcript += delta
-                        if delta and on_text_delta:
-                            on_text_delta(delta)
+                        if delta:
+                            self._turn_delivered = True
+                            if on_text_delta:
+                                on_text_delta(delta)
                     elif event_type == "response.output_audio_transcript.done":
                         final = str(event.get("transcript", "")).strip()
                         if final:
@@ -580,7 +637,7 @@ class RealtimeBrain:
             raise
         if not raw:
             self.close()
-            raise RuntimeError("Realtime connection closed")
+            raise ConnectionDropped("Realtime connection closed")
         return json.loads(raw)
 
     def _send(self, event: dict) -> None:
