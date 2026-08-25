@@ -177,25 +177,13 @@ class QuestionPipeline:
 
         hooks.on_state("thinking")
 
-        # Decide the route while capturing the lightweight reading context.
-        route_holder: dict[str, object] = {}
-
-        def _decide_route() -> None:
-            try:
-                route_holder["route"] = self._brain.decide_route(transcript)
-            except Exception:
-                logger.exception("Route decision failed, using default route")
-                route_holder["route"] = default_route_decision()
-
-        route_thread = threading.Thread(target=_decide_route, daemon=True)
-        route_thread.start()
-        thumbnail = self._camera.capture_thumbnail_bytes()
-        capture_text = getattr(self._camera, "capture_text_context", None)
-        eager_text = capture_text() if callable(capture_text) else None
-        if not isinstance(eager_text, str) or not eager_text.strip():
-            eager_text = None
-        route_thread.join()
-        route_decision = route_holder["route"]
+        # Routing is a local scoring pass on both engines, so decide first
+        # and capture only the context this route actually uses.
+        try:
+            route_decision = self._brain.decide_route(transcript)
+        except Exception:
+            logger.exception("Route decision failed, using default route")
+            route_decision = default_route_decision()
         timings.route_ready = time.perf_counter()
         logger.info(
             (
@@ -212,7 +200,13 @@ class QuestionPipeline:
             route_decision.reason,
         )
 
-        reading_text = eager_text if route_decision.use_image else None
+        thumbnail = self._camera.capture_thumbnail_bytes()
+        reading_text = None
+        if route_decision.use_image:
+            capture_text = getattr(self._camera, "capture_text_context", None)
+            reading_text = capture_text() if callable(capture_text) else None
+            if not isinstance(reading_text, str) or not reading_text.strip():
+                reading_text = None
         image_b64 = None
         needs_screenshot = bool(_SCREENSHOT_PATTERN.search(transcript))
         capture_screenshots = (

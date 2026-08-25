@@ -450,3 +450,28 @@ def test_tablet_capture_runs_after_transcription_and_persists_chat_thumbnail():
     assert brain.ask_audio.call_args.kwargs["image_base64"] == "tablet-image"
     assert memory.save_exchange.call_args.kwargs["image_base64"] is None
     assert memory.save_exchange.call_args.kwargs["thumbnail_bytes"] == b"preview"
+
+
+def test_text_context_skipped_on_non_image_routes():
+    stt = MagicMock()
+    stt.transcribe.return_value = "Define entropy"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    brain.ask_audio.return_value = SimpleNamespace(
+        notes_file_changed=False,
+        assistant_text="A measure of disorder.",
+        user_text="Define entropy",
+        image_base64=None,
+        searches=[],
+    )
+
+    _pipeline(stt, camera, brain).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id=None),
+        hooks=_hooks(),
+    )
+
+    camera.capture_text_context.assert_not_called()
+    camera.capture_base64_jpeg.assert_not_called()
