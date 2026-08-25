@@ -698,6 +698,9 @@ class KlausApp:
         self._notes.current_file = self._memory.get_session_notes_file(
             self._current_session_id
         )
+        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
+            self._current_session_id
+        )
         self._update_exchange_count()
 
     def _build_session_dicts(self, sessions) -> list[dict]:
@@ -754,6 +757,9 @@ class KlausApp:
         self._reset_guard_stats()
         self._brain.clear_history()
         self._notes.current_file = self._memory.get_session_notes_file(session_id)
+        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
+            session_id
+        )
         self._load_session_history(session_id)
         self._window.chat_widget.scroll_to_bottom()
         self._update_exchange_count()
@@ -771,6 +777,7 @@ class KlausApp:
         self._reset_guard_stats()
         self._brain.clear_history()
         self._notes.current_file = None
+        self._notes.capture_mode = "off"
 
         self._refresh_session_list()
         self._window.chat_widget.clear()
@@ -806,6 +813,9 @@ class KlausApp:
 
         self._brain.clear_history()
         self._notes.current_file = self._memory.get_session_notes_file(new_current)
+        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
+            new_current
+        )
         self._load_session_history(new_current)
         self._window.chat_widget.scroll_to_bottom()
         self._update_exchange_count()
@@ -1115,6 +1125,13 @@ class KlausApp:
         current_base = self._notes.base_path
         if vault != current_base:
             self._notes = NotesManager(vault)
+            if self._current_session_id:
+                self._notes.current_file = self._memory.get_session_notes_file(
+                    self._current_session_id
+                )
+                self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
+                    self._current_session_id
+                )
             self._brain.set_notes_manager(self._notes)
             self._rebuild_question_pipeline()
         brain_is_gemini = type(self._brain).__name__ == "GeminiLiveBrain"

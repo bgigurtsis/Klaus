@@ -212,6 +212,26 @@ class QuestionPipeline:
                 context.current_session_id,
                 self._notes.current_file,
             )
+            self._memory.set_session_notes_capture_mode(
+                context.current_session_id,
+                self._notes.capture_mode,
+            )
+
+        note_file_path = (
+            self._notes.current_path if exchange.notes_file_changed else None
+        )
+        capture_mode = getattr(self._notes, "capture_mode", "off")
+        capture_changed = getattr(self._notes, "capture_changed", False) is True
+        if capture_mode in {"questions", "conversation"} and not capture_changed:
+            capture_result = self._notes.capture_exchange(
+                exchange.user_text,
+                exchange.assistant_text,
+                created_at=time.time(),
+            )
+            if capture_result and not capture_result.startswith("Error:"):
+                note_file_path = self._notes.current_path
+            elif capture_result:
+                logger.error("Automatic Obsidian capture failed: %s", capture_result)
 
         exchange_id = ""
         if context.current_session_id:
@@ -223,9 +243,7 @@ class QuestionPipeline:
                 image_base64=exchange.image_base64 if persist_images else None,
                 thumbnail_bytes=thumbnail,
                 searches=exchange.searches,
-                note_file_path=(
-                    self._notes.current_path if exchange.notes_file_changed else None
-                ),
+                note_file_path=note_file_path,
             )
             exchange_id = record.id
 
@@ -247,5 +265,8 @@ class QuestionPipeline:
         if not include_notes_context:
             return None
         if self._notes.current_file:
-            return f"Current notes file: {self._notes.current_file}"
+            return (
+                f"Current notes file: {self._notes.current_file}\n"
+                f"Automatic capture mode: {self._notes.capture_mode}"
+            )
         return "No notes file set for this session."

@@ -102,4 +102,53 @@ def test_realtime_exposes_all_obsidian_tools_for_a_configured_vault(tmp_path) ->
 
     names = [tool["name"] for tool in brain._tools]
 
-    assert names == ["search_notes", "read_note", "set_notes_file", "save_note"]
+    assert names == [
+        "search_notes",
+        "read_note",
+        "set_notes_file",
+        "save_note",
+        "configure_note_capture",
+    ]
+
+
+def test_question_capture_appends_only_the_users_later_question(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+
+    result = notes.configure_capture("questions", "Research/Questions")
+    notes.reset_changed()
+    capture_result = notes.capture_exchange(
+        "Why does entropy increase?",
+        "Because high-entropy macrostates have more microstates.",
+        created_at=1_788_000_000,
+    )
+
+    assert result == "Automatic capture enabled for user questions: Research/Questions.md"
+    assert capture_result == "Created note: Research/Questions.md"
+    content = (tmp_path / "Research" / "Questions.md").read_text(encoding="utf-8")
+    assert "**You:** Why does entropy increase?" in content
+    assert "**Klaus:**" not in content
+
+
+def test_conversation_capture_appends_the_question_and_answer(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+    notes.configure_capture("conversation", "Study Session")
+    notes.reset_changed()
+
+    notes.capture_exchange("What is entropy?", "A measure of multiplicity.")
+
+    content = (tmp_path / "Study Session.md").read_text(encoding="utf-8")
+    assert "**You:** What is entropy?" in content
+    assert "**Klaus:** A measure of multiplicity." in content
+
+
+def test_capture_requires_a_current_note_and_can_be_stopped(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+
+    assert notes.configure_capture("questions") == (
+        "Error: No notes file set. Ask the user which file to use."
+    )
+    notes.configure_capture("questions", "Questions")
+    assert notes.configure_capture("off") == (
+        "Stopped automatic Obsidian capture for this chat."
+    )
+    assert notes.capture_exchange("Not saved", "Not saved") is None

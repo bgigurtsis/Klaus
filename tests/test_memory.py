@@ -46,6 +46,14 @@ class TestSessions:
         sessions = mem.list_sessions()
         assert sessions[0].title == "New Title"
 
+    def test_note_capture_mode_persists_per_session(self, mem):
+        session = mem.create_session("Paper")
+
+        mem.set_session_notes_capture_mode(session.id, "conversation")
+
+        assert mem.get_session_notes_capture_mode(session.id) == "conversation"
+        assert mem.list_sessions()[0].notes_capture_mode == "conversation"
+
     def test_delete_session(self, mem):
         session = mem.create_session("To Delete")
         mem.save_exchange(session.id, "Q?", "A.")

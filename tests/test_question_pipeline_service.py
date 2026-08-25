@@ -4,6 +4,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from klaus.notes import NotesManager
 from klaus.realtime import AskCancelled
 from klaus.services.question_pipeline import PipelineContext, PipelineHooks, QuestionPipeline
 
@@ -138,6 +139,79 @@ def test_selected_text_avoids_window_image_capture():
 
     camera.capture_base64_jpeg.assert_not_called()
     assert brain.ask_audio.call_args.kwargs["reading_text"] == "Exact selected text"
+
+
+def test_active_capture_appends_completed_turn_and_links_note(tmp_path):
+    stt = MagicMock()
+    stt.transcribe.return_value = "What is entropy?"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    brain.ask_audio.return_value = SimpleNamespace(
+        notes_file_changed=False,
+        assistant_text="A measure of multiplicity.",
+        user_text="What is entropy?",
+        image_base64=None,
+        searches=[],
+    )
+    memory = MagicMock()
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+    notes = NotesManager(str(tmp_path))
+    notes.configure_capture("conversation", "Study Session")
+    notes.reset_changed()
+
+    _pipeline(stt, camera, brain, memory=memory, notes=notes).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    content = (tmp_path / "Study Session.md").read_text(encoding="utf-8")
+    assert "**You:** What is entropy?" in content
+    assert "**Klaus:** A measure of multiplicity." in content
+    assert memory.save_exchange.call_args.kwargs["note_file_path"] == str(
+        tmp_path / "Study Session.md"
+    )
+
+
+def test_capture_configuration_turn_is_persisted_but_not_captured(tmp_path):
+    stt = MagicMock()
+    stt.transcribe.return_value = "Save everything I ask to Questions"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    notes = NotesManager(str(tmp_path))
+
+    def ask_audio(**_kwargs):
+        notes.reset_changed()
+        notes.configure_capture("questions", "Questions")
+        return SimpleNamespace(
+            notes_file_changed=True,
+            assistant_text="I will save later questions to Questions.md.",
+            user_text="Save everything I ask to Questions",
+            image_base64=None,
+            searches=[],
+        )
+
+    brain.ask_audio.side_effect = ask_audio
+    memory = MagicMock()
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+
+    _pipeline(stt, camera, brain, memory=memory, notes=notes).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    assert (tmp_path / "Questions.md").read_text(encoding="utf-8") == ""
+    memory.set_session_notes_file.assert_called_once_with("session-1", "Questions.md")
+    memory.set_session_notes_capture_mode.assert_called_once_with(
+        "session-1", "questions"
+    )
 
 
 def test_cancelled_realtime_turn_skips_persistence():

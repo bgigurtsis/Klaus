@@ -167,6 +167,17 @@ Choose a vault during setup or in **Settings**. Then say where Klaus should save
 
 Klaus accepts only paths inside that vault. It appends to existing notes instead of replacing them.
 
+Klaus can also keep saving later turns in the current chat:
+
+> Save everything I ask in this chat to Research/Questions.md.
+
+> Save every question and answer in this chat to Research/Study Session.md.
+
+> Stop saving this chat to Obsidian.
+
+Question capture stores your prompts. Conversation capture stores each prompt and Klaus answer.
+The setting follows the chat when you switch chats or restart Klaus.
+
 ## API keys and data
 
 | Provider | Required | Used for |

@@ -19,6 +19,7 @@ import websocket
 import klaus.config as config
 from klaus.audio_output import PCM_SAMPLE_RATE, AudioOutput
 from klaus.notes import (
+    CONFIGURE_NOTE_CAPTURE_TOOL,
     NotesManager,
     READ_NOTE_TOOL,
     SAVE_NOTE_TOOL,
@@ -123,6 +124,7 @@ class RealtimeBrain:
                     _as_realtime_tool(READ_NOTE_TOOL),
                     _as_realtime_tool(SET_NOTES_FILE_TOOL),
                     _as_realtime_tool(SAVE_NOTE_TOOL),
+                    _as_realtime_tool(CONFIGURE_NOTE_CAPTURE_TOOL),
                 ]
             )
         return tools
@@ -518,6 +520,11 @@ class RealtimeBrain:
             return self._notes.read_note(str(arguments.get("file_path", "")))
         if name == "save_note" and self._notes is not None:
             return self._notes.save_note(str(arguments.get("content", "")))
+        if name == "configure_note_capture" and self._notes is not None:
+            return self._notes.configure_capture(
+                str(arguments.get("mode", "")),
+                str(arguments.get("file_path", "")),
+            )
         return json.dumps({"error": f"Unknown or unavailable tool: {name}"})
 
     def _receive_event(self) -> dict | None:

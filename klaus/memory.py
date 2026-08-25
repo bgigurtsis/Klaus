@@ -21,6 +21,7 @@ class Session:
     created_at: float
     updated_at: float
     notes_file: str | None = None
+    notes_capture_mode: str = "off"
 
 
 @dataclass
@@ -52,7 +53,8 @@ class Memory:
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 created_at REAL NOT NULL,
-                updated_at REAL NOT NULL
+                updated_at REAL NOT NULL,
+                notes_capture_mode TEXT NOT NULL DEFAULT 'off'
             );
 
             CREATE TABLE IF NOT EXISTS exchanges (
@@ -82,6 +84,7 @@ class Memory:
                 ON knowledge_profile(topic);
         """)
         self._migrate_sessions_notes_file()
+        self._migrate_sessions_notes_capture_mode()
         self._migrate_exchanges_note_file_path()
         self._migrate_exchanges_thumbnail_bytes()
         self._conn.commit()
@@ -95,6 +98,18 @@ class Memory:
         if "notes_file" not in cols:
             self._conn.execute("ALTER TABLE sessions ADD COLUMN notes_file TEXT")
             logger.info("Migrated sessions table: added notes_file column")
+
+    def _migrate_sessions_notes_capture_mode(self) -> None:
+        """Add the automatic note capture mode to existing databases."""
+        cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(sessions)").fetchall()
+        ]
+        if "notes_capture_mode" not in cols:
+            self._conn.execute(
+                "ALTER TABLE sessions ADD COLUMN notes_capture_mode TEXT NOT NULL DEFAULT 'off'"
+            )
+            logger.info("Migrated sessions table: added notes_capture_mode column")
 
     def _migrate_exchanges_note_file_path(self) -> None:
         """Add the note link target to exchanges created by note actions."""
@@ -145,6 +160,7 @@ class Memory:
                 created_at=r["created_at"],
                 updated_at=r["updated_at"],
                 notes_file=r["notes_file"],
+                notes_capture_mode=r["notes_capture_mode"],
             )
             for r in rows
         ]
@@ -179,6 +195,22 @@ class Memory:
             "Set notes_file for session %s: %s",
             session_id[:8], notes_file,
         )
+
+    def get_session_notes_capture_mode(self, session_id: str) -> str:
+        """Return the automatic capture mode for a session."""
+        row = self._conn.execute(
+            "SELECT notes_capture_mode FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return str(row["notes_capture_mode"]) if row else "off"
+
+    def set_session_notes_capture_mode(self, session_id: str, mode: str) -> None:
+        """Persist the automatic capture mode for a session."""
+        self._conn.execute(
+            "UPDATE sessions SET notes_capture_mode = ?, updated_at = ? WHERE id = ?",
+            (mode, time.time(), session_id),
+        )
+        self._conn.commit()
+        logger.info("Set note capture for session %s: %s", session_id[:8], mode)
 
     # -- Exchanges --
 

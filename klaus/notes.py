@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import klaus.config as config
@@ -53,6 +54,34 @@ SAVE_NOTE_TOOL = {
     },
 }
 
+CONFIGURE_NOTE_CAPTURE_TOOL = {
+    "name": "configure_note_capture",
+    "description": (
+        "Start or stop automatic Obsidian capture for this chat. "
+        "Use 'questions' to append every later user question. "
+        "Use 'conversation' to append every later user question and Klaus answer. "
+        "Use 'off' to stop capture. The setting persists for this chat."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "mode": {
+                "type": "string",
+                "enum": ["questions", "conversation", "off"],
+                "description": "What Klaus should automatically append after later turns.",
+            },
+            "file_path": {
+                "type": "string",
+                "description": (
+                    "Optional vault-relative Markdown path. Provide it when starting "
+                    "capture unless this chat already has a current notes file."
+                ),
+            },
+        },
+        "required": ["mode"],
+    },
+}
+
 SEARCH_NOTES_TOOL = {
     "name": "search_notes",
     "description": (
@@ -99,7 +128,9 @@ class NotesManager:
             base_path = config.OBSIDIAN_VAULT_PATH
         self._base = Path(base_path).expanduser() if base_path else Path()
         self.current_file: str | None = None
+        self.capture_mode = "off"
         self._changed = False
+        self._capture_changed = False
         logger.info("NotesManager base path: %s", self._base)
 
     @property
@@ -126,6 +157,12 @@ class NotesManager:
 
     def reset_changed(self) -> None:
         self._changed = False
+        self._capture_changed = False
+
+    @property
+    def capture_changed(self) -> bool:
+        """True if automatic capture changed during the current turn."""
+        return self._capture_changed
 
     def set_file(self, relative_path: str) -> str:
         """Set the active notes file. Creates dirs and file if needed.
@@ -189,6 +226,48 @@ class NotesManager:
 
         action = "Created note" if is_empty else "Appended note"
         return f"{action}: {relative_path}"
+
+    def configure_capture(self, mode: str, file_path: str = "") -> str:
+        """Configure deterministic note capture for the active chat."""
+        normalized_mode = mode.strip().casefold()
+        if normalized_mode not in {"questions", "conversation", "off"}:
+            return "Error: Capture mode must be questions, conversation, or off."
+
+        if file_path.strip():
+            result = self.set_file(file_path)
+            if result.startswith("Error:"):
+                return result
+        if normalized_mode != "off" and not self.current_file:
+            return "Error: No notes file set. Ask the user which file to use."
+
+        self.capture_mode = normalized_mode
+        self._changed = True
+        self._capture_changed = True
+        if normalized_mode == "off":
+            return "Stopped automatic Obsidian capture for this chat."
+        captured = (
+            "user questions"
+            if normalized_mode == "questions"
+            else "questions and answers"
+        )
+        return f"Automatic capture enabled for {captured}: {self.current_file}"
+
+    def capture_exchange(
+        self,
+        user_text: str,
+        assistant_text: str,
+        *,
+        created_at: float | None = None,
+    ) -> str | None:
+        """Append one completed exchange when automatic capture is active."""
+        if self.capture_mode == "off":
+            return None
+
+        timestamp = datetime.fromtimestamp(created_at) if created_at else datetime.now()
+        content = f"## {timestamp:%Y-%m-%d %H:%M}\n\n**You:** {user_text.strip()}"
+        if self.capture_mode == "conversation":
+            content += f"\n\n**Klaus:** {assistant_text.strip()}"
+        return self.save_note(content)
 
     def search_notes(self, query: str, *, limit: int = 8) -> str:
         """Find vault notes by path or text without leaving the vault root."""

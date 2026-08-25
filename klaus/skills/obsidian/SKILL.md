@@ -50,7 +50,20 @@ Use this default shape when no local pattern exists:
 
 Do not invent authors, dates, tags, links, quotes, or source locations.
 
+## Capture a chat
+
+Use `configure_note_capture` when the user asks to save later turns automatically.
+
+- Use `questions` for requests such as "save everything I ask."
+- Use `conversation` when the user wants both their questions and Klaus's answers.
+- Use `off` when the user asks to stop saving.
+- Include `file_path` when the user names a target note.
+- Ask for a target file when no current note exists.
+- Do not call `save_note` for each captured turn. Klaus appends captured turns after each completed response.
+- A command that starts, changes, or stops capture is not itself captured.
+
 ## Finish
 
 Report the exact vault-relative file path after a successful save.
 State whether Klaus created the note or appended to it when the tool result provides that detail.
+When capture changes, state what later turns Klaus will save.
