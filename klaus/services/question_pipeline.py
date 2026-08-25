@@ -16,7 +16,13 @@ logger = logging.getLogger(__name__)
 _SCREENSHOT_PATTERN = re.compile(r"\b(?:screen\s?shot|screen\s?capture)\b", re.I)
 _CHAT_SUMMARY_PATTERN = re.compile(
     r"\b(?:end|finish|wrap up|summari[sz]e)\b.*\b(?:chat|session|conversation)\b"
-    r"|\b(?:chat|session|conversation)\b.*\b(?:summary|summari[sz]e)\b",
+    r"|\b(?:chat|session|conversation)\b.*\b(?:summary|summari[sz]e)\b"
+    r"|\bsummary\b.*\bobsidian\b",
+    re.I,
+)
+_OBSIDIAN_SAVE_PATTERN = re.compile(
+    r"\b(?:save|add|write|capture|summary)\b.*\bobsidian\b"
+    r"|\bobsidian\b.*\b(?:save|add|write|capture|summary)\b",
     re.I,
 )
 
@@ -237,6 +243,16 @@ class QuestionPipeline:
 
         hooks.on_transcription(transcript, time.time(), thumbnail or b"")
         notes_context = self._build_notes_context(route_decision.use_notes_context)
+        if _OBSIDIAN_SAVE_PATTERN.search(transcript):
+            save_instruction = (
+                "The user is asking to save to Obsidian now. Use the appropriate "
+                "Obsidian tool in this turn. If no suitable current note exists, "
+                "infer a concise suggested_title from the conversation. Do not ask "
+                "the user to name a file or path when the topic is clear."
+            )
+            notes_context = "\n\n".join(
+                part for part in (notes_context, save_instruction) if part
+            )
         if (
             context.current_session_id
             and _CHAT_SUMMARY_PATTERN.search(transcript)
@@ -403,7 +419,11 @@ class QuestionPipeline:
                 f"Automatic capture mode: {self._notes.capture_mode}\n"
                 f"Automatic screenshot capture: {screenshot_capture}"
             )
-        return "No notes file set for this session."
+        return (
+            "No current notes file is set. When the user asks to save, infer a "
+            "concise suggested_title from the conversation and call the appropriate "
+            "Obsidian tool. Do not ask for a file path when the topic is clear."
+        )
 
     def _build_chat_summary_context(self, session_id: str) -> str:
         """Build bounded historical context for an explicit chat summary request."""

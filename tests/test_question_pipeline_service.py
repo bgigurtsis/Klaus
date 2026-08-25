@@ -305,6 +305,54 @@ def test_end_chat_summary_receives_stored_history_and_stops_capture(tmp_path):
     assert notes.capture_mode == "off"
 
 
+def test_save_summary_to_obsidian_infers_a_file_instead_of_asking(tmp_path):
+    stt = MagicMock()
+    stt.transcribe.return_value = "Save the summary to Obsidian"
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    notes = NotesManager(str(tmp_path))
+    memory = MagicMock()
+    memory.get_exchanges.return_value = [
+        SimpleNamespace(
+            user_text="What is the latest GLM model?",
+            assistant_text="It is a language model release.",
+        ),
+    ]
+    memory.save_exchange.return_value = SimpleNamespace(id="exchange-1")
+
+    def ask_audio(**kwargs):
+        notes_context = kwargs["notes_context"]
+        assert "What is the latest GLM model?" in notes_context
+        assert "Do not ask the user to name a file or path" in notes_context
+        notes.reset_changed()
+        notes.save_chat_summary(
+            "### Key ideas\n\n- The chat discussed the latest GLM model.",
+            suggested_title="GLM Model Discussion",
+        )
+        return SimpleNamespace(
+            notes_file_changed=True,
+            assistant_text="Saved the summary.",
+            user_text="Save the summary to Obsidian",
+            image_base64=None,
+            searches=[],
+        )
+
+    brain.ask_audio.side_effect = ask_audio
+
+    _pipeline(stt, camera, brain, memory=memory, notes=notes).run(
+        b"wav",
+        context=PipelineContext(input_mode="push_to_talk", current_session_id="session-1"),
+        hooks=_hooks(),
+    )
+
+    inferred = tmp_path / "Klaus Notes" / "GLM Model Discussion.md"
+    assert inferred.is_file()
+    assert "latest GLM model" in inferred.read_text(encoding="utf-8")
+
+
 def test_cancelled_realtime_turn_skips_persistence():
     stt = MagicMock()
     stt.transcribe.return_value = "What is entropy?"
