@@ -1,10 +1,10 @@
 # CLAUDE.md
 
 Living reference for AI assistants working on the Klaus codebase.
-Last updated: 2026-08-25 (full rewrite — removed the deleted legacy Claude/TTS
-engine, documented Gemini Live, reMarkable, Keychain secrets, and current
-defaults). `DECISIONS.md` is the authoritative log of choices and rejected
-approaches — read it before proposing structural changes.
+Last updated: 2026-08-25 (roadmap execution complete: wizard/config splits,
+turn retries, async STT load, idle capture throttling). `DECISIONS.md` is the
+authoritative log of choices and rejected approaches — read it before
+proposing structural changes.
 
 ## Project Summary
 
@@ -46,12 +46,13 @@ both engines stream 24 kHz PCM speech directly.
 |--------|------:|---------|
 | `main.py` | ~700 | Entry point + `KlausApp`: component wiring, Qt signal bridge, `_safe_slot` delegates, live device switch, settings reload |
 | `hotkeys.py` | ~250 | pynput import gating and `HotkeyListener` (global PTT/toggle keys) |
-| `config.py` | ~890 | TOML config + Keychain-backed API keys, `RuntimeSettings` dataclass driven by `_RUNTIME_SETTING_SPECS`, module-level exports, dynamic system prompt, save/reload helpers. Over the ceiling. |
+| `config.py` | ~680 | Config interpretation: `RuntimeSettings` driven by `_RUNTIME_SETTING_SPECS` (exports generate from the spec table; consistency test in `test_config.py`), dynamic system prompt, thin `save_*` validators |
+| `config_store.py` | ~180 | Config persistence: data-dir paths, default template, TOML parsing, raw read/write, `set_top_level_value` |
 | `audio.py` | ~760 | `PushToTalkRecorder`, `VoiceActivatedRecorder` (confirmed onset, speculative maybe-end, gated barge-in with bleed calibration and echo rejection, `prime_with_seed`) |
-| `realtime.py` | ~600 | `RealtimeBrain`: persistent OpenAI Realtime WebSocket, audio+context turns, streamed PCM/transcripts, cancel + unplayed-audio truncation; `build_live_brain()` picks the engine by provider |
-| `gemini_live.py` | ~400 | `GeminiLiveBrain`: per-turn Gemini Live session (`asyncio.run` in a thread), local `_history` resent each turn, Google Search tool |
-| `audio_output.py` | ~160 | Shared PCM playback: `play_pcm_stream` (response audio), `play_pcm` (earcons), playback-id invalidation, playback observer for echo rejection |
-| `stt.py` | ~120 | Moonshine local transcription; model download/compile on first init |
+| `realtime.py` | ~700 | `RealtimeBrain`: persistent OpenAI Realtime WebSocket, audio+context turns, streamed PCM/transcripts, cancel + unplayed-audio truncation, `warm_up()`, single retry of connection drops with zero output; `build_live_brain()` picks the engine by provider |
+| `gemini_live.py` | ~460 | `GeminiLiveBrain`: per-turn Gemini Live session (`asyncio.run` in a thread), local `_history` resent each turn, Google Search tool, same zero-output single-retry |
+| `audio_output.py` | ~170 | Shared PCM playback over one persistent output stream; cues are skipped while a response streams; `stop()` closes the stream for immediate silence |
+| `stt.py` | ~210 | Moonshine local transcription with download retry/backoff; `AsyncSpeechToText` loads the model on a background thread (`transcribe` blocks until ready) |
 | `memory.py` | ~270 | SQLite sessions/exchanges persistence |
 | `camera.py` | ~180 | Shared capture loop (5 fps window / 1 fps tablet), auto-rotation, base64/thumbnail export, `capture_text_context` |
 | `macos_reading_source.py` | ~300 | Desk View / active-window capture (`CGWindowListCreateImage`), Accessibility selected text |
@@ -81,10 +82,13 @@ both engines stream 24 kHz PCM speech directly.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `setup_wizard.py` | ~1020 | 7-step first-run wizard (API key, reading source, mic, model download, background). Over the ceiling — split planned. |
-| `theme_qss.py` | ~690 | Main-window QSS from theme tokens |
-| `settings_dialog.py` | ~680 | Tabbed settings: model/effort/voice/barge-in, API keys, reading source, reMarkable pairing, mic, profile, vault |
-| `chat_widget.py` | ~530 | Chat feed: streaming cards, thumbnails, copy/replay, centered 860px column |
+| `setup_wizard.py` | ~175 | Wizard shell: navigation and `_finish_setup`; pages come from the two step mixins |
+| `wizard_content_steps.py` | ~470 | Wizard pages: welcome, API keys, about-you, done (mixin) |
+| `wizard_device_steps.py` | ~300 | Wizard pages: reading source, mic, model download with determinate progress + cancel (mixin) |
+| `wizard_widgets.py` | ~145 | `StepIndicator`, `ModelDownloadThread` (progress signal, cancel), `CameraPreview` |
+| `theme_qss.py` | ~670 | Main-window QSS from theme tokens |
+| `settings_dialog.py` | ~695 | Tabbed settings: model/effort/voice/barge-in, API keys, reading source, reMarkable pairing, mic (with failure label), profile, vault |
+| `chat_widget.py` | ~640 | Chat feed: streaming cards, thinking placeholder, error cards with Retry, thumbnails, copy/replay, centered 860px column |
 | `main_window.py` | ~390 | Window layout, sidebar collapse, Qt key events for in-app hotkeys, Cmd+=/-/0 text zoom |
 | `session_panel.py` | ~230 | Session list sidebar |
 | `camera_widget.py` | ~210 | Reading-source selector and live preview |
@@ -156,18 +160,19 @@ both engines stream 24 kHz PCM speech directly.
 
 ## Current Status and Known Gaps
 
-- **setup_wizard.py (~1020) and config.py (~890) exceed the 800-line
-  ceiling** — splits are on the roadmap (main.py is done: 697).
+- **No module exceeds the 800-line ceiling**; seven sit in the 600–760 flag
+  band (see the closing ceiling audit in DECISIONS.md for proposed splits).
 - **Window capture API**: still the deprecated `CGWindowListCreateImage`
   (`macos_reading_source.py`); migrate to ScreenCaptureKit if Apple removes it.
 - **Barge-in on open speakers**: RMS gate may false-trigger on loud bleed;
   it ships disabled by default. No AEC.
 - **No voice cancel during thinking**: barge-in arms only once speaking
   starts.
-- **Gemini `_history` is unbounded** and resent in full every turn.
-- **Config sprawl**: each setting is declared in up to four places (dataclass
-  field, spec, export map, template); `ui_font_scale` is missing from the
-  template.
+- **Gemini `_history` is unbounded** and resent in full every turn (D3 —
+  owner decision pending).
+- **Owner decisions D1–D10** (reasoning-effort default, VAD timeouts, image
+  downscale, Markdown chat, light mode, …) are catalogued in the review plan
+  and await Billy; do not implement them unprompted.
 
 ## Keeping This File Current
 
