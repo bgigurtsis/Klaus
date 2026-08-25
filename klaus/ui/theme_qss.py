@@ -453,13 +453,14 @@ QMenu::item:selected {{
     font-size: 27px;
     font-weight: 700;
 }}
+/* Plain hint text, not a pill: these are spoken examples, not buttons. */
 #chat-example {{
-    color: {TEXT_SECONDARY};
-    background: {SURFACE_RAISED};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 16px;
-    padding: 10px 12px;
+    color: {TEXT_MUTED};
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
     font-size: {FONT_SIZE_CAPTION}px;
+    font-style: italic;
 }}
 
 /* ===== Chat status message ===== */

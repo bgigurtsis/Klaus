@@ -531,9 +531,9 @@ class ChatWidget(QWidget):
         self._prompts = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._prompts.setSpacing(10)
         for example in (
-            "Explain this\nparagraph",
-            "Define the\nkey term",
-            "Save this to\nmy notes",
+            "“Explain this paragraph”",
+            "“Define the key term”",
+            "“Save this to my notes”",
         ):
             label = QLabel(example)
             label.setObjectName("chat-example")
