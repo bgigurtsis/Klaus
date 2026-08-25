@@ -51,6 +51,8 @@ from klaus.services import (
     PipelineContext,
     PipelineHooks,
     QuestionPipeline,
+    SessionService,
+    SessionView,
     Transcription,
     TurnState,
     SpeculativeTranscriber,
@@ -95,7 +97,6 @@ class KlausApp:
     def __init__(self):
         self._signals = Signals()
         self._runtime_settings = config.get_runtime_settings()
-        self._current_session_id: str | None = None
         self._turn_state = TurnState()
         self._input_mode: str = self._runtime_settings.input_mode
         self._last_ui_state = "idle"
@@ -277,7 +278,8 @@ class KlausApp:
             self._hotkeys.ptt_key_name, self._hotkeys.toggle_key_name
         )
 
-        self._load_sessions()
+        self._session_service = self._create_session_service()
+        self._session_service.load_initial()
 
         self._hotkeys.start()
         self._setup_input_mode()
@@ -489,159 +491,49 @@ class KlausApp:
 
     # -- Session management --
 
-    def _load_sessions(self) -> None:
-        sessions = self._memory.list_sessions()
-        if not sessions:
-            session = self._memory.create_session("Untitled Session")
-            sessions = [session]
-
-        session_dicts = self._build_session_dicts(sessions)
-        self._current_session_id = sessions[0].id
-        self._reset_guard_stats()
-        self._window.set_sessions(session_dicts, self._current_session_id)
-
-        logger.info(
-            "Loaded %d session(s), active: '%s'",
-            len(sessions), sessions[0].title,
+    def _create_session_service(self) -> SessionService:
+        view = SessionView(
+            set_sessions=self._window.set_sessions,
+            set_current_title=self._window.set_current_session_title,
+            clear_chat=self._window.chat_widget.clear,
+            add_chat_message=self._window.chat_widget.add_message,
+            scroll_chat_to_bottom=self._window.chat_widget.scroll_to_bottom,
+            emit_exchange_count=self._signals.exchange_count_updated.emit,
+        )
+        return SessionService(
+            self._memory,
+            self._notes,
+            view,
+            reset_guard_stats=self._reset_guard_stats,
+            clear_brain_history=lambda: self._brain.clear_history(),
         )
 
-        self._load_session_history(self._current_session_id)
-        self._notes.current_file = self._memory.get_session_notes_file(
-            self._current_session_id
-        )
-        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
-            self._current_session_id
-        )
-        self._notes.capture_screenshots = (
-            self._memory.get_session_notes_capture_screenshots(
-                self._current_session_id
-            )
-        )
-        self._update_exchange_count()
-
-    def _build_session_dicts(self, sessions) -> list[dict]:
-        """Build enriched session dicts with exchange counts for the UI."""
-        result = []
-        for s in sessions:
-            count = self._memory.count_exchanges(s.id)
-            result.append({
-                "id": s.id,
-                "title": s.title,
-                "updated_at": s.updated_at,
-                "exchange_count": count,
-            })
-        return result
+    @property
+    def _current_session_id(self) -> str | None:
+        return self._session_service.current_session_id
 
     def _update_exchange_count(self) -> None:
-        """Emit the per-session exchange count."""
-        if self._current_session_id:
-            count = self._memory.count_exchanges(self._current_session_id)
-        else:
-            count = 0
-        self._signals.exchange_count_updated.emit(count)
+        self._session_service.update_exchange_count()
 
     @_safe_slot
     def _refresh_session_list(self) -> None:
-        """Reload and repopulate the session panel."""
-        sessions = self._memory.list_sessions()
-        session_dicts = self._build_session_dicts(sessions)
-        self._window.set_sessions(session_dicts, self._current_session_id)
-
-    def _load_session_history(self, session_id: str) -> None:
-        self._window.chat_widget.clear()
-        exchanges = self._memory.get_exchanges(session_id)
-        for ex in exchanges:
-            self._window.chat_widget.add_message(
-                role="user",
-                text=ex.user_text,
-                timestamp=ex.created_at,
-                thumbnail_bytes=ex.thumbnail_bytes,
-                exchange_id=ex.id,
-            )
-            self._window.chat_widget.add_message(
-                role="assistant",
-                text=ex.assistant_text,
-                timestamp=ex.created_at,
-                exchange_id=ex.id,
-                note_file_path=ex.note_file_path,
-            )
+        self._session_service.refresh_list()
 
     @_safe_slot
     def _on_session_changed(self, session_id: str) -> None:
-        logger.info("Switched to session %s", session_id[:8])
-        self._current_session_id = session_id
-        self._reset_guard_stats()
-        self._brain.clear_history()
-        self._notes.current_file = self._memory.get_session_notes_file(session_id)
-        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
-            session_id
-        )
-        self._notes.capture_screenshots = (
-            self._memory.get_session_notes_capture_screenshots(session_id)
-        )
-        self._load_session_history(session_id)
-        self._window.chat_widget.scroll_to_bottom()
-        self._update_exchange_count()
-
-        sessions = self._memory.list_sessions()
-        for s in sessions:
-            if s.id == session_id:
-                self._window.set_current_session_title(s.title)
-                break
+        self._session_service.activate(session_id)
 
     @_safe_slot
     def _on_new_session(self, title: str) -> None:
-        session = self._memory.create_session(title)
-        self._current_session_id = session.id
-        self._reset_guard_stats()
-        self._brain.clear_history()
-        self._notes.current_file = None
-        self._notes.capture_mode = "off"
-        self._notes.capture_screenshots = False
-
-        self._refresh_session_list()
-        self._window.chat_widget.clear()
-        self._window.set_current_session_title(title)
-        self._update_exchange_count()
+        self._session_service.create(title)
 
     @_safe_slot
     def _on_session_renamed(self, session_id: str, new_title: str) -> None:
-        """Handle session rename from the UI."""
-        logger.info("Renaming session %s to '%s'", session_id[:8], new_title)
-        self._memory.update_session_title(session_id, new_title)
-        self._refresh_session_list()
-        if session_id == self._current_session_id:
-            self._window.set_current_session_title(new_title)
+        self._session_service.rename(session_id, new_title)
 
     @_safe_slot
     def _on_session_deleted(self, session_id: str) -> None:
-        """Handle session delete from the UI."""
-        logger.info("Deleting session %s", session_id[:8])
-        self._memory.delete_session(session_id)
-
-        sessions = self._memory.list_sessions()
-        if not sessions:
-            session = self._memory.create_session("Untitled Session")
-            sessions = [session]
-
-        session_dicts = self._build_session_dicts(sessions)
-        new_current = sessions[0].id
-        self._current_session_id = new_current
-        self._reset_guard_stats()
-        self._window.set_sessions(session_dicts, new_current)
-        self._window.set_current_session_title(sessions[0].title)
-
-        self._brain.clear_history()
-        self._notes.current_file = self._memory.get_session_notes_file(new_current)
-        self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
-            new_current
-        )
-        self._notes.capture_screenshots = (
-            self._memory.get_session_notes_capture_screenshots(new_current)
-        )
-        self._load_session_history(new_current)
-        self._window.chat_widget.scroll_to_bottom()
-        self._update_exchange_count()
+        self._session_service.delete(session_id)
 
     # -- Push-to-talk --
 
@@ -955,18 +847,7 @@ class KlausApp:
         current_base = self._notes.base_path
         if vault != current_base:
             self._notes = NotesManager(vault)
-            if self._current_session_id:
-                self._notes.current_file = self._memory.get_session_notes_file(
-                    self._current_session_id
-                )
-                self._notes.capture_mode = self._memory.get_session_notes_capture_mode(
-                    self._current_session_id
-                )
-                self._notes.capture_screenshots = (
-                    self._memory.get_session_notes_capture_screenshots(
-                        self._current_session_id
-                    )
-                )
+            self._session_service.set_notes_manager(self._notes)
             self._brain.set_notes_manager(self._notes)
             self._rebuild_question_pipeline()
         brain_is_gemini = type(self._brain).__name__ == "GeminiLiveBrain"
