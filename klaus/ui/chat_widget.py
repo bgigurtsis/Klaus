@@ -367,6 +367,45 @@ class ChatWidget(QWidget):
         self._streaming_card = None
         self._schedule_content_height_sync()
 
+    def add_error_message(self, text: str, on_retry=None) -> None:
+        """Add a visually distinct error row, optionally with a Retry button."""
+        was_near_bottom = self._is_near_bottom()
+        self._hide_empty()
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_layout.addStretch()
+
+        card = QFrame()
+        card.setObjectName("chat-error-card")
+        card_layout = QHBoxLayout(card)
+        card_layout.setContentsMargins(14, 8, 14, 8)
+        card_layout.setSpacing(12)
+
+        label = QLabel(text)
+        label.setObjectName("chat-error-msg")
+        label.setWordWrap(True)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        card_layout.addWidget(label)
+
+        if on_retry is not None:
+            retry_btn = QPushButton("Retry")
+            retry_btn.setObjectName("chat-error-retry")
+            retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            retry_btn.setToolTip("Ask the same question again")
+            retry_btn.clicked.connect(lambda: (retry_btn.setEnabled(False), on_retry()))
+            card_layout.addWidget(
+                retry_btn, alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+
+        row_layout.addWidget(card)
+        row_layout.addStretch()
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self._auto_scroll = was_near_bottom
+        self._layout.addWidget(row)
+        self._message_widgets.append(row)
+        self._schedule_content_height_sync()
+
     def add_status_message(self, text: str) -> None:
         was_near_bottom = self._is_near_bottom()
         self._hide_empty()

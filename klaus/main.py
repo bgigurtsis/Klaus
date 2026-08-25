@@ -58,6 +58,31 @@ from klaus.services import (
 from klaus.ui.main_window import MainWindow
 
 
+_ERROR_HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        ("unauthorized", "invalid api key", "invalid_api_key", "401", "api key"),
+        "The API key was rejected. Check it under Settings → API Keys.",
+    ),
+    (
+        ("rate limit", "rate_limit", "429", "quota"),
+        "The model is rate-limiting requests. Wait a moment, then retry.",
+    ),
+    (
+        ("timed out", "timeout", "connection", "getaddrinfo", "network", "ssl", "socket"),
+        "Klaus could not reach the model. Check your internet connection, then retry.",
+    ),
+)
+
+
+def _humanize_error(message: str) -> str:
+    """Prefix a raw exception message with a plain-language explanation."""
+    lowered = message.lower()
+    for needles, hint in _ERROR_HINTS:
+        if any(needle in lowered for needle in needles):
+            return f"{hint}\n{message}"
+    return f"Something went wrong answering that question.\n{message}"
+
+
 def _configured_mic_device() -> int | None:
     """Return configured mic device index, or None for system default."""
     if config.MIC_DEVICE_INDEX < 0:
@@ -658,7 +683,10 @@ class KlausApp:
     @_safe_slot
     def _on_error(self, message: str) -> None:
         self._window.chat_widget.dismiss_thinking()
-        self._window.chat_widget.add_status_message(f"Error: {message}")
+        self._window.chat_widget.add_error_message(
+            _humanize_error(message),
+            on_retry=self._coordinator.retry_last_failed,
+        )
 
     @_safe_slot
     def _on_remarkable_paired(self, message: str) -> None:

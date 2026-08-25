@@ -62,6 +62,7 @@ class TurnCoordinator:
         self._update_exchange_count = update_exchange_count
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
+        self._last_failed_wav: bytes | None = None
 
     # -- Guard stats --
 
@@ -245,8 +246,11 @@ class TurnCoordinator:
 
         except Exception as e:
             logger.error("Processing failed: %s", e, exc_info=True)
+            self._last_failed_wav = wav_bytes
             self._signals.error.emit(str(e))
             self._signals.state_changed.emit("idle")
+        else:
+            self._last_failed_wav = None
         finally:
             seed, queued_wav = self._turn_state.end_turn()
             if voice_mode:
@@ -297,3 +301,12 @@ class TurnCoordinator:
         if self._turn_state.request_cancel():
             logger.info("Stop requested via UI")
             self._get_pipeline().cancel_active()
+
+    def retry_last_failed(self) -> bool:
+        """Re-run the question whose turn last failed. Returns False if none."""
+        wav_bytes = self._last_failed_wav
+        if wav_bytes is None or self._turn_state.processing:
+            return False
+        self._last_failed_wav = None
+        self.start_question_thread(wav_bytes)
+        return True

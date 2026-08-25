@@ -104,3 +104,32 @@ def test_clear_stops_thinking_timer(chat):
 
     assert _card_count(chat) == 0
     assert not chat._thinking_timer.isActive()
+
+
+def test_error_message_renders_retry_button(chat):
+    from PyQt6.QtWidgets import QLabel, QPushButton
+
+    retried: list[bool] = []
+    chat.add_error_message(
+        "The model timed out.", on_retry=lambda: retried.append(True)
+    )
+
+    assert _card_count(chat) == 1
+    row = chat._message_widgets[0]
+    label = row.findChild(QLabel, "chat-error-msg")
+    button = row.findChild(QPushButton, "chat-error-retry")
+    assert label is not None and label.text() == "The model timed out."
+    assert button is not None
+
+    button.click()
+    assert retried == [True]
+    assert not button.isEnabled()
+
+
+def test_error_message_without_retry_has_no_button(chat):
+    from PyQt6.QtWidgets import QPushButton
+
+    chat.add_error_message("No key configured.")
+
+    row = chat._message_widgets[0]
+    assert row.findChild(QPushButton, "chat-error-retry") is None

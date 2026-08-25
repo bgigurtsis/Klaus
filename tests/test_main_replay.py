@@ -76,3 +76,33 @@ def test_speech_start_warms_up_brain() -> None:
     coordinator.on_vad_speech_start()
 
     brain.warm_up.assert_called_once()
+
+
+def test_failed_turn_enables_retry() -> None:
+    turn_state = TurnState()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = RuntimeError("connection dropped")
+    started: list[bytes] = []
+
+    coordinator = TurnCoordinator(
+        turn_state=turn_state,
+        speculative_stt=MagicMock(),
+        stt=MagicMock(),
+        audio_output=MagicMock(),
+        signals=MagicMock(),
+        get_vad_recorder=MagicMock(),
+        get_ptt_recorder=MagicMock(),
+        get_pipeline=lambda: pipeline,
+        get_brain=MagicMock(),
+        get_input_mode=lambda: "push_to_talk",
+        get_current_session_id=lambda: None,
+        update_exchange_count=MagicMock(),
+    )
+
+    coordinator._process_question(b"wav-question", turn_state.begin_turn())
+    assert coordinator._last_failed_wav == b"wav-question"
+
+    with patch.object(coordinator, "start_question_thread", started.append):
+        assert coordinator.retry_last_failed() is True
+    assert started == [b"wav-question"]
+    assert coordinator.retry_last_failed() is False

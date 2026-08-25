@@ -471,6 +471,31 @@ QLabel#chat-status-msg {{
     border: none;
 }}
 
+/* ===== Chat error message ===== */
+#chat-error-card {{
+    background-color: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 10px;
+}}
+QLabel#chat-error-msg {{
+    color: {ERROR_COLOR};
+    font-size: {FONT_SIZE_CAPTION}px;
+    padding: 2px;
+    border: none;
+    background: transparent;
+}}
+QPushButton#chat-error-retry {{
+    color: {ERROR_COLOR};
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    border-radius: 12px;
+    padding: 3px 12px;
+    font-size: {FONT_SIZE_CAPTION}px;
+}}
+QPushButton#chat-error-retry:hover {{
+    background: rgba(239, 68, 68, 0.14);
+}}
+
 /* ===== MessageCard (role-based via dynamic property) ===== */
 MessageCard[role="user"] {{
     background-color: {USER_BG};
