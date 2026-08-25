@@ -477,6 +477,7 @@ class KlausApp:
             timestamp=timestamp,
             thumbnail_bytes=thumbnail if thumbnail else None,
         )
+        self._window.chat_widget.show_thinking()
 
     @_safe_slot
     def _on_assistant_text_delta(self, text: str) -> None:
@@ -656,6 +657,7 @@ class KlausApp:
 
     @_safe_slot
     def _on_error(self, message: str) -> None:
+        self._window.chat_widget.dismiss_thinking()
         self._window.chat_widget.add_status_message(f"Error: {message}")
 
     @_safe_slot

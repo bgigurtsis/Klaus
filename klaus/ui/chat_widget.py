@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 _SCROLL_THRESHOLD = 30
 _COLUMN_MAX_WIDTH = 860
+_THINKING_FRAMES = ("·", "· ·", "· · ·")
+_THINKING_INTERVAL_MS = 400
 
 
 class MessageCard(QFrame):
@@ -213,6 +215,11 @@ class ChatWidget(QWidget):
         self._streaming_card: MessageCard | None = None
         self._message_widgets: list[QWidget] = []
         self._height_sync_pending = False
+        self._thinking_active = False
+        self._thinking_frame = 0
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.setInterval(_THINKING_INTERVAL_MS)
+        self._thinking_timer.timeout.connect(self._advance_thinking)
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -282,44 +289,47 @@ class ChatWidget(QWidget):
         exchange_id: str = "",
         note_file_path: str | None = None,
     ) -> None:
-        was_near_bottom = self._is_near_bottom()
-        self._hide_empty()
-
-        card = MessageCard(
-            role=role,
-            text=text,
+        self._append_card(
+            role,
+            text,
             timestamp=timestamp,
             thumbnail_bytes=thumbnail_bytes,
             exchange_id=exchange_id,
             note_file_path=note_file_path,
-            parent=self._container,
         )
-        card.replay_requested.connect(self.replay_requested.emit)
-
-        self._auto_scroll = was_near_bottom
-        row = self._card_row(card, role)
-        self._layout.addWidget(row)
-        self._message_widgets.append(row)
-        self._last_card = card
-        self._schedule_content_height_sync()
         logger.debug("Added %s message", role)
+
+    def show_thinking(self) -> None:
+        """Show a pending assistant card until the first transcript fragment."""
+        if self._streaming_card is not None:
+            return
+        self._streaming_card = self._append_card("assistant", _THINKING_FRAMES[0])
+        self._thinking_active = True
+        self._thinking_frame = 0
+        self._thinking_timer.start()
+
+    def dismiss_thinking(self) -> None:
+        """Remove the pending card if no answer text ever arrived."""
+        if not self._thinking_active:
+            return
+        self._stop_thinking()
+        card = self._streaming_card
+        self._streaming_card = None
+        if card is not None:
+            self._remove_card_row(card)
+        self._schedule_content_height_sync()
 
     def append_assistant_stream(self, text: str) -> None:
         """Append a streamed transcript fragment to the live assistant card.
 
-        Creates the card on the first fragment of a response.
+        Creates the card on the first fragment of a response, or replaces the
+        thinking placeholder when one is showing.
         """
         if self._streaming_card is None:
-            was_near_bottom = self._is_near_bottom()
-            self._hide_empty()
-            card = MessageCard(role="assistant", text=text, parent=self._container)
-            card.replay_requested.connect(self.replay_requested.emit)
-            self._auto_scroll = was_near_bottom
-            row = self._card_row(card, "assistant")
-            self._layout.addWidget(row)
-            self._message_widgets.append(row)
-            self._last_card = card
-            self._streaming_card = card
+            self._streaming_card = self._append_card("assistant", text)
+        elif self._thinking_active:
+            self._stop_thinking()
+            self._streaming_card.set_text(text)
         else:
             self._streaming_card.append_text(text)
         self._schedule_content_height_sync()
@@ -335,6 +345,7 @@ class ChatWidget(QWidget):
         Returns True if a streaming card was finalized, False if there was
         none (caller should add a regular message instead).
         """
+        self._stop_thinking()
         card = self._streaming_card
         self._streaming_card = None
         if card is None:
@@ -347,6 +358,10 @@ class ChatWidget(QWidget):
 
     def abort_assistant_stream(self) -> None:
         """Detach the streaming card after a cancelled turn."""
+        if self._thinking_active:
+            # No answer text ever arrived; drop the placeholder entirely.
+            self.dismiss_thinking()
+            return
         if self._streaming_card is not None:
             self._streaming_card.mark_interrupted()
         self._streaming_card = None
@@ -372,6 +387,7 @@ class ChatWidget(QWidget):
         self._schedule_content_height_sync()
 
     def clear(self) -> None:
+        self._stop_thinking()
         for widget in self._message_widgets:
             self._layout.removeWidget(widget)
             widget.deleteLater()
@@ -389,6 +405,57 @@ class ChatWidget(QWidget):
         QTimer.singleShot(100, self._do_scroll_to_bottom)
 
     # -- Private --
+
+    def _append_card(
+        self,
+        role: str,
+        text: str,
+        timestamp: float | None = None,
+        thumbnail_bytes: bytes | None = None,
+        exchange_id: str = "",
+        note_file_path: str | None = None,
+    ) -> MessageCard:
+        was_near_bottom = self._is_near_bottom()
+        self._hide_empty()
+        card = MessageCard(
+            role=role,
+            text=text,
+            timestamp=timestamp,
+            thumbnail_bytes=thumbnail_bytes,
+            exchange_id=exchange_id,
+            note_file_path=note_file_path,
+            parent=self._container,
+        )
+        card.replay_requested.connect(self.replay_requested.emit)
+        self._auto_scroll = was_near_bottom
+        row = self._card_row(card, role)
+        self._layout.addWidget(row)
+        self._message_widgets.append(row)
+        self._last_card = card
+        self._schedule_content_height_sync()
+        return card
+
+    def _remove_card_row(self, card: MessageCard) -> None:
+        row = card.parentWidget()
+        if row in self._message_widgets:
+            self._message_widgets.remove(row)
+            self._layout.removeWidget(row)
+            row.deleteLater()
+        if self._last_card is card:
+            self._last_card = None
+        if not self._message_widgets:
+            self._show_empty()
+
+    def _stop_thinking(self) -> None:
+        self._thinking_active = False
+        self._thinking_timer.stop()
+
+    def _advance_thinking(self) -> None:
+        if not self._thinking_active or self._streaming_card is None:
+            self._thinking_timer.stop()
+            return
+        self._thinking_frame = (self._thinking_frame + 1) % len(_THINKING_FRAMES)
+        self._streaming_card.set_text(_THINKING_FRAMES[self._thinking_frame])
 
     def _build_empty_state(self) -> QWidget:
         state = QWidget()
