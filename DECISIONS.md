@@ -167,3 +167,19 @@ applied QSS selectors (`#conversation-*`, `#klaus-breadcrumb`,
 `#klaus-brand-subtitle`, base `#chat-empty`), and the rule-less `wizard-dot`
 object name. Revisit only if a knowledge profile feature returns — rebuild it
 against the pipeline then, don't resurrect this code.
+
+## 2026-08-25 — TurnState owns cross-thread turn flags; device switches refused mid-turn
+
+KlausApp's five turn flags were mutated from four threads with no lock, and a
+stop request could land on a stale cancel event because the event was rebound
+inside the worker thread. `services/turn_state.py` now owns them behind one
+lock: begin_turn creates the cancel event before the worker spawns, end_turn
+consumes the barge-in seed and queued PTT recording atomically, and barge_in
+rejects seeds when Klaus is not speaking. Memory's execute+commit write
+sequences got a write lock (single-statement reads stay lock-free — sqlite's
+serialized mode covers them). Device switches (camera and mic) are refused
+with a dialog while a turn is processing, except the forced reMarkable
+pairing refresh. Investigated and rejected: a pending-cancel flag for Gemini's
+loop-startup window — `_cancelled()` already polls the event right after the
+session opens, so an early cancel aborts the turn without new state; a
+regression test now pins that.

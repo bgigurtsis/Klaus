@@ -1053,6 +1053,14 @@ class KlausApp:
         self, new_index: int, *, force: bool = False
     ) -> tuple[bool, int]:
         """Switch the active reading source immediately, with rollback."""
+        if not force and self._turn_state.processing:
+            logger.info("Deferred reading-source switch: a turn is in progress")
+            self._show_device_switch_error(
+                "Turn in Progress",
+                "Klaus is answering a question. Stop the answer or wait for it "
+                "to finish, then switch the reading source.",
+            )
+            return False, self._active_camera_index
         self._ensure_device_switch_service()
         result = self._device_switch_service.switch_camera(
             current_camera=self._camera,
@@ -1072,6 +1080,14 @@ class KlausApp:
 
     def _apply_mic_device_live(self, new_device: int | None) -> tuple[bool, int | None]:
         """Switch the active microphone immediately, with automatic rollback."""
+        if self._turn_state.processing:
+            logger.info("Deferred microphone switch: a turn is in progress")
+            self._show_device_switch_error(
+                "Turn in Progress",
+                "Klaus is answering a question. Stop the answer or wait for it "
+                "to finish, then switch the microphone.",
+            )
+            return False, self._active_mic_device
         self._ensure_device_switch_service()
         result = self._device_switch_service.switch_mic(
             current_vad=self._vad_recorder,

@@ -132,3 +132,16 @@ def test_output_transcription_streams_each_delta(monkeypatch) -> None:
 
     assert deltas == ["Stream", "ing text", " as it arrives."]
     assert answer == "Streaming text as it arrives."
+
+
+def test_cancel_before_session_loop_starts_still_aborts_turn():
+    """A cancel landing before _active_loop is set must abort via the event."""
+    from klaus.gemini_live import GeminiLiveBrain
+
+    brain = GeminiLiveBrain.__new__(GeminiLiveBrain)
+    brain._cancel_event = threading.Event()
+
+    brain._cancel_event.set()
+
+    assert brain._cancelled(None) is True
+    assert brain._cancelled(threading.Event()) is True

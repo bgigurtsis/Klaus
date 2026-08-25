@@ -30,6 +30,8 @@ def _make_app(service: MagicMock) -> KlausApp:
     app._ensure_device_switch_service = MagicMock()
     app._rebuild_question_pipeline = MagicMock()
     app._surface_reading_source_error = MagicMock()
+    app._show_device_switch_error = MagicMock()
+    app._turn_state = TurnState()
     return app
 
 
@@ -182,3 +184,46 @@ def test_remarkable_pairing_forces_active_tablet_client_refresh(
     app._window.chat_widget.add_status_message.assert_called_once_with(
         "Paired over Wi-Fi."
     )
+
+
+def test_camera_switch_refused_while_turn_in_progress() -> None:
+    service = MagicMock()
+    app = _make_app(service)
+    app._turn_state.begin_turn()
+
+    ok, effective_index = KlausApp._apply_camera_device_live(app, 2)
+
+    assert ok is False
+    assert effective_index == 0
+    service.switch_camera.assert_not_called()
+    app._show_device_switch_error.assert_called_once()
+
+
+def test_forced_camera_switch_bypasses_turn_guard() -> None:
+    service = MagicMock()
+    service.switch_camera.return_value = SimpleNamespace(
+        success=True,
+        camera="new-camera",
+        active_index=2,
+        error_message=None,
+    )
+    app = _make_app(service)
+    app._turn_state.begin_turn()
+
+    ok, _ = KlausApp._apply_camera_device_live(app, 2, force=True)
+
+    assert ok is True
+    service.switch_camera.assert_called_once()
+
+
+def test_mic_switch_refused_while_turn_in_progress() -> None:
+    service = MagicMock()
+    app = _make_app(service)
+    app._turn_state.begin_turn()
+
+    ok, effective_device = KlausApp._apply_mic_device_live(app, 4)
+
+    assert ok is False
+    assert effective_device == 1
+    service.switch_mic.assert_not_called()
+    app._show_device_switch_error.assert_called_once()
