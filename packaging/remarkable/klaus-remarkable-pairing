@@ -16,7 +16,12 @@ password=$(value RK_SERVER_PASSWORD)
 wifi_addresses=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
 
 echo "Klaus reMarkable pairing"
-echo "USB address: https://10.11.99.1:2001"
+hostname=$(hostname 2>/dev/null || true)
+case "$hostname" in
+	""|*[!A-Za-z0-9_-]*) ;;
+	*) echo "Wi-Fi hostname: https://$hostname.local.:2001" ;;
+esac
+echo "USB setup address: https://10.11.99.1:2001"
 for address in $wifi_addresses; do
 	echo "Wi-Fi address: https://$address:2001"
 done

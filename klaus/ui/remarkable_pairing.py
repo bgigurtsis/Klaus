@@ -40,7 +40,7 @@ class RemarkablePairingDialog(QDialog):
 
         form = QFormLayout()
         self.address_edit = QLineEdit(config.REMARKABLE_ADDRESS)
-        self.address_edit.setPlaceholderText("https://10.11.99.1:2001")
+        self.address_edit.setPlaceholderText("https://remarkable.local.:2001")
         self.username_edit = QLineEdit(config.REMARKABLE_USERNAME)
         self.username_edit.setPlaceholderText("klaus")
         self.password_edit = QLineEdit()

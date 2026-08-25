@@ -87,7 +87,7 @@ Klaus currently supports reMarkable Paper Pure on software 3.27.x. It does not
 support reMarkable 1, reMarkable 2, Paper Pro, Paper Pro Move, or Paper Pure
 3.28 yet.
 
-This setup needs a USB-C cable, Developer Mode, the tablet's SSH password,
+Initial setup needs a USB-C cable, Developer Mode, the tablet's SSH password,
 [reManager](https://github.com/rmitchellscott/reManager), and an open copy of
 Klaus. Developer Mode may reset the tablet. Sync or export your files before
 you enable it, and follow the warning shown on the tablet.
@@ -109,6 +109,10 @@ you enable it, and follow the warning shown on the tablet.
    cd Klaus
    ./scripts/setup-remarkable-paper-pure.sh
    ```
+
+The script may pair Klaus through the tablet's Wi-Fi hostname or Wi-Fi address.
+After setup succeeds, disconnect USB-C and keep the Mac and tablet on the same
+network. USB-C should only be needed again if you reinstall the tablet service.
 
 The script checks the model and tablet software before it changes anything. It
 downloads a pinned Paper Pure build of goMarkableStream and verifies its
@@ -198,7 +202,7 @@ Open **Settings** in Klaus for normal changes. Advanced settings live in `~/.kla
 | `reasoning_effort` | `high` | Choose `low`, `medium`, or `high` reasoning effort |
 | `voice` | `cedar` for GPT, `Kore` for Gemini | Choose the voice available for the selected live model |
 | `camera_index` | `-1` | Start without a reading source, or use Active window with `-3`, Desk View with `-2`, or Paper Pure with `-4` |
-| `remarkable_address` | `https://10.11.99.1:2001` | Set the paired USB or Wi-Fi service address |
+| `remarkable_address` | `https://10.11.99.1:2001` | Store the paired Wi-Fi service address; old USB pairings may fall back to `remarkable.local.` |
 | `remarkable_username` | `klaus` | Set the service username shown by the tablet package |
 | `remarkable_certificate_sha256` | empty | Pin the certificate after successful pairing |
 | `input_mode` | `push_to_talk` | Use push-to-talk or hands-free input |

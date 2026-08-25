@@ -197,8 +197,6 @@ class RealtimeBrain:
                 self._notes.reset_changed()
 
             instructions = self._turn_instructions(route, notes_context)
-            self._send_session_update(self._session_update(instructions))
-
             content: list[dict] = []
             if reading_text and route.use_image:
                 content.append(
@@ -225,13 +223,16 @@ class RealtimeBrain:
                 }
             )
 
-            self._send(
-                {
-                    "type": "conversation.item.create",
-                    "item": {"type": "message", "role": "user", "content": content},
-                }
+            self._send_with_reconnect(
+                [
+                    self._session_update(instructions),
+                    {
+                        "type": "conversation.item.create",
+                        "item": {"type": "message", "role": "user", "content": content},
+                    },
+                    {"type": "response.create"},
+                ]
             )
-            self._send({"type": "response.create"})
             with self._response_state_lock:
                 self._response_active = True
                 self._cancel_requested = False
@@ -388,22 +389,24 @@ class RealtimeBrain:
 
         with self._turn_lock:
             self._ensure_connected()
-            self._send(self._session_update(config.SYSTEM_PROMPT))
-            self._send(
-                {
-                    "type": "response.create",
-                    "response": {
-                        "conversation": "none",
-                        "metadata": {"purpose": "replay"},
-                        "output_modalities": ["audio"],
-                        "input": [],
-                        "instructions": (
-                            "Read the following text aloud exactly as written. Do not "
-                            "add, remove, explain, or paraphrase anything.\n\n"
-                            f"<text_to_read>\n{spoken_text}\n</text_to_read>"
-                        ),
+            self._send_with_reconnect(
+                [
+                    self._session_update(config.SYSTEM_PROMPT),
+                    {
+                        "type": "response.create",
+                        "response": {
+                            "conversation": "none",
+                            "metadata": {"purpose": "replay"},
+                            "output_modalities": ["audio"],
+                            "input": [],
+                            "instructions": (
+                                "Read the following text aloud exactly as written. Do not "
+                                "add, remove, explain, or paraphrase anything.\n\n"
+                                f"<text_to_read>\n{spoken_text}\n</text_to_read>"
+                            ),
+                        },
                     },
-                }
+                ]
             )
             with self._response_state_lock:
                 self._response_active = True
@@ -536,15 +539,19 @@ class RealtimeBrain:
                 raise RuntimeError("Realtime session is not connected")
             self._ws.send(json.dumps(event))
 
-    def _send_session_update(self, event: dict) -> None:
-        """Reconnect once when a cached session has closed between turns."""
-        try:
-            self._send(event)
-        except (OSError, websocket.WebSocketConnectionClosedException):
-            logger.info("GPT Realtime session went stale; reconnecting")
-            self.close()
-            self._ensure_connected()
-            self._send(event)
+    def _send_with_reconnect(self, events: list[dict]) -> None:
+        """Reconnect once when a cached session closes while a turn starts."""
+        for attempt in range(2):
+            try:
+                for event in events:
+                    self._send(event)
+                return
+            except (OSError, websocket.WebSocketConnectionClosedException):
+                if attempt:
+                    raise
+                logger.info("GPT Realtime session went stale; reconnecting")
+                self.close()
+                self._ensure_connected()
 
     def _truncate_unplayed_audio(self) -> None:
         if not self._last_item_id:

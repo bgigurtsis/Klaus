@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
+import socket
 import stat
 import subprocess
+import tempfile
+import threading
 from pathlib import Path
 
 
@@ -123,3 +127,63 @@ def test_setup_rejects_host_option_injection_before_ssh(tmp_path):
     assert result.returncode == 2
     assert "unsupported characters" in result.stderr
     assert not marker.exists()
+
+
+def test_setup_pairs_over_wifi_instead_of_usb(tmp_path):
+    commands = _fake_path(tmp_path)
+    _write_executable(
+        commands / "ssh",
+        """#!/bin/sh
+case "$*" in
+  *"uname -m"*) echo aarch64 ;;
+  *"test -x /home/root/.vellum/bin/vellum"*) exit 0 ;;
+  *"vellum list -I"*) echo rmppure-1 ;;
+  *"state/osver"*) echo 3.27.3.0 ;;
+  *"cat /home/root/.config/klaus-remarkable/service.env"*)
+    printf 'RK_SERVER_USERNAME=klaus\nRK_SERVER_PASSWORD=private-password\n' ;;
+  *"hostname 2>/dev/null"*) echo reMarkable ;;
+  *"ip -4 -o addr show scope global"*)
+    printf '2: wlan0 inet 192.168.1.44/24 scope global wlan0\n' ;;
+  *) exit 0 ;;
+esac
+""",
+    )
+    _write_executable(commands / "scp", "#!/bin/sh\nexit 0\n")
+
+    temporary_data = tempfile.TemporaryDirectory(prefix="klaus-setup-", dir="/tmp")
+    data_dir = Path(temporary_data.name)
+    socket_path = data_dir / "remanager-pairing.sock"
+    captured: list[dict[str, str]] = []
+    ready = threading.Event()
+
+    def serve_pairing() -> None:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(socket_path))
+            server.listen(1)
+            ready.set()
+            connection, _ = server.accept()
+            with connection:
+                request = connection.makefile("rb").readline()
+                captured.append(json.loads(request))
+                response = {"ok": True, "message": "Paired over Wi-Fi."}
+                connection.sendall(json.dumps(response).encode() + b"\n")
+
+    server_thread = threading.Thread(target=serve_pairing)
+    server_thread.start()
+    assert ready.wait(timeout=2)
+    env = os.environ.copy()
+    env["PATH"] = f"{commands}:{env['PATH']}"
+    env["KLAUS_DATA_DIR"] = str(data_dir)
+    result = subprocess.run(
+        [SETUP_SCRIPT],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    server_thread.join(timeout=2)
+
+    assert not server_thread.is_alive()
+    assert captured[0]["address"] == "https://reMarkable.local.:2001"
+    assert "after USB-C is disconnected" in result.stdout
+    temporary_data.cleanup()

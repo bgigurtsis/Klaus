@@ -69,6 +69,13 @@ class _BrokenWebSocket(_FakeWebSocket):
         raise BrokenPipeError(32, "Broken pipe")
 
 
+class _BreakAfterFirstSendWebSocket(_FakeWebSocket):
+    def send(self, payload: str) -> None:
+        if self.sent:
+            raise BrokenPipeError(32, "Broken pipe")
+        super().send(payload)
+
+
 class _FakeAudioOutput:
     def __init__(self) -> None:
         self.chunks: list[np.ndarray] = []
@@ -259,6 +266,43 @@ def test_audio_turn_reconnects_when_cached_session_is_stale() -> None:
     assert stale.closed is True
     assert exchange.assistant_text == "Recovered answer."
     assert fresh.sent[0]["type"] == "session.update"
+
+
+def test_audio_turn_restarts_when_connection_breaks_during_turn_start() -> None:
+    stale = _BreakAfterFirstSendWebSocket([])
+    fresh = _FakeWebSocket(
+        [
+            {
+                "type": "response.output_audio_transcript.delta",
+                "delta": "Recovered answer.",
+            },
+            {
+                "type": "response.done",
+                "response": {"status": "completed", "output": []},
+            },
+        ]
+    )
+    sockets = iter((stale, fresh))
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: next(sockets),
+    )
+
+    exchange = brain.ask_audio(
+        wav_bytes=_wav_bytes(np.array([1, 2, 3], dtype=np.int16), sample_rate=24_000),
+        question="Try again",
+        route_decision=_route(),
+    )
+
+    assert stale.closed is True
+    assert exchange.assistant_text == "Recovered answer."
+    assert [event["type"] for event in fresh.sent] == [
+        "session.update",
+        "conversation.item.create",
+        "response.create",
+    ]
 
 
 def test_cancel_truncates_audio_at_played_position() -> None:

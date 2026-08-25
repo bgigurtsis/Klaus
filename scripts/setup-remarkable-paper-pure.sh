@@ -205,9 +205,35 @@ if [ -z "$PAIR_USERNAME" ] || [ -z "$PAIR_PASSWORD" ]; then
 	exit 1
 fi
 
-PAIR_ADDRESS="https://$TABLET_HOST:2001"
+PAIR_HOSTNAME=$(ssh "${SSH_OPTIONS[@]}" "$SSH_TARGET" "hostname 2>/dev/null || true")
+case "$PAIR_HOSTNAME" in
+	""|*[!A-Za-z0-9_-]*) PAIR_HOSTNAME="" ;;
+esac
+PAIR_WIFI_ADDRESSES=$(
+	ssh "${SSH_OPTIONS[@]}" "$SSH_TARGET" \
+		"ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1" |
+		awk '$1 != "10.11.99.1" && $1 ~ /^[0-9.]+$/ { print $1 }'
+)
+PAIR_ADDRESSES=""
+if [ "$TABLET_HOST" != "10.11.99.1" ]; then
+	PAIR_ADDRESSES="https://$TABLET_HOST:2001"
+fi
+if [ -n "$PAIR_HOSTNAME" ]; then
+	PAIR_ADDRESSES="${PAIR_ADDRESSES:+$PAIR_ADDRESSES
+}https://$PAIR_HOSTNAME.local.:2001"
+fi
+while IFS= read -r wifi_address; do
+	[ -n "$wifi_address" ] || continue
+	PAIR_ADDRESSES="${PAIR_ADDRESSES:+$PAIR_ADDRESSES
+}https://$wifi_address:2001"
+done <<< "$PAIR_WIFI_ADDRESSES"
+if [ -z "$PAIR_ADDRESSES" ]; then
+	echo "Connect Paper Pure to Wi-Fi, then run setup again." >&2
+	exit 1
+fi
+
 PAIR_RESULT=$(
-	PAIR_ADDRESS="$PAIR_ADDRESS" \
+	PAIR_ADDRESSES="$PAIR_ADDRESSES" \
 	PAIR_USERNAME="$PAIR_USERNAME" \
 	PAIR_PASSWORD="$PAIR_PASSWORD" \
 	python3 - "$PAIRING_SOCKET" <<'PY'
@@ -216,25 +242,32 @@ import os
 import socket
 import sys
 
-request = {
-    "address": os.environ["PAIR_ADDRESS"],
-    "username": os.environ["PAIR_USERNAME"],
-    "password": os.environ["PAIR_PASSWORD"],
-}
-client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-client.settimeout(40)
-client.connect(sys.argv[1])
-client.sendall(json.dumps(request).encode("utf-8") + b"\n")
-response = bytearray()
-while b"\n" not in response:
-    chunk = client.recv(4096)
-    if not chunk:
+last_message = "Klaus could not reach Paper Pure over Wi-Fi."
+for address in dict.fromkeys(os.environ["PAIR_ADDRESSES"].splitlines()):
+    request = {
+        "address": address,
+        "username": os.environ["PAIR_USERNAME"],
+        "password": os.environ["PAIR_PASSWORD"],
+    }
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(40)
+    client.connect(sys.argv[1])
+    client.sendall(json.dumps(request).encode("utf-8") + b"\n")
+    response = bytearray()
+    while b"\n" not in response:
+        chunk = client.recv(4096)
+        if not chunk:
+            break
+        response.extend(chunk)
+    client.close()
+    result = json.loads(bytes(response).split(b"\n", 1)[0])
+    last_message = result.get("message", "Pairing returned no message.")
+    if result.get("ok"):
+        print(last_message)
+        print(f"Klaus will use {address} after USB-C is disconnected.")
         break
-    response.extend(chunk)
-client.close()
-result = json.loads(bytes(response).split(b"\n", 1)[0])
-print(result.get("message", "Pairing returned no message."))
-if not result.get("ok"):
+else:
+    print(last_message)
     raise SystemExit(1)
 PY
 )

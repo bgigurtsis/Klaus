@@ -135,6 +135,15 @@ class RemarkableClient:
         self._retries = max(0, int(retries))
         self._token = ""
         self._token_lock = threading.Lock()
+        self._active_target = _target(self.address)
+
+    def _targets(self) -> list[tuple[str, int]]:
+        """Prefer the last working route and support old USB-only pairings over Wi-Fi."""
+        configured = _target(self.address)
+        targets = [self._active_target, configured]
+        if configured[0] == "10.11.99.1":
+            targets.append(("remarkable.local.", configured[1]))
+        return list(dict.fromkeys(targets))
 
     def _check_cancelled(self, cancel_event: threading.Event | None) -> None:
         if cancel_event is not None and cancel_event.is_set():
@@ -150,30 +159,40 @@ class RemarkableClient:
         cancel_event: threading.Event | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
         self._check_cancelled(cancel_event)
-        host, port = _target(self.address)
-        for attempt in range(self._retries + 1):
-            connection = _PinnedHTTPSConnection(host, port, self._fingerprint, self._timeout)
-            try:
-                connection.request(method, path, body=body, headers=headers or {})
-                response = connection.getresponse()
-                payload = response.read()
-                self._check_cancelled(cancel_event)
-                return response.status, dict(response.getheaders()), payload
-            except RemarkableCertificateError:
-                raise
-            except socket.timeout as exc:
-                if attempt >= self._retries:
-                    raise RemarkableSleepingError("The tablet may be asleep") from exc
-            except ConnectionRefusedError as exc:
-                raise RemarkableMissingServiceError(
-                    "The Klaus tablet service is not running"
-                ) from exc
-            except (OSError, http.client.HTTPException) as exc:
-                if attempt >= self._retries:
-                    raise RemarkableNetworkError("Klaus lost its connection to the tablet") from exc
-            finally:
-                connection.close()
-        raise RemarkableNetworkError("Klaus lost its connection to the tablet")
+        last_error: Exception | None = None
+        for host, port in self._targets():
+            for attempt in range(self._retries + 1):
+                connection = _PinnedHTTPSConnection(
+                    host, port, self._fingerprint, self._timeout
+                )
+                try:
+                    connection.request(method, path, body=body, headers=headers or {})
+                    response = connection.getresponse()
+                    payload = response.read()
+                    self._check_cancelled(cancel_event)
+                    self._active_target = (host, port)
+                    return response.status, dict(response.getheaders()), payload
+                except RemarkableCertificateError:
+                    raise
+                except (
+                    socket.timeout,
+                    ConnectionRefusedError,
+                    OSError,
+                    http.client.HTTPException,
+                ) as exc:
+                    last_error = exc
+                    if attempt < self._retries:
+                        continue
+                finally:
+                    connection.close()
+                break
+        if isinstance(last_error, socket.timeout):
+            raise RemarkableSleepingError("The tablet may be asleep") from last_error
+        if isinstance(last_error, ConnectionRefusedError):
+            raise RemarkableMissingServiceError(
+                "The Klaus tablet service is not running"
+            ) from last_error
+        raise RemarkableNetworkError("Klaus lost its connection to the tablet") from last_error
 
     def login(self, cancel_event: threading.Event | None = None) -> None:
         body = json.dumps(
