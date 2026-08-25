@@ -51,7 +51,7 @@ both engines stream 24 kHz PCM speech directly.
 | `gemini_live.py` | ~400 | `GeminiLiveBrain`: per-turn Gemini Live session (`asyncio.run` in a thread), local `_history` resent each turn, Google Search tool |
 | `audio_output.py` | ~160 | Shared PCM playback: `play_pcm_stream` (response audio), `play_pcm` (earcons), playback-id invalidation, playback observer for echo rejection |
 | `stt.py` | ~120 | Moonshine local transcription; model download/compile on first init |
-| `memory.py` | ~340 | SQLite sessions/exchanges persistence |
+| `memory.py` | ~270 | SQLite sessions/exchanges persistence |
 | `camera.py` | ~180 | Shared capture loop (5 fps window / 1 fps tablet), auto-rotation, base64/thumbnail export, `capture_text_context` |
 | `macos_reading_source.py` | ~300 | Desk View / active-window capture (`CGWindowListCreateImage`), Accessibility selected text |
 | `remarkable_reading_source.py` | ~370 | reMarkable "Paper Pure" page capture over HTTPS |

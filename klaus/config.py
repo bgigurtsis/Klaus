@@ -198,8 +198,6 @@ LIVE_MODELS: dict[str, dict[str, str]] = {
 }
 DEFAULT_LIVE_MODEL = "gpt-realtime-2.1-mini"
 DEFAULT_REASONING_EFFORT = "high"
-# Compatibility alias for integrations that import the historical OpenAI model constant.
-REALTIME_MODEL = "gpt-realtime-2.1"
 _DEFAULT_PTT_KEY = "§"
 _DEFAULT_TOGGLE_KEY = "§"
 
@@ -731,11 +729,6 @@ def set_api_key(slug: str, value: str) -> None:
 def clear_api_key(slug: str) -> None:
     """Clear one API key from persisted storage."""
     set_api_key(slug, "")
-
-
-def save_api_key(openai: str) -> None:
-    """Persist the OpenAI API key in Apple Keychain."""
-    set_api_key("openai", openai)
 
 
 def save_live_model(model: str) -> None:

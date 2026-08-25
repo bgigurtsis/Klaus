@@ -24,7 +24,6 @@ from klaus.ui.theme import (  # noqa: F401
     FONT_SIZE_SMALL,
     IDLE_COLOR,
     KLAUS_ACCENT,
-    KLAUS_BG,
     KLAUS_BTN_BORDER,
     KLAUS_BTN_HOVER_BG,
     LISTENING_COLOR,
@@ -272,18 +271,6 @@ QCheckBox::indicator:checked {{
     font-size: 13px;
     font-weight: 800;
 }}
-#klaus-brand-subtitle {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
-    background: transparent;
-    border: none;
-}}
-#klaus-breadcrumb {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
-    background: transparent;
-    border: none;
-}}
 #klaus-model-pill {{
     color: {TEXT_SECONDARY};
     background: {SURFACE_RAISED};
@@ -444,40 +431,7 @@ QMenu::item:selected {{
     border: none;
     background: transparent;
 }}
-#conversation-header {{
-    background: {BG};
-    border-bottom: 1px solid {BORDER_MUTED};
-}}
-#conversation-heading {{
-    color: {TEXT_PRIMARY};
-    font-size: {FONT_SIZE_SMALL + 1}px;
-    font-weight: 700;
-    background: transparent;
-    border: none;
-}}
-#conversation-subtitle {{
-    color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_CAPTION}px;
-    background: transparent;
-    border: none;
-}}
-#conversation-badge {{
-    color: {KLAUS_ACCENT};
-    background: {KLAUS_BG};
-    border: 1px solid {BORDER_DEFAULT};
-    border-radius: 10px;
-    padding: 3px 9px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.7px;
-}}
-
 /* ===== Chat empty state ===== */
-#chat-empty {{
-    color: {TEXT_SECONDARY};
-    font-size: {FONT_SIZE_BODY + 1}px;
-    border: none;
-}}
 #chat-empty-heading {{
     color: {TEXT_PRIMARY};
     font-size: {FONT_SIZE_HEADING + 8}px;

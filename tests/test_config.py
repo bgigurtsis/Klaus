@@ -32,7 +32,7 @@ def test_set_api_key_writes_only_to_keychain(monkeypatch, config_dir):
         "set_api_key",
         lambda slug, value: saved.append((slug, value)),
     )
-    config.save_api_key("sk-test-key")
+    config.set_api_key("openai", "sk-test-key")
     assert saved == [("openai", "sk-test-key")]
     assert "sk-test-key" not in config_dir.read_text(encoding="utf-8")
 
@@ -54,13 +54,13 @@ def test_paper_pure_password_writes_only_to_keychain(monkeypatch, config_dir):
     assert values["remarkable_certificate_sha256"] == "a" * 64
 
 
-def test_save_api_key_propagates_keychain_errors(monkeypatch):
+def test_set_api_key_propagates_keychain_errors(monkeypatch):
     def unavailable(*_args):
         raise config.secrets_store.SecretsStoreError("Keychain disabled")
 
     monkeypatch.setattr(config.secrets_store, "set_api_key", unavailable)
     with pytest.raises(config.secrets_store.SecretsStoreError, match="Keychain disabled"):
-        config.save_api_key("sk-test-key")
+        config.set_api_key("openai", "sk-test-key")
 
 
 def test_openai_key_loads_from_environment(monkeypatch):

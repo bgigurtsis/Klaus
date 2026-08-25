@@ -39,7 +39,7 @@ class ExchangeRecord:
 
 
 class Memory:
-    """Persistent storage for sessions, exchanges, and knowledge profile."""
+    """Persistent storage for sessions and exchanges."""
 
     def __init__(self, db_path: Path = DB_PATH):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,20 +70,8 @@ class Memory:
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
 
-            CREATE TABLE IF NOT EXISTS knowledge_profile (
-                id TEXT PRIMARY KEY,
-                topic TEXT NOT NULL,
-                summary TEXT NOT NULL,
-                comfort_level TEXT NOT NULL DEFAULT 'beginner',
-                first_seen REAL NOT NULL,
-                last_seen REAL NOT NULL
-            );
-
             CREATE INDEX IF NOT EXISTS idx_exchanges_session
                 ON exchanges(session_id, created_at);
-
-            CREATE INDEX IF NOT EXISTS idx_knowledge_topic
-                ON knowledge_profile(topic);
         """)
         self._migrate_sessions_notes_file()
         self._migrate_sessions_notes_capture_mode()
@@ -358,59 +346,6 @@ class Memory:
         else:
             row = self._conn.execute("SELECT COUNT(*) as c FROM exchanges").fetchone()
         return row["c"]
-
-    # -- Knowledge Profile --
-
-    def update_knowledge(self, topic: str, summary: str, comfort_level: str = "learning") -> None:
-        now = time.time()
-        existing = self._conn.execute(
-            "SELECT id FROM knowledge_profile WHERE topic = ?", (topic,)
-        ).fetchone()
-        if existing:
-            self._conn.execute(
-                """UPDATE knowledge_profile
-                   SET summary = ?, comfort_level = ?, last_seen = ?
-                   WHERE id = ?""",
-                (summary, comfort_level, now, existing["id"]),
-            )
-        else:
-            self._conn.execute(
-                """INSERT INTO knowledge_profile
-                   (id, topic, summary, comfort_level, first_seen, last_seen)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), topic, summary, comfort_level, now, now),
-            )
-        self._conn.commit()
-
-    def get_knowledge_summary(self, limit: int = 20) -> str:
-        """Return a text summary of the user's knowledge profile for inclusion in prompts."""
-        rows = self._conn.execute(
-            "SELECT topic, summary, comfort_level FROM knowledge_profile ORDER BY last_seen DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-        if not rows:
-            return ""
-        lines = []
-        for r in rows:
-            lines.append(f"- {r['topic']} ({r['comfort_level']}): {r['summary']}")
-        return "User's knowledge profile:\n" + "\n".join(lines)
-
-    def get_recent_exchanges_summary(self, session_id: str, limit: int = 5) -> str:
-        """Return a brief summary of recent exchanges for context."""
-        rows = self._conn.execute(
-            """SELECT user_text, assistant_text FROM exchanges
-               WHERE session_id = ?
-               ORDER BY created_at DESC LIMIT ?""",
-            (session_id, limit),
-        ).fetchall()
-        if not rows:
-            return ""
-        lines = []
-        for r in reversed(rows):
-            q = r["user_text"][:100]
-            a = r["assistant_text"][:150]
-            lines.append(f"Q: {q}\nA: {a}")
-        return "Recent exchanges in this session:\n" + "\n".join(lines)
 
     def close(self) -> None:
         self._conn.close()

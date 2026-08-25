@@ -464,7 +464,7 @@ class RealtimeBrain:
         if self._ws is not None and age < _CONNECTION_MAX_AGE_SECONDS:
             return
         self.close()
-        model = getattr(self._settings, "live_model", config.REALTIME_MODEL)
+        model = self._settings.live_model
         url = _REALTIME_URL.format(model=model)
         headers = [f"Authorization: Bearer {self._settings.openai_api_key}"]
         self._ws = self._websocket_factory(url, header=headers, timeout=10)
@@ -475,7 +475,7 @@ class RealtimeBrain:
     def _session_update(self, instructions: str) -> dict:
         session: dict = {
             "type": "realtime",
-            "model": getattr(self._settings, "live_model", config.REALTIME_MODEL),
+            "model": self._settings.live_model,
             "output_modalities": ["audio"],
             "audio": {
                 "input": {

@@ -152,3 +152,18 @@ recreated certificate forces exactly one reinstall. Rejected: scripting
 dialog — it puts the login password on a command line; "Always Allow" once
 is fine. Revisit if the forked parent confuses the Dock or Force Quit
 (contingency: LSUIElement in Info.plist).
+
+## 2026-08-25 — Dead code removed: knowledge_profile, REALTIME_MODEL alias, dead QSS
+
+Deleted the dormant knowledge-profile layer from `memory.py` (table DDL,
+`update_knowledge`, `get_knowledge_summary`, `get_recent_exchanges_summary`)
+— zero callers outside tests since the pipeline stopped injecting it. Existing
+`knowledge_profile` tables in user databases are left in place: no migration,
+the CREATE simply stops running, so old databases keep an unused table rather
+than risking a destructive DROP. Also removed the `REALTIME_MODEL`
+compatibility alias and single-provider `save_api_key` wrapper from
+`config.py` (callers use `settings.live_model` and `set_api_key`), the never-
+applied QSS selectors (`#conversation-*`, `#klaus-breadcrumb`,
+`#klaus-brand-subtitle`, base `#chat-empty`), and the rule-less `wizard-dot`
+object name. Revisit only if a knowledge profile feature returns — rebuild it
+against the pipeline then, don't resurrect this code.

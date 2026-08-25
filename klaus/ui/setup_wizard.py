@@ -78,7 +78,6 @@ class _StepIndicator(QWidget):
         self._dots: list[QLabel] = []
         for i in range(NUM_STEPS):
             dot = QLabel("\u25cf")
-            dot.setObjectName("wizard-dot")
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             dot.setFixedSize(18, 18)
             self._dots.append(dot)
