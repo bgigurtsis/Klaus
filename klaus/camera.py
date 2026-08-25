@@ -22,6 +22,16 @@ from klaus.remarkable_reading_source import RemarkableClient, RemarkableReadingS
 
 logger = logging.getLogger(__name__)
 
+# Window capture runs at 5 fps while a turn is near (speech or a recent
+# question) and drops to 1 fps when idle — each capture is a full-window
+# Quartz shot plus a window enumeration, so idling at 5 fps burns CPU for
+# frames nobody reads. `capture_text_context()` still captures fresh at
+# turn time regardless of the loop's cadence.
+_ACTIVE_CAPTURE_INTERVAL = 0.2
+_IDLE_CAPTURE_INTERVAL = 1.0
+_ACTIVE_HOLD_SECONDS = 30.0
+
+
 class Camera:
     """Continuously captures frames from a macOS reading window."""
 
@@ -38,6 +48,11 @@ class Camera:
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._last_wake = time.monotonic()
+
+    def wake(self) -> None:
+        """Hold the capture loop at full rate while a turn is near."""
+        self._last_wake = time.monotonic()
 
     def start(self) -> None:
         if self._running:
@@ -88,12 +103,18 @@ class Camera:
         logger.info("reMarkable Paper Pure reading source started")
 
     def _capture_loop(self) -> None:
-        interval = 1.0 if self._device_index == REMARKABLE_PAPER_PURE_SOURCE_INDEX else 0.2
+        remarkable = self._device_index == REMARKABLE_PAPER_PURE_SOURCE_INDEX
         while self._running and self._reading_source is not None:
             frame = self._reading_source.capture_frame()
             with self._lock:
                 if frame is not None:
                     self._frame = frame
+            if remarkable:
+                interval = _IDLE_CAPTURE_INTERVAL
+            elif time.monotonic() - self._last_wake > _ACTIVE_HOLD_SECONDS:
+                interval = _IDLE_CAPTURE_INTERVAL
+            else:
+                interval = _ACTIVE_CAPTURE_INTERVAL
             time.sleep(interval)
 
     def get_frame(self) -> np.ndarray | None:

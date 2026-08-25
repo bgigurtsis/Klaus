@@ -259,3 +259,16 @@ asked during loading waits in its pipeline thread instead of failing or
 needing an explicit queue. Rejected: an explicit queued-PTT mechanism for
 the loading window — the blocking `transcribe()` gives the same behavior
 with none of the queue's state.
+
+## 2026-08-25 — Idle capture throttling
+
+The window-capture loop (a full Quartz shot plus window enumeration per
+frame) now runs at 5 fps only within 30 s of a wake (speech onset or PTT
+key-down, piggybacked on the coordinator's warm-up hook) and drops to 1 fps
+otherwise. Turn correctness is unaffected: `capture_text_context()` always
+captures a fresh frame synchronously at question time. The visible cost is
+the reading-source preview updating at 1 fps when you have not spoken for
+30 s — pages are mostly static, and the first wake restores full rate before
+the answer needs an image. Rejected: pausing capture entirely when idle —
+the preview going frozen reads as a broken source, and 1 fps enumeration is
+already cheap.

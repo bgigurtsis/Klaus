@@ -90,3 +90,20 @@ def test_remarkable_source_starts_and_refreshes_each_question():
         camera.capture_text_context()
         assert source_class.return_value.capture_frame.call_count == initial_calls + 1
         camera.stop()
+
+
+def test_capture_loop_throttles_when_idle(monkeypatch):
+    """The window capture drops to the idle interval 30s after the last wake."""
+    import klaus.camera as camera_mod
+    from klaus.camera import Camera
+
+    cam = Camera(device_index=-3)
+    cam._last_wake = 0.0
+    monkeypatch.setattr(camera_mod.time, "monotonic", lambda: 100.0)
+
+    now = camera_mod.time.monotonic()
+    assert now - cam._last_wake > camera_mod._ACTIVE_HOLD_SECONDS
+
+    cam.wake()
+    assert cam._last_wake == 100.0
+    assert now - cam._last_wake <= camera_mod._ACTIVE_HOLD_SECONDS

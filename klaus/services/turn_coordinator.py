@@ -47,6 +47,7 @@ class TurnCoordinator:
         get_input_mode: Callable[[], str],
         get_current_session_id: Callable[[], str | None],
         update_exchange_count: Callable[[], None],
+        wake_camera: Callable[[], None] | None = None,
     ) -> None:
         self._turn_state = turn_state
         self._speculative_stt = speculative_stt
@@ -60,6 +61,7 @@ class TurnCoordinator:
         self._get_input_mode = get_input_mode
         self._get_current_session_id = get_current_session_id
         self._update_exchange_count = update_exchange_count
+        self._wake_camera = wake_camera
         self._guard_stats = _new_guard_stats()
         self._guard_stats_lock = threading.Lock()
         self._last_failed_wav: bytes | None = None
@@ -185,6 +187,8 @@ class TurnCoordinator:
 
     def _warm_up_brain(self) -> None:
         """Overlap the engine's connection handshake with the recording."""
+        if self._wake_camera is not None:
+            self._wake_camera()
         warm_up = getattr(self._get_brain(), "warm_up", None)
         if callable(warm_up):
             warm_up()

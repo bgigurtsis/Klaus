@@ -193,6 +193,7 @@ class KlausApp:
             get_input_mode=lambda: self._input_mode,
             get_current_session_id=lambda: self._session_service.current_session_id,
             update_exchange_count=lambda: self._session_service.update_exchange_count(),
+            wake_camera=lambda: self._camera.wake(),
         )
 
     def _rebuild_question_pipeline(self) -> None:
