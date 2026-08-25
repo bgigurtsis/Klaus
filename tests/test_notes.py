@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from klaus import config
@@ -26,7 +27,8 @@ def test_bundled_obsidian_skill_loads_without_frontmatter() -> None:
     instructions = load_skill_instructions("obsidian")
 
     assert instructions.startswith("# Obsidian")
-    assert "Search the vault before creating a note" in instructions
+    assert "Search the vault for the conversation topic" in instructions
+    assert "Do not make the user invent a filename" in instructions
     assert "name: obsidian" not in instructions
 
 
@@ -67,6 +69,29 @@ def test_existing_note_is_read_and_appended_without_overwrite(tmp_path) -> None:
     assert note.read_text(encoding="utf-8") == (
         "# Entropy\n\n- [[Thermodynamics]]\n"
     )
+
+
+def test_save_note_can_create_a_safe_topic_named_file(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+
+    result = notes.save_note(
+        "# Entropy and Time\n\n- Entropy gives time an arrow.",
+        suggested_title="Entropy and Time",
+    )
+
+    note = tmp_path / "Klaus Notes" / "Entropy and Time.md"
+    assert result == "Created note: Klaus Notes/Entropy and Time.md"
+    assert "time an arrow" in note.read_text(encoding="utf-8")
+    assert notes.current_file == "Klaus Notes/Entropy and Time.md"
+
+
+def test_inferred_note_title_cannot_create_nested_or_unsafe_paths(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+
+    notes.save_note("Safe content", suggested_title="../../Research: Entropy?")
+
+    assert notes.current_file == "Klaus Notes/Research Entropy.md"
+    assert (tmp_path / "Klaus Notes" / "Research Entropy.md").is_file()
 
 
 def test_search_notes_matches_paths_and_content(tmp_path) -> None:
@@ -113,6 +138,29 @@ def test_realtime_exposes_all_obsidian_tools_for_a_configured_vault(tmp_path) ->
     ]
 
 
+def test_realtime_save_tool_can_create_an_inferred_note(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+    brain = RealtimeBrain(
+        notes=notes,
+        audio_output=_FakeAudioOutput(),
+        settings=_settings(),
+    )
+
+    result = brain._run_tool(
+        {
+            "name": "save_note",
+            "arguments": json.dumps(
+                {
+                    "content": "# Bayesian Updating",
+                    "suggested_title": "Bayesian Updating",
+                }
+            ),
+        }
+    )
+
+    assert result == "Created note: Klaus Notes/Bayesian Updating.md"
+
+
 def test_question_capture_appends_only_the_users_later_question(tmp_path) -> None:
     notes = NotesManager(str(tmp_path))
 
@@ -146,14 +194,29 @@ def test_conversation_capture_appends_the_question_and_answer(tmp_path) -> None:
 def test_capture_requires_a_current_note_and_can_be_stopped(tmp_path) -> None:
     notes = NotesManager(str(tmp_path))
 
-    assert notes.configure_capture("questions") == (
-        "Error: No notes file set. Ask the user which file to use."
-    )
+    assert "Infer a concise suggested_title" in notes.configure_capture("questions")
     notes.configure_capture("questions", "Questions")
     assert notes.configure_capture("off") == (
         "Stopped automatic Obsidian capture for this chat."
     )
     assert notes.capture_exchange("Not saved", "Not saved") is None
+
+
+def test_capture_can_create_an_inferred_topic_note(tmp_path) -> None:
+    notes = NotesManager(str(tmp_path))
+
+    result = notes.configure_capture(
+        "conversation",
+        suggested_title="Complexity Science Reading Session",
+    )
+
+    assert result.endswith(
+        "Klaus Notes/Complexity Science Reading Session.md"
+    )
+    inferred_note = (
+        tmp_path / "Klaus Notes" / "Complexity Science Reading Session.md"
+    )
+    assert inferred_note.is_file()
 
 
 def test_save_screenshot_creates_attachment_and_embeds_it(tmp_path) -> None:

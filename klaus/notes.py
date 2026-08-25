@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -37,7 +38,8 @@ SET_NOTES_FILE_TOOL = {
 SAVE_NOTE_TOOL = {
     "name": "save_note",
     "description": (
-        "Append a note to the user's current notes file in Obsidian. "
+        "Append content to an Obsidian note. Reuse the current note when relevant, "
+        "or provide suggested_title to create a topic-named note automatically. "
         "Use this when the user asks you to save a quote, idea, definition, "
         "page reference, summary, or any other content to their notes. "
         "Format the content as markdown."
@@ -48,7 +50,14 @@ SAVE_NOTE_TOOL = {
             "content": {
                 "type": "string",
                 "description": "Markdown-formatted content to append to the notes file.",
-            }
+            },
+            "suggested_title": {
+                "type": "string",
+                "description": (
+                    "A concise topic-derived note title. Provide this when no current "
+                    "note exists and the user did not name a file."
+                ),
+            },
         },
         "required": ["content"],
     },
@@ -73,6 +82,13 @@ SAVE_SCREENSHOT_TOOL = {
                 "description": (
                     "Optional vault-relative note path. Provide it when the user "
                     "names a target note."
+                ),
+            },
+            "suggested_title": {
+                "type": "string",
+                "description": (
+                    "A concise topic-derived note title. Provide this when the user "
+                    "did not name a file and no suitable current note exists."
                 ),
             },
         },
@@ -100,6 +116,13 @@ SAVE_CHAT_SUMMARY_TOOL = {
                 "type": "string",
                 "description": (
                     "Optional vault-relative note path. Use the current note when omitted."
+                ),
+            },
+            "suggested_title": {
+                "type": "string",
+                "description": (
+                    "A concise title inferred from the chat topic. Provide this when "
+                    "the user did not name a file and no suitable current note exists."
                 ),
             },
         },
@@ -135,6 +158,13 @@ CONFIGURE_NOTE_CAPTURE_TOOL = {
                 "description": (
                     "Whether captured screenshots should also be saved and embedded "
                     "during automatic capture."
+                ),
+            },
+            "suggested_title": {
+                "type": "string",
+                "description": (
+                    "A concise topic-derived note title. Provide this when starting "
+                    "capture without a named or suitable current note."
                 ),
             },
         },
@@ -267,17 +297,17 @@ class NotesManager:
         """Set the screenshot available to note tools for the current turn."""
         self._pending_screenshot = screenshot
 
-    def save_note(self, content: str) -> str:
+    def save_note(self, content: str, suggested_title: str = "") -> str:
         """Append content to the current notes file.
 
         Returns a confirmation message for Klaus to relay.
         """
-        if not self.current_file:
-            return "Error: No notes file set. Ask the user which file to use."
-
         content = content.strip()
         if not content:
             return "Error: Note content is empty."
+        file_error = self._ensure_notes_file(suggested_title=suggested_title)
+        if file_error:
+            return file_error
 
         try:
             relative_path, full = self._resolve_note_path(self.current_file)
@@ -306,6 +336,7 @@ class NotesManager:
         mode: str,
         file_path: str = "",
         include_screenshots: bool | None = None,
+        suggested_title: str = "",
     ) -> str:
         """Configure deterministic note capture for the active chat."""
         normalized_mode = mode.strip().casefold()
@@ -317,12 +348,10 @@ class NotesManager:
         ):
             return "Error: include_screenshots must be true or false."
 
-        if file_path.strip():
-            result = self.set_file(file_path)
-            if result.startswith("Error:"):
-                return result
-        if normalized_mode != "off" and not self.current_file:
-            return "Error: No notes file set. Ask the user which file to use."
+        if normalized_mode != "off":
+            file_error = self._ensure_notes_file(file_path, suggested_title)
+            if file_error:
+                return file_error
 
         self.capture_mode = normalized_mode
         if include_screenshots is not None:
@@ -369,16 +398,18 @@ class NotesManager:
             content += f"\n\n![[{attachment}]]"
         return self.save_note(content)
 
-    def save_screenshot(self, caption: str = "", file_path: str = "") -> str:
+    def save_screenshot(
+        self,
+        caption: str = "",
+        file_path: str = "",
+        suggested_title: str = "",
+    ) -> str:
         """Save and embed the screenshot captured for the current turn."""
-        if file_path.strip():
-            result = self.set_file(file_path)
-            if result.startswith("Error:"):
-                return result
-        if not self.current_file:
-            return "Error: No notes file set. Ask the user which file to use."
         if not self._pending_screenshot:
             return "Error: No screenshot is available for this question."
+        file_error = self._ensure_notes_file(file_path, suggested_title)
+        if file_error:
+            return file_error
 
         try:
             attachment = self._write_screenshot_attachment(self._pending_screenshot)
@@ -394,15 +425,19 @@ class NotesManager:
         self._screenshot_saved = True
         return f"Saved screenshot: {attachment}; embedded in {self.current_file}"
 
-    def save_chat_summary(self, summary: str, file_path: str = "") -> str:
+    def save_chat_summary(
+        self,
+        summary: str,
+        file_path: str = "",
+        suggested_title: str = "",
+    ) -> str:
         """Save a structured chat summary and stop automatic capture."""
-        if file_path.strip():
-            result = self.set_file(file_path)
-            if result.startswith("Error:"):
-                return result
         summary = summary.strip()
         if not summary:
             return "Error: Chat summary is empty."
+        file_error = self._ensure_notes_file(file_path, suggested_title)
+        if file_error:
+            return file_error
         timestamp = datetime.now()
         result = self.save_note(
             f"## Session summary - {timestamp:%Y-%m-%d %H:%M}\n\n{summary}"
@@ -413,6 +448,33 @@ class NotesManager:
         self.capture_screenshots = False
         self._capture_changed = True
         return f"Saved chat summary and stopped automatic capture: {self.current_file}"
+
+    def _ensure_notes_file(
+        self,
+        file_path: str = "",
+        suggested_title: str = "",
+    ) -> str | None:
+        """Select an explicit file or create a safe topic-derived note."""
+        if file_path.strip():
+            result = self.set_file(file_path)
+            return result if result.startswith("Error:") else None
+        if suggested_title.strip():
+            safe_title = re.sub(
+                r'[<>:"/\\|?*\x00-\x1f\[\]#^]+',
+                " ",
+                suggested_title,
+            )
+            safe_title = re.sub(r"\s+", " ", safe_title).strip(" .")[:80]
+            if not safe_title:
+                return "Error: Suggested note title has no usable characters."
+            result = self.set_file(f"Klaus Notes/{safe_title}")
+            return result if result.startswith("Error:") else None
+        if self.current_file:
+            return None
+        return (
+            "Error: No notes file is set. Infer a concise suggested_title from "
+            "the conversation or ask the user when the topic is unclear."
+        )
 
     def _write_screenshot_attachment(
         self,

@@ -166,6 +166,9 @@ Choose a vault during setup or in **Settings**. Then say where Klaus should save
 > Save this to Research/Agent Notes.md.
 
 Klaus accepts only paths inside that vault. It appends to existing notes instead of replacing them.
+When you do not name a file, Klaus searches for a relevant note and can create a topic-named file under `Klaus Notes/`.
+
+> Save this to Obsidian.
 
 Klaus can also keep saving later turns in the current chat:
 

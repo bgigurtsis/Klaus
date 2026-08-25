@@ -9,13 +9,16 @@ Use the vault as a connected knowledge base, not a transcript dump.
 
 ## Choose the note
 
-1. Ask for a target file when the user does not name one.
-2. Search the vault before creating a note with the same topic.
-3. Reuse the current note when the request continues the same subject.
-4. Set the notes file before saving content.
-5. Read the note first when its structure or prior content may affect the addition.
+1. Use the exact target when the user names one.
+2. Search the vault for the conversation topic when the user does not name one.
+3. Reuse a matching note or the current note when it covers the same subject.
+4. Otherwise infer a concise, specific `suggested_title` from the main topic.
+5. Let the save tool create that note under `Klaus Notes/`.
+6. Ask the user only when the topic or intended destination remains genuinely unclear.
+7. Read an existing note first when its structure may affect the addition.
 
 Treat every tool path as relative to the configured vault root.
+Do not make the user invent a filename when the conversation provides a clear topic.
 
 ## Write useful Markdown
 
@@ -58,8 +61,8 @@ Use `configure_note_capture` when the user asks to save later turns automaticall
 - Use `conversation` when the user wants both their questions and Klaus's answers.
 - Use `off` when the user asks to stop saving.
 - Include `file_path` when the user names a target note.
+- Otherwise pass a concise `suggested_title` inferred from the chat topic.
 - Set `include_screenshots` to true when the user asks to capture screenshots too.
-- Ask for a target file when no current note exists.
 - Do not call `save_note` for each captured turn. Klaus appends captured turns after each completed response.
 - A command that starts, changes, or stops capture is not itself captured.
 
@@ -68,6 +71,7 @@ Use `configure_note_capture` when the user asks to save later turns automaticall
 Use `save_screenshot` when the user asks to save the current view or screenshot.
 
 - Include `file_path` when the user names a target note.
+- Otherwise pass a concise `suggested_title` inferred from the subject.
 - Use a short factual caption when the user supplies useful context.
 - Do not claim success when no screenshot is available.
 - Klaus stores images under `Attachments/Klaus/` and embeds them in the note.
@@ -77,6 +81,7 @@ Use `save_screenshot` when the user asks to save the current view or screenshot.
 Use `save_chat_summary` when the user asks to wrap up or summarize the chat.
 
 - Summarize the supplied chat transcript, including earlier stored exchanges.
+- Include `suggested_title` when no suitable current note exists.
 - Use concise `### Key ideas`, `### Decisions`, and `### Open questions` sections.
 - Omit empty sections.
 - Do not invent decisions, sources, or follow-up work.

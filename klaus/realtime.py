@@ -523,22 +523,28 @@ class RealtimeBrain:
         if name == "read_note" and self._notes is not None:
             return self._notes.read_note(str(arguments.get("file_path", "")))
         if name == "save_note" and self._notes is not None:
-            return self._notes.save_note(str(arguments.get("content", "")))
+            return self._notes.save_note(
+                str(arguments.get("content", "")),
+                str(arguments.get("suggested_title", "")),
+            )
         if name == "save_screenshot" and self._notes is not None:
             return self._notes.save_screenshot(
                 str(arguments.get("caption", "")),
                 str(arguments.get("file_path", "")),
+                str(arguments.get("suggested_title", "")),
             )
         if name == "save_chat_summary" and self._notes is not None:
             return self._notes.save_chat_summary(
                 str(arguments.get("summary", "")),
                 str(arguments.get("file_path", "")),
+                str(arguments.get("suggested_title", "")),
             )
         if name == "configure_note_capture" and self._notes is not None:
             return self._notes.configure_capture(
                 str(arguments.get("mode", "")),
                 str(arguments.get("file_path", "")),
                 arguments.get("include_screenshots"),
+                str(arguments.get("suggested_title", "")),
             )
         return json.dumps({"error": f"Unknown or unavailable tool: {name}"})
 
