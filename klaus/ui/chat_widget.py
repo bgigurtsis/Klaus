@@ -23,6 +23,7 @@ from PyQt6.QtGui import QPixmap
 
 from klaus.ui import theme
 from klaus.ui.file_links import reveal_file_in_browser
+from klaus.ui.image_viewer import ClickableImageLabel, show_image_viewer
 from klaus.ui.shared.relative_time import format_relative_time_with_tooltip
 
 logger = logging.getLogger(__name__)
@@ -108,17 +109,25 @@ class MessageCard(QFrame):
 
         # Thumbnail (user messages only)
         if thumbnail_bytes and is_user:
-            thumb = QLabel()
+            thumb = ClickableImageLabel()
             thumb.setObjectName("card-thumbnail")
             pixmap = QPixmap()
             pixmap.loadFromData(thumbnail_bytes)
             if not pixmap.isNull():
+                thumb.set_zoom_pixmap(pixmap)
                 scaled = pixmap.scaled(
                     500, 180,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
                 thumb.setPixmap(scaled)
+                thumb.image_clicked.connect(
+                    lambda image: show_image_viewer(
+                        image,
+                        parent=self,
+                        title="Captured screenshot",
+                    )
+                )
             thumb.setMaximumHeight(180)
             layout.addWidget(thumb)
 

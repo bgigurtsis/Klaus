@@ -7,11 +7,13 @@ from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QBoxLayout, QLabel, QSizePolicy
 
 from klaus.ui.chat_widget import ChatWidget, MessageCard
 from klaus.ui.file_links import reveal_file_in_browser
+from klaus.ui.image_viewer import ClickableImageLabel
 from klaus.ui.main_window import MainWindow
 from klaus.ui.status_widget import StatusWidget
 
@@ -181,6 +183,29 @@ def test_new_screenshot_card_keeps_full_thumbnail_in_long_chat(qt_app) -> None:
 
     assert row.height() >= row.sizeHint().height()
     assert thumbnail_label.height() == thumbnail_label.pixmap().height()
+
+
+def test_chat_screenshot_opens_full_size_image(qt_app) -> None:
+    thumbnail = BytesIO()
+    Image.new("RGB", (1200, 800), color=(25, 50, 75)).save(
+        thumbnail, format="JPEG"
+    )
+    card = MessageCard(
+        "user",
+        "What am I looking at?",
+        thumbnail_bytes=thumbnail.getvalue(),
+    )
+    card.show()
+    qt_app.processEvents()
+    thumbnail_label = card.findChild(ClickableImageLabel, "card-thumbnail")
+
+    with patch("klaus.ui.chat_widget.show_image_viewer") as show_viewer:
+        QTest.mouseClick(thumbnail_label, Qt.MouseButton.LeftButton)
+
+    shown_pixmap = show_viewer.call_args.args[0]
+    assert shown_pixmap.width() == 1200
+    assert shown_pixmap.height() == 800
+    assert show_viewer.call_args.kwargs["parent"] is card
 
 
 def test_note_card_exposes_a_finder_link(qt_app, tmp_path) -> None:
