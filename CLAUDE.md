@@ -44,7 +44,8 @@ both engines stream 24 kHz PCM speech directly.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `main.py` | ~1180 | Entry point + `KlausApp`: wires components, hotkeys, Qt signal bridge, `_safe_slot`, session CRUD, VAD/PTT/barge-in orchestration, live device switch, settings reload. Over the 800-line ceiling — decomposition planned. |
+| `main.py` | ~700 | Entry point + `KlausApp`: component wiring, Qt signal bridge, `_safe_slot` delegates, live device switch, settings reload |
+| `hotkeys.py` | ~250 | pynput import gating and `HotkeyListener` (global PTT/toggle keys) |
 | `config.py` | ~890 | TOML config + Keychain-backed API keys, `RuntimeSettings` dataclass driven by `_RUNTIME_SETTING_SPECS`, module-level exports, dynamic system prompt, save/reload helpers. Over the ceiling. |
 | `audio.py` | ~760 | `PushToTalkRecorder`, `VoiceActivatedRecorder` (confirmed onset, speculative maybe-end, gated barge-in with bleed calibration and echo rejection, `prime_with_seed`) |
 | `realtime.py` | ~600 | `RealtimeBrain`: persistent OpenAI Realtime WebSocket, audio+context turns, streamed PCM/transcripts, cancel + unplayed-audio truncation; `build_live_brain()` picks the engine by provider |
@@ -69,9 +70,12 @@ both engines stream 24 kHz PCM speech directly.
 
 | Module | Lines | Purpose |
 |--------|------:|---------|
-| `question_pipeline.py` | ~250 | One turn: transcribe (speculative-aware) → route ∥ context capture → image or selected text → streamed answer → persist; `TurnTimings` log line per turn |
+| `question_pipeline.py` | ~350 | One turn: transcribe (speculative-aware) → route ∥ context capture → image or selected text → streamed answer → persist; `TurnTimings` + rolling p50/p95 aggregator |
+| `turn_coordinator.py` | ~290 | VAD/PTT/barge-in/replay/stop glue and guard stats; reads hot-swappable deps through getters |
+| `session_service.py` | ~190 | Session CRUD, activation flow, notes rebinding behind a `SessionView` of UI callables |
+| `turn_state.py` | ~150 | Locked owner of turn flags, per-turn cancel event, barge-in seed, queued PTT wav |
+| `device_switch.py` | ~130 | Camera/mic live-switch with rollback (refused mid-turn except forced pairing refresh) |
 | `speculative_stt.py` | ~90 | STT during the VAD silence window, validated by exact PCM gap at finalize |
-| `device_switch.py` | ~130 | Camera/mic live-switch with rollback |
 
 ### `klaus/ui/`
 
@@ -152,10 +156,8 @@ both engines stream 24 kHz PCM speech directly.
 
 ## Current Status and Known Gaps
 
-- **main.py (~1180), setup_wizard.py (~1020), config.py (~890) exceed the
-  800-line ceiling** — decomposition is on the roadmap.
-- **Unlocked cross-thread state**: `KlausApp` turn flags and the shared
-  SQLite connection are mutated from multiple threads without locks.
+- **setup_wizard.py (~1020) and config.py (~890) exceed the 800-line
+  ceiling** — splits are on the roadmap (main.py is done: 697).
 - **Window capture API**: still the deprecated `CGWindowListCreateImage`
   (`macos_reading_source.py`); migrate to ScreenCaptureKit if Apple removes it.
 - **Barge-in on open speakers**: RMS gate may false-trigger on loud bleed;
