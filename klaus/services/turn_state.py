@@ -37,6 +37,11 @@ class TurnState:
         with self._lock:
             return self._speaking
 
+    @property
+    def has_queued_ptt_wav(self) -> bool:
+        with self._lock:
+            return self._queued_ptt_wav is not None
+
     def snapshot(self) -> tuple[bool, bool]:
         """Return (processing, speaking) read atomically."""
         with self._lock:
@@ -115,7 +120,14 @@ class TurnState:
             self._cancel_event.set()
             return True
 
-    def queue_ptt_wav(self, wav_bytes: bytes) -> None:
-        """Hold a PTT recording finished while a turn is still processing."""
+    def queue_ptt_wav(self, wav_bytes: bytes) -> bool:
+        """Hold a PTT recording finished while a turn is still processing.
+
+        Returns False when no turn is processing — the caller should start
+        the question immediately instead of queueing it.
+        """
         with self._lock:
+            if not self._processing:
+                return False
             self._queued_ptt_wav = wav_bytes
+            return True

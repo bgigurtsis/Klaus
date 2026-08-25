@@ -7,18 +7,18 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from klaus.main import KlausApp
+from klaus.services.turn_state import TurnState
 
 
 def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "voice_activation"
+    app._turn_state = TurnState()
     app._brain = MagicMock()
     app._vad_recorder = MagicMock()
     app._signals = MagicMock()
     seed = np.array([1, 2, 3], dtype=np.int16)
-    app._brain.speak_text.side_effect = lambda _text: setattr(
-        app, "_barge_in_seed", seed
-    )
+    app._brain.speak_text.side_effect = lambda _text: app._turn_state.barge_in(seed)
 
     with patch("klaus.main.config.BARGE_IN_ENABLED", True):
         KlausApp._replay_audio(app, "Repeat this answer.")
@@ -35,6 +35,7 @@ def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
 def test_realtime_replay_pauses_voice_detection_when_interruption_is_disabled() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "voice_activation"
+    app._turn_state = TurnState()
     app._brain = MagicMock()
     app._vad_recorder = MagicMock()
     app._signals = MagicMock()

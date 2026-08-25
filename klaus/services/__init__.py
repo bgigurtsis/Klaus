@@ -12,6 +12,7 @@ from klaus.services.question_pipeline import (
     Transcription,
 )
 from klaus.services.speculative_stt import SpeculativeTranscriber
+from klaus.services.turn_state import TurnState
 
 __all__ = [
     "CameraSwitchResult",
@@ -22,4 +23,5 @@ __all__ = [
     "QuestionPipeline",
     "SpeculativeTranscriber",
     "Transcription",
+    "TurnState",
 ]

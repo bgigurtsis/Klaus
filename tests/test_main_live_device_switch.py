@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from klaus.main import KlausApp
+from klaus.services.turn_state import TurnState
 
 
 def _make_app(service: MagicMock) -> KlausApp:
@@ -35,15 +36,15 @@ def _make_app(service: MagicMock) -> KlausApp:
 def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "push_to_talk"
-    app._processing = True
-    app._cancel_event = threading.Event()
+    app._turn_state = TurnState()
+    cancel_event = app._turn_state.begin_turn()
     app._question_pipeline = MagicMock()
     app._ptt_recorder = MagicMock(is_recording=False)
     app._signals = MagicMock()
 
     KlausApp._on_key_down(app)
 
-    assert app._cancel_event.is_set()
+    assert cancel_event.is_set()
     app._question_pipeline.cancel_active.assert_called_once()
     app._ptt_recorder.start_recording.assert_called_once()
     app._signals.state_changed.emit.assert_called_once_with("listening")
@@ -52,15 +53,15 @@ def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
 def test_ptt_release_queues_question_until_cancelled_turn_finishes() -> None:
     app = KlausApp.__new__(KlausApp)
     app._input_mode = "push_to_talk"
-    app._processing = True
-    app._queued_ptt_wav = None
+    app._turn_state = TurnState()
+    app._turn_state.begin_turn()
     app._ptt_recorder = MagicMock(is_recording=True)
     app._ptt_recorder.stop_recording.return_value = b"next-question"
     app._signals = MagicMock()
 
     KlausApp._on_key_up(app)
 
-    assert app._queued_ptt_wav == b"next-question"
+    assert app._turn_state.end_turn() == (None, b"next-question")
     app._signals.state_changed.emit.assert_called_once_with("thinking")
 
 
