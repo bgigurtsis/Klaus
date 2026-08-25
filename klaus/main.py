@@ -736,6 +736,7 @@ class KlausApp:
                 role="user",
                 text=ex.user_text,
                 timestamp=ex.created_at,
+                thumbnail_bytes=ex.thumbnail_bytes,
                 exchange_id=ex.id,
             )
             self._window.chat_widget.add_message(

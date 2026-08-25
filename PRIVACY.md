@@ -18,9 +18,9 @@ Klaus stores its API key in Apple Keychain.
 Klaus also stores the Paper Pure pairing password in Apple Keychain.
 Klaus stores the tablet address, username, and certificate fingerprint in its settings.
 
-Klaus stores session titles, transcripts, answers, and image hashes in `~/.klaus/klaus.db`.
-Klaus does not store captured page images in that database.
-Klaus keeps Paper Pure preview frames in memory and discards them after use.
+Klaus stores session titles, transcripts, answers, image hashes, and low-resolution chat thumbnails in `~/.klaus/klaus.db`.
+Klaus does not store full-resolution captured page images in that database.
+Klaus discards full-resolution Paper Pure frames after use.
 Klaus may write notes into the Obsidian vault that you configure.
 Logs may contain vault paths, device details, timing, and error messages.
 

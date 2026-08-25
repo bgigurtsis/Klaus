@@ -177,7 +177,7 @@ def test_cancel_active_calls_realtime_brain():
     brain.cancel_current.assert_called_once()
 
 
-def test_tablet_capture_runs_after_speech_transcription_and_is_not_persisted():
+def test_tablet_capture_runs_after_transcription_and_persists_chat_thumbnail():
     order: list[str] = []
     stt = MagicMock()
     stt.transcribe.side_effect = lambda _wav: order.append("transcribe") or "Read this"
@@ -206,3 +206,4 @@ def test_tablet_capture_runs_after_speech_transcription_and_is_not_persisted():
     assert order == ["transcribe", "fresh screenshot"]
     assert brain.ask_audio.call_args.kwargs["image_base64"] == "tablet-image"
     assert memory.save_exchange.call_args.kwargs["image_base64"] is None
+    assert memory.save_exchange.call_args.kwargs["thumbnail_bytes"] == b"preview"

@@ -174,7 +174,7 @@ Klaus accepts only paths inside that vault. It appends to existing notes instead
 | [Gemini](https://aistudio.google.com/app/apikey) | Only for Gemini Live | Default live voice, page reasoning, spoken answers, and Google Search grounding |
 | [OpenAI](https://platform.openai.com/api-keys) | Only for GPT Live | GPT Live 2.1 or GPT Live 2.1 mini voice, page reasoning, and spoken answers |
 
-Klaus stores API keys in Apple Keychain. It stores settings and conversation history under `~/.klaus/`. It does not store captured page images in its database.
+Klaus stores API keys in Apple Keychain. It stores settings, conversation history, and low-resolution chat thumbnails under `~/.klaus/`. It does not store full-resolution captured page images in its database.
 
 Provider use may incur charges. Read the [privacy notes](https://github.com/bgigurtsis/Klaus/blob/main/PRIVACY.md) before you connect accounts or private notes.
 

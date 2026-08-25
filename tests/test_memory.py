@@ -95,6 +95,36 @@ class TestExchanges:
         assert record.image_hash is not None
         assert len(record.image_hash) == 16
 
+    def test_exchange_with_thumbnail(self, mem):
+        s = mem.create_session("Paper")
+        record = mem.save_exchange(
+            s.id,
+            "Q?",
+            "A.",
+            thumbnail_bytes=b"jpeg-thumbnail",
+        )
+
+        assert record.thumbnail_bytes == b"jpeg-thumbnail"
+        assert mem.get_exchange(record.id).thumbnail_bytes == b"jpeg-thumbnail"
+        assert mem.get_exchanges(s.id)[0].thumbnail_bytes == b"jpeg-thumbnail"
+
+    def test_thumbnail_survives_database_reopen(self, tmp_db):
+        first = Memory(db_path=tmp_db)
+        session = first.create_session("Paper")
+        first.save_exchange(
+            session.id,
+            "Q?",
+            "A.",
+            thumbnail_bytes=b"jpeg-thumbnail",
+        )
+        first.close()
+
+        reopened = Memory(db_path=tmp_db)
+        try:
+            assert reopened.get_exchanges(session.id)[0].thumbnail_bytes == b"jpeg-thumbnail"
+        finally:
+            reopened.close()
+
     def test_exchange_without_image(self, mem):
         s = mem.create_session("Paper")
         record = mem.save_exchange(s.id, "Q?", "A.")

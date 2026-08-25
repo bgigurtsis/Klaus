@@ -30,6 +30,7 @@ class ExchangeRecord:
     user_text: str
     assistant_text: str
     image_hash: str | None
+    thumbnail_bytes: bytes | None
     searches_json: str
     created_at: float
     note_file_path: str | None = None
@@ -82,6 +83,7 @@ class Memory:
         """)
         self._migrate_sessions_notes_file()
         self._migrate_exchanges_note_file_path()
+        self._migrate_exchanges_thumbnail_bytes()
         self._conn.commit()
 
     def _migrate_sessions_notes_file(self) -> None:
@@ -103,6 +105,16 @@ class Memory:
         if "note_file_path" not in cols:
             self._conn.execute("ALTER TABLE exchanges ADD COLUMN note_file_path TEXT")
             logger.info("Migrated exchanges table: added note_file_path column")
+
+    def _migrate_exchanges_thumbnail_bytes(self) -> None:
+        """Add persistent chat thumbnails to existing databases."""
+        cols = [
+            r["name"]
+            for r in self._conn.execute("PRAGMA table_info(exchanges)").fetchall()
+        ]
+        if "thumbnail_bytes" not in cols:
+            self._conn.execute("ALTER TABLE exchanges ADD COLUMN thumbnail_bytes BLOB")
+            logger.info("Migrated exchanges table: added thumbnail_bytes column")
 
     # -- Sessions --
 
@@ -176,6 +188,7 @@ class Memory:
         user_text: str,
         assistant_text: str,
         image_base64: str | None = None,
+        thumbnail_bytes: bytes | None = None,
         searches: list[dict] | None = None,
         note_file_path: str | None = None,
     ) -> ExchangeRecord:
@@ -190,6 +203,7 @@ class Memory:
             user_text=user_text,
             assistant_text=assistant_text,
             image_hash=image_hash,
+            thumbnail_bytes=thumbnail_bytes,
             searches_json=json.dumps(searches or []),
             created_at=now,
             note_file_path=note_file_path,
@@ -197,8 +211,8 @@ class Memory:
         self._conn.execute(
             """INSERT INTO exchanges
                (id, session_id, user_text, assistant_text, image_hash, searches_json,
-                created_at, note_file_path)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_at, note_file_path, thumbnail_bytes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 record.id,
                 record.session_id,
@@ -208,6 +222,7 @@ class Memory:
                 record.searches_json,
                 record.created_at,
                 record.note_file_path,
+                record.thumbnail_bytes,
             ),
         )
         self._conn.execute(
@@ -230,6 +245,7 @@ class Memory:
                 user_text=r["user_text"],
                 assistant_text=r["assistant_text"],
                 image_hash=r["image_hash"],
+                thumbnail_bytes=r["thumbnail_bytes"],
                 searches_json=r["searches_json"],
                 created_at=r["created_at"],
                 note_file_path=r["note_file_path"],
@@ -250,6 +266,7 @@ class Memory:
             user_text=row["user_text"],
             assistant_text=row["assistant_text"],
             image_hash=row["image_hash"],
+            thumbnail_bytes=row["thumbnail_bytes"],
             searches_json=row["searches_json"],
             created_at=row["created_at"],
             note_file_path=row["note_file_path"],

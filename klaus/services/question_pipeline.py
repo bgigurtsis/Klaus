@@ -140,6 +140,7 @@ class QuestionPipeline:
         self._run_realtime_turn(
             wav_bytes=wav_bytes,
             transcript=transcript,
+            thumbnail=thumbnail,
             image_b64=image_b64,
             reading_text=reading_text,
             notes_context=notes_context,
@@ -158,6 +159,7 @@ class QuestionPipeline:
         *,
         wav_bytes: bytes,
         transcript: str,
+        thumbnail: bytes | None,
         image_b64: str | None,
         reading_text: str | None,
         notes_context: str | None,
@@ -219,6 +221,7 @@ class QuestionPipeline:
                 user_text=exchange.user_text,
                 assistant_text=exchange.assistant_text,
                 image_base64=exchange.image_base64 if persist_images else None,
+                thumbnail_bytes=thumbnail,
                 searches=exchange.searches,
                 note_file_path=(
                     self._notes.current_path if exchange.notes_file_changed else None
