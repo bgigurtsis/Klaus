@@ -17,6 +17,7 @@ def config_dir(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text(config._DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     monkeypatch.setattr(config, "CONFIG_PATH", path)
+    monkeypatch.setattr(config.config_store, "CONFIG_PATH", path)
     return path
 
 

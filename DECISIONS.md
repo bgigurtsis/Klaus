@@ -272,3 +272,15 @@ the reading-source preview updating at 1 fps when you have not spoken for
 the answer needs an image. Rejected: pausing capture entirely when idle —
 the preview going frozen reads as a broken source, and 1 fps enumeration is
 already cheap.
+
+## 2026-08-25 — config split, Turn A: config_store.py owns the file
+
+`klaus/config_store.py` now owns everything that touches config.toml as a
+file: the data-dir paths, the default template, TOML parsing, raw
+read/write, string escaping, and `set_top_level_value`. `config.py` (885 →
+735 lines) keeps interpretation only — specs, coercion, RuntimeSettings,
+and thin `save_*` validators that delegate. The old private names
+(`_set_top_level_value`, `_DEFAULT_CONFIG_TEMPLATE`, …) stay as aliases so
+nothing downstream moves. Turn B (making `_SettingSpec` generate the
+dataclass fields, export map, and template section) is what gets the file
+under 600.
