@@ -194,3 +194,52 @@ class TestExchanges:
         assert mem.get_exchanges("nonexistent-id") == []
 
 
+
+
+class TestConcurrentAccess:
+    def test_parallel_writes_from_multiple_threads_all_persist(self, mem):
+        import threading
+
+        session = mem.create_session("Concurrent")
+        errors: list[Exception] = []
+
+        def writer(index: int) -> None:
+            try:
+                for i in range(20):
+                    mem.save_exchange(session.id, f"Q{index}-{i}", f"A{index}-{i}")
+            except Exception as exc:  # pragma: no cover - failure path
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(n,)) for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        assert mem.count_exchanges(session.id) == 80
+
+    def test_reads_during_writes_do_not_error(self, mem):
+        import threading
+
+        session = mem.create_session("ReadWrite")
+        stop = threading.Event()
+        errors: list[Exception] = []
+
+        def reader() -> None:
+            try:
+                while not stop.is_set():
+                    mem.get_exchanges(session.id)
+                    mem.list_sessions()
+            except Exception as exc:  # pragma: no cover - failure path
+                errors.append(exc)
+
+        reader_thread = threading.Thread(target=reader)
+        reader_thread.start()
+        for i in range(50):
+            mem.save_exchange(session.id, f"Q{i}", f"A{i}")
+        stop.set()
+        reader_thread.join()
+
+        assert errors == []
+        assert mem.count_exchanges(session.id) == 50

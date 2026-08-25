@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -46,6 +47,10 @@ class Memory:
         logger.info("Opening database at %s", db_path)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # The connection is shared between the pipeline worker and the Qt
+        # main thread. sqlite serializes single statements, but the
+        # execute+commit sequences below must not interleave across threads.
+        self._write_lock = threading.Lock()
         self._init_tables()
 
     def _init_tables(self) -> None:
@@ -147,11 +152,12 @@ class Memory:
             created_at=now,
             updated_at=now,
         )
-        self._conn.execute(
-            "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (session.id, session.title, session.created_at, session.updated_at),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (session.id, session.title, session.created_at, session.updated_at),
+            )
+            self._conn.commit()
         logger.info("Created session '%s' (%s)", title, session.id[:8])
         return session
 
@@ -173,16 +179,20 @@ class Memory:
         ]
 
     def update_session_title(self, session_id: str, title: str) -> None:
-        self._conn.execute(
-            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
-            (title, time.time(), session_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
+                (title, time.time(), session_id),
+            )
+            self._conn.commit()
 
     def delete_session(self, session_id: str) -> None:
-        self._conn.execute("DELETE FROM exchanges WHERE session_id = ?", (session_id,))
-        self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "DELETE FROM exchanges WHERE session_id = ?", (session_id,)
+            )
+            self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            self._conn.commit()
 
     def get_session_notes_file(self, session_id: str) -> str | None:
         """Return the notes file path for a session, or None if not set."""
@@ -193,11 +203,12 @@ class Memory:
 
     def set_session_notes_file(self, session_id: str, notes_file: str | None) -> None:
         """Persist the notes file path for a session."""
-        self._conn.execute(
-            "UPDATE sessions SET notes_file = ?, updated_at = ? WHERE id = ?",
-            (notes_file, time.time(), session_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE sessions SET notes_file = ?, updated_at = ? WHERE id = ?",
+                (notes_file, time.time(), session_id),
+            )
+            self._conn.commit()
         logger.info(
             "Set notes_file for session %s: %s",
             session_id[:8], notes_file,
@@ -212,11 +223,12 @@ class Memory:
 
     def set_session_notes_capture_mode(self, session_id: str, mode: str) -> None:
         """Persist the automatic capture mode for a session."""
-        self._conn.execute(
-            "UPDATE sessions SET notes_capture_mode = ?, updated_at = ? WHERE id = ?",
-            (mode, time.time(), session_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE sessions SET notes_capture_mode = ?, updated_at = ? WHERE id = ?",
+                (mode, time.time(), session_id),
+            )
+            self._conn.commit()
         logger.info("Set note capture for session %s: %s", session_id[:8], mode)
 
     def get_session_notes_capture_screenshots(self, session_id: str) -> bool:
@@ -233,12 +245,13 @@ class Memory:
         enabled: bool,
     ) -> None:
         """Persist automatic screenshot capture for a session."""
-        self._conn.execute(
-            "UPDATE sessions SET notes_capture_screenshots = ?, updated_at = ? "
-            "WHERE id = ?",
-            (int(enabled), time.time(), session_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE sessions SET notes_capture_screenshots = ?, updated_at = ? "
+                "WHERE id = ?",
+                (int(enabled), time.time(), session_id),
+            )
+            self._conn.commit()
         logger.info(
             "Set screenshot capture for session %s: %s",
             session_id[:8],
@@ -273,28 +286,29 @@ class Memory:
             created_at=now,
             note_file_path=note_file_path,
         )
-        self._conn.execute(
-            """INSERT INTO exchanges
-               (id, session_id, user_text, assistant_text, image_hash, searches_json,
-                created_at, note_file_path, thumbnail_bytes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                record.id,
-                record.session_id,
-                record.user_text,
-                record.assistant_text,
-                record.image_hash,
-                record.searches_json,
-                record.created_at,
-                record.note_file_path,
-                record.thumbnail_bytes,
-            ),
-        )
-        self._conn.execute(
-            "UPDATE sessions SET updated_at = ? WHERE id = ?",
-            (now, session_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                """INSERT INTO exchanges
+                   (id, session_id, user_text, assistant_text, image_hash, searches_json,
+                    created_at, note_file_path, thumbnail_bytes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    record.id,
+                    record.session_id,
+                    record.user_text,
+                    record.assistant_text,
+                    record.image_hash,
+                    record.searches_json,
+                    record.created_at,
+                    record.note_file_path,
+                    record.thumbnail_bytes,
+                ),
+            )
+            self._conn.execute(
+                "UPDATE sessions SET updated_at = ? WHERE id = ?",
+                (now, session_id),
+            )
+            self._conn.commit()
         logger.info("Saved exchange %s to session %s", record.id[:8], session_id[:8])
         return record
 
