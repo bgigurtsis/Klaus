@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -12,6 +14,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "pair-remarkable.py"
+INSTALLER = Path(__file__).parents[1] / "scripts" / "install-remarkable-paperpure.sh"
 
 
 def test_pairing_helper_forwards_credentials_without_printing_password():
@@ -82,3 +85,19 @@ def test_pairing_helper_check_rejects_missing_socket(tmp_path):
     )
 
     assert result.returncode == 1
+
+
+def test_standalone_installer_checksums_match_support_files():
+    installer = INSTALLER.read_text(encoding="utf-8")
+    expected_files = {
+        "tablet_installer": Path("packaging/remarkable/install-tablet.sh"),
+        "tablet_prepare": Path("packaging/remarkable/klaus-remarkable-prepare"),
+        "tablet_service": Path("packaging/remarkable/klaus-remarkable.service"),
+        "pairing_client": Path("scripts/pair-remarkable.py"),
+    }
+
+    for name, relative_path in expected_files.items():
+        match = re.search(rf'^{name}_sha256="([0-9a-f]{{64}})"$', installer, re.MULTILINE)
+        assert match is not None
+        contents = (INSTALLER.parents[1] / relative_path).read_bytes()
+        assert match.group(1) == hashlib.sha256(contents).hexdigest()

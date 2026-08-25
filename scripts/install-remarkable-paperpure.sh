@@ -4,6 +4,10 @@ set -euo pipefail
 
 stream_version="v1.3.1-paperpure.4"
 stream_sha512="c6dd3e5167a5e3a98a7bc0688a1142d3c6a53f2de07e1350dbf1ca31803dd7182eabc38ea48f7e543bd804cd92f0a8fb2d5ddb13c60ea7d08bb12ff4f93238e8"
+tablet_installer_sha256="284f604b420ae8b5869243e53500845b57d2498ef8cf692c2d9f92487eefa655"
+tablet_prepare_sha256="6a80c10fc3333185468b7f75c06aaa214ce2ca43db1a4b18543e6e6441136878"
+tablet_service_sha256="ce146fce22b17eff35425300fcf76abeb7076e877555d538485b00b2cac338c4"
+pairing_client_sha256="00e920d8ce39eb8883cd27ef82acc6a59955d22994578993234f8895bd22a793"
 default_host="root@10.11.99.1"
 default_address="https://10.11.99.1:2001"
 
@@ -65,21 +69,71 @@ for command_name in curl python3 shasum ssh tar; do
     }
 done
 
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "This installer requires macOS." >&2
+    exit 1
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source_root="$(cd "$script_dir/.." && pwd)"
-payload_source="$source_root/packaging/remarkable"
-pairing_client="$script_dir/pair-remarkable.py"
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/klaus-paper-pure.XXXXXX")"
+cleanup() {
+    rm -rf "$work_dir"
+}
+trap cleanup EXIT
 
-for required_file in \
-    "$payload_source/install-tablet.sh" \
-    "$payload_source/klaus-remarkable-prepare" \
-    "$payload_source/klaus-remarkable.service" \
-    "$pairing_client"; do
-    if [[ ! -f "$required_file" ]]; then
-        echo "The installer is incomplete. Clone the Klaus repository and run it there." >&2
+verify_sha256() {
+    local file_path="$1"
+    local expected="$2"
+    local actual
+    actual="$(shasum -a 256 "$file_path" | awk '{print $1}')"
+    if [[ "$actual" != "$expected" ]]; then
+        echo "The checksum does not match for $(basename "$file_path")." >&2
         exit 1
     fi
-done
+}
+
+prepare_asset() {
+    local relative_path="$1"
+    local output_path="$2"
+    local expected_sha256="$3"
+    local local_path="$source_root/$relative_path"
+
+    if [[ -f "$local_path" ]]; then
+        cp "$local_path" "$output_path"
+    else
+        local install_ref="${KLAUS_INSTALL_REF:-main}"
+        case "$install_ref" in
+            ""|*..*|*[!A-Za-z0-9._/-]*)
+                echo "KLAUS_INSTALL_REF contains unsupported characters." >&2
+                exit 1
+                ;;
+        esac
+        local asset_url="https://raw.githubusercontent.com/bgigurtsis/Klaus/$install_ref/$relative_path"
+        echo "Downloading $(basename "$relative_path")..."
+        curl --fail --location --silent --show-error "$asset_url" \
+            --output "$output_path"
+    fi
+    verify_sha256 "$output_path" "$expected_sha256"
+}
+
+prepare_asset \
+    "packaging/remarkable/install-tablet.sh" \
+    "$work_dir/install-tablet.sh" \
+    "$tablet_installer_sha256"
+prepare_asset \
+    "packaging/remarkable/klaus-remarkable-prepare" \
+    "$work_dir/klaus-remarkable-prepare" \
+    "$tablet_prepare_sha256"
+prepare_asset \
+    "packaging/remarkable/klaus-remarkable.service" \
+    "$work_dir/klaus-remarkable.service" \
+    "$tablet_service_sha256"
+prepare_asset \
+    "scripts/pair-remarkable.py" \
+    "$work_dir/pair-remarkable.py" \
+    "$pairing_client_sha256"
+pairing_client="$work_dir/pair-remarkable.py"
 
 if ! python3 "$pairing_client" --check --socket "$pairing_socket"; then
     if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -97,16 +151,6 @@ if ! python3 "$pairing_client" --check --socket "$pairing_socket"; then
     echo "Open Klaus, then run this installer again." >&2
     exit 1
 fi
-
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/klaus-paper-pure.XXXXXX")"
-cleanup() {
-    rm -rf "$work_dir"
-}
-trap cleanup EXIT
-
-cp "$payload_source/install-tablet.sh" "$work_dir/"
-cp "$payload_source/klaus-remarkable-prepare" "$work_dir/"
-cp "$payload_source/klaus-remarkable.service" "$work_dir/"
 
 stream_url="https://github.com/bgigurtsis/goMarkableStream/releases/download/$stream_version/goMarkableStream-PaperPure"
 echo "Downloading the Paper Pure screenshot service..."

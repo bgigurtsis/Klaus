@@ -83,20 +83,32 @@ Desk View needs strong, even lighting to read small text.
 
 ### Read a reMarkable Paper Pure
 
-Connect an awake, unlocked Paper Pure over USB. Set up the tablet in reManager
-once so it has Vellum and Xovi. Open Klaus, then run this command from a Klaus
-checkout:
+Requirements:
+
+- A Mac running macOS 12 or later with Klaus installed.
+- A reMarkable Paper Pure running reMarkable OS 3.27.x.
+- Developer Mode enabled and the tablet SSH password available.
+- An awake, unlocked tablet connected by USB-C or reachable over Wi-Fi.
+- One completed reManager setup so the tablet has Vellum and Xovi.
+- Internet access on the Mac for the verified streamer download.
+
+Enabling Developer Mode may reset the tablet. Sync or export important files
+before following the warning shown by the tablet.
+
+Open Klaus. Download and run the standalone installer:
 
 ```sh
-./scripts/install-remarkable-paperpure.sh
+curl --fail --location \
+  https://raw.githubusercontent.com/bgigurtsis/Klaus/main/scripts/install-remarkable-paperpure.sh \
+  --output /tmp/install-klaus-paper-pure.sh
+bash /tmp/install-klaus-paper-pure.sh
 ```
 
-If you installed Klaus through Homebrew and do not have a checkout, clone the
-repository with:
+The downloaded script fetches its small support files from the same Klaus
+revision and verifies every file before use. You can inspect the script before
+running it. If you already have a Klaus checkout, run:
 
 ```sh
-git clone --depth 1 https://github.com/bgigurtsis/Klaus.git klaus-installer
-cd klaus-installer
 ./scripts/install-remarkable-paperpure.sh
 ```
 
