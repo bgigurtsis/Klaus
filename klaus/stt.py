@@ -1,15 +1,67 @@
 import io
 import inspect
 import logging
+import threading
 import time
 import wave
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
 import klaus.config as config
 
 logger = logging.getLogger(__name__)
+
+
+class AsyncSpeechToText:
+    """Loads Moonshine on a background thread so the window shows first.
+
+    ``transcribe`` blocks until the model is ready, so a question asked while
+    the model is still loading waits instead of failing. ``on_ready`` is
+    called once from the loader thread with ``None`` on success or the load
+    error.
+    """
+
+    def __init__(
+        self,
+        settings: config.RuntimeSettings | None = None,
+        on_ready: Callable[[Exception | None], None] | None = None,
+    ) -> None:
+        self._settings = settings
+        self._on_ready = on_ready
+        self._inner: SpeechToText | None = None
+        self._error: Exception | None = None
+        self._ready = threading.Event()
+        threading.Thread(target=self._load, daemon=True, name="stt-loader").start()
+
+    def _load(self) -> None:
+        try:
+            self._inner = SpeechToText(settings=self._settings)
+        except Exception as exc:
+            logger.error("Speech model failed to load: %s", exc)
+            self._error = exc
+        finally:
+            self._ready.set()
+            if self._on_ready:
+                self._on_ready(self._error)
+
+    @property
+    def is_ready(self) -> bool:
+        return self._ready.is_set() and self._error is None
+
+    def wait_ready(self, timeout: float | None = None) -> bool:
+        return self._ready.wait(timeout)
+
+    def transcribe(self, wav_bytes: bytes) -> str:
+        self._ready.wait()
+        if self._error is not None or self._inner is None:
+            raise RuntimeError(f"The speech model failed to load: {self._error}")
+        return self._inner.transcribe(wav_bytes)
+
+    def reload_settings(self, settings: config.RuntimeSettings | None = None) -> None:
+        self._ready.wait()
+        if self._inner is not None:
+            self._inner.reload_settings(settings=settings)
 
 
 class SpeechToText:

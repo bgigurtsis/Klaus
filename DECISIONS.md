@@ -248,3 +248,14 @@ caches completed files, so retries resume rather than restart the 245 MB
 download. Rejected: resuming a mid-answer turn by asking the model to
 "continue" — no reliable way to splice the audio, and the transcript would
 not match what was spoken.
+
+## 2026-08-25 — Async speech-model load at startup
+
+`SpeechToText` construction (10–30 s on first run, seconds after) no longer
+blocks the window: `AsyncSpeechToText` loads Moonshine on a daemon thread,
+the capsule shows a new "Getting ready / Loading the speech model…" state
+until it finishes, and `transcribe()` blocks until ready — so a question
+asked during loading waits in its pipeline thread instead of failing or
+needing an explicit queue. Rejected: an explicit queued-PTT mechanism for
+the loading window — the blocking `transcribe()` gives the same behavior
+with none of the queue's state.

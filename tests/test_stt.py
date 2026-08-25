@@ -131,3 +131,46 @@ class TestModelDownloadRetry:
 
         with pytest.raises(RuntimeError, match="Moonshine speech model"):
             stt._get_model_with_retry(always_fails, {})
+
+
+class TestAsyncSpeechToText:
+    def test_transcribe_blocks_until_model_is_ready(self, monkeypatch):
+        import threading as _threading
+
+        from klaus.stt import AsyncSpeechToText
+
+        gate = _threading.Event()
+        ready_calls = []
+
+        class SlowSTT:
+            def __init__(self, settings=None):
+                gate.wait(timeout=5)
+
+            def transcribe(self, wav):
+                return "hello"
+
+        monkeypatch.setattr("klaus.stt.SpeechToText", SlowSTT)
+        stt = AsyncSpeechToText(on_ready=ready_calls.append)
+
+        assert not stt.is_ready
+        gate.set()
+        assert stt.transcribe(b"wav") == "hello"
+        assert stt.is_ready
+        assert ready_calls == [None]
+
+    def test_load_failure_surfaces_on_transcribe(self, monkeypatch):
+        from klaus.stt import AsyncSpeechToText
+
+        class BrokenSTT:
+            def __init__(self, settings=None):
+                raise RuntimeError("no model")
+
+        monkeypatch.setattr("klaus.stt.SpeechToText", BrokenSTT)
+        ready_calls = []
+        stt = AsyncSpeechToText(on_ready=ready_calls.append)
+        stt.wait_ready(timeout=5)
+
+        assert not stt.is_ready
+        with pytest.raises(RuntimeError, match="failed to load"):
+            stt.transcribe(b"wav")
+        assert isinstance(ready_calls[0], RuntimeError)

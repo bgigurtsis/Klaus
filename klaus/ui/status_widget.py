@@ -39,6 +39,11 @@ class StatusWidget(QWidget):
                 theme.SPEAKING_COLOR,
             ),
         },
+        "loading": (
+            "Getting ready",
+            "Loading the speech model…",
+            theme.THINKING_COLOR,
+        ),
         "listening": (
             "Listening",
             "Finish your thought naturally",

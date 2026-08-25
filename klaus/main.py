@@ -12,7 +12,7 @@ from klaus.hotkeys import HotkeyListener, should_disable_global_hotkeys
 
 import klaus.config as config
 from klaus.permissions import guidance_for_error
-from klaus.stt import SpeechToText
+from klaus.stt import AsyncSpeechToText
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -104,6 +104,7 @@ class Signals(QObject):
     sessions_changed = pyqtSignal()
     status_message = pyqtSignal(str)
     remarkable_paired = pyqtSignal(str)
+    stt_ready = pyqtSignal(str)  # empty on success, else the load error
 
 
 class KlausApp:
@@ -160,7 +161,12 @@ class KlausApp:
         self._active_mic_device = _configured_mic_device()
         self._ptt_recorder = PushToTalkRecorder()
         self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
-        self._stt = SpeechToText(settings=settings)
+        self._stt = AsyncSpeechToText(
+            settings=settings,
+            on_ready=lambda error: self._signals.stt_ready.emit(
+                str(error) if error else ""
+            ),
+        )
         self._speculative_stt = SpeculativeTranscriber(self._stt.transcribe)
         self._audio_output = AudioOutput(
             playback_observer=self._vad_recorder.observe_playback,
@@ -315,6 +321,8 @@ class KlausApp:
 
         self._window.show()
         self._window.chat_widget.scroll_to_bottom()
+        if not self._stt.is_ready:
+            self._signals.state_changed.emit("loading")
         logger.info("UI ready")
         exit_code = app.exec()
 
@@ -333,6 +341,7 @@ class KlausApp:
         sig.exchange_count_updated.connect(self._window.status_widget.set_exchange_count)
         sig.status_message.connect(self._window.chat_widget.add_status_message)
         sig.remarkable_paired.connect(self._on_remarkable_paired)
+        sig.stt_ready.connect(self._on_stt_ready)
 
         sig.mode_changed.connect(self._window.status_widget.set_mode)
         sig.sessions_changed.connect(self._refresh_session_list)
@@ -369,6 +378,14 @@ class KlausApp:
         self._window.status_widget.set_state(state)
         if state == "thinking" and previous_state != "thinking":
             self._play_earcon(earcons.accept_tone)
+
+    @_safe_slot
+    def _on_stt_ready(self, error: str) -> None:
+        """Clear the loading capsule once the speech model finishes loading."""
+        if error:
+            self._signals.error.emit(f"The speech model failed to load: {error}")
+        if self._last_ui_state == "loading":
+            self._signals.state_changed.emit("idle")
 
     def _play_earcon(self, tone_factory) -> None:
         """Play a short audio cue without blocking the calling thread."""
