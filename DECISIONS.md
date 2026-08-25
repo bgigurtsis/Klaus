@@ -299,3 +299,25 @@ template, and exports together, which closes the drift bug class
 at 684 lines — above the 600 target, below the 800 ceiling; the remaining
 bulk is the system prompt body (~120 lines), which moves out only if the
 file grows again.
+
+## 2026-08-25 — Closing ceiling audit
+
+Every module is under the 800-line ceiling. Seven sit in the 600–760 flag
+band; proposed splits, none urgent:
+
+- `audio.py` (760): PushToTalkRecorder + VoiceActivatedRecorder + AudioPlayer
+  share the file — the natural cut is VoiceActivatedRecorder (the VAD state
+  machine) into its own module if barge-in work grows it further.
+- `main.py` (745): down from 1176; what remains is wiring, the Qt signal
+  bridge, and settings-dialog glue. Next cut would be a settings-apply
+  service, worthwhile only if D10 (settings-in-UI scope) lands.
+- `realtime.py` (703): grew with retry + warm-up; the event-loop body of
+  `_ask_audio_once` could become a module-level function if it crosses 750.
+- `settings_dialog.py` (694): splits per-tab if D10 adds VAD/hotkey tabs.
+- `config.py` (684): remaining bulk is the system-prompt body; move to
+  `prompts.py` on next growth.
+- `theme_qss.py` (666) and `chat_widget.py` (636): stable; no split planned.
+
+The final before/after latency table still needs Billy's 10 live turns per
+engine (the TurnTimings aggregator logs p50/p95 every 10 turns); the code
+side of the roadmap is complete apart from the D1–D10 owner decisions.
