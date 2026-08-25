@@ -85,6 +85,15 @@ def test_setup_bundle_contains_valid_executable_scripts():
         subprocess.run([shell, "-n", script], check=True)
 
 
+def test_tablet_upgrade_restarts_service_and_bumps_package_revision():
+    post_install = (PACKAGE_DIR / "klaus-post-install").read_text()
+    tablet_installer = (PACKAGE_DIR / "install-on-tablet.sh").read_text()
+
+    assert "systemctl restart klaus-remarkable.service" in post_install
+    assert "klaus-remarkable-0.1.0-r16.apk" in tablet_installer
+    assert "klaus-remarkable-0.1.0-r15.apk" not in tablet_installer
+
+
 def test_dry_run_checks_supported_tablet_without_copying_files(tmp_path):
     env = os.environ.copy()
     env["PATH"] = f"{_fake_path(tmp_path)}:{env['PATH']}"

@@ -45,7 +45,8 @@ fi
 trap - EXIT
 [ ! -x /home/root/xovi/start ] || /home/root/xovi/start
 systemctl daemon-reload
-systemctl enable --now klaus-remarkable.service
+systemctl enable klaus-remarkable.service
+systemctl restart klaus-remarkable.service
 if [ "$reboot_required" = "1" ]; then
 	echo "Restart Paper Pure to restore its read-only system."
 fi

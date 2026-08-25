@@ -92,6 +92,30 @@ class TestDeviceSwitchService:
         assert result.camera.started is True
         assert result.active_index == -2
 
+    def test_forced_camera_switch_rebuilds_same_reading_source(self):
+        persisted_camera: list[int] = []
+        persisted_mic: list[int | None] = []
+        errors: list[tuple[str, str]] = []
+        service = _service(persisted_camera, persisted_mic, errors)
+        current = _FakeCamera(-4)
+        current.start()
+        applied: list[_FakeCamera] = []
+
+        result = service.switch_camera(
+            current_camera=current,
+            previous_index=-4,
+            target_index=-4,
+            apply_camera=applied.append,
+            force=True,
+        )
+
+        assert current.started is False
+        assert result.success is True
+        assert result.camera is not current
+        assert result.camera.started is True
+        assert result.active_index == -4
+        assert applied == [result.camera]
+
     def test_camera_switch_failure_rolls_back(self):
         _FakeCamera.fail_indices = {2}
         persisted_camera: list[int] = []

@@ -49,7 +49,7 @@ cd "$stage"
 "$vellum" mkpkg \
 	--files klaus-root \
 	--info name:klaus-remarkable \
-	--info version:0.1.0-r15 \
+	--info version:0.1.0-r16 \
 	--info arch:aarch64 \
 	--info description:'Manage the Paper Pure screenshot service used by Klaus' \
 	--info license:MIT \
@@ -58,14 +58,14 @@ cd "$stage"
 	--script post-install:scripts/klaus-post-install \
 	--script post-upgrade:scripts/klaus-post-install \
 	--script pre-deinstall:scripts/klaus-pre-deinstall \
-	--output klaus-remarkable-0.1.0-r15.apk
+	--output klaus-remarkable-0.1.0-r16.apk
 
 "$vellum" verify --allow-untrusted gomarkablestream-paperpure-1.3.1_pre4-r0.apk
-"$vellum" verify --allow-untrusted klaus-remarkable-0.1.0-r15.apk
+"$vellum" verify --allow-untrusted klaus-remarkable-0.1.0-r16.apk
 
 echo "Installing the locally built Klaus packages..."
 "$vellum" add --allow-untrusted gomarkablestream-paperpure-1.3.1_pre4-r0.apk
-"$vellum" add --allow-untrusted klaus-remarkable-0.1.0-r15.apk
+"$vellum" add --allow-untrusted klaus-remarkable-0.1.0-r16.apk
 
 if [ "$(systemctl is-active klaus-remarkable.service)" != "active" ]; then
 	echo "The Klaus Paper Pure service did not start." >&2

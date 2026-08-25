@@ -1038,7 +1038,9 @@ class KlausApp:
             config.set_camera_index(effective_index, persist=True)
         self._window.camera_widget.set_source_selection(effective_index)
 
-    def _apply_camera_device_live(self, new_index: int) -> tuple[bool, int]:
+    def _apply_camera_device_live(
+        self, new_index: int, *, force: bool = False
+    ) -> tuple[bool, int]:
         """Switch the active reading source immediately, with rollback."""
         self._ensure_device_switch_service()
         result = self._device_switch_service.switch_camera(
@@ -1046,6 +1048,7 @@ class KlausApp:
             previous_index=self._active_camera_index,
             target_index=int(new_index),
             apply_camera=self._window.camera_widget.set_camera,
+            force=force,
         )
         self._camera = result.camera
         self._active_camera_index = result.active_index
@@ -1136,7 +1139,7 @@ class KlausApp:
     def _on_remarkable_paired(self, message: str) -> None:
         """Select the tablet after reManager completes one-click pairing."""
         config.reload()
-        success, effective_index = self._apply_camera_device_live(-4)
+        success, effective_index = self._apply_camera_device_live(-4, force=True)
         if success:
             config.set_camera_index(effective_index, persist=True)
             self._window.camera_widget.set_source_selection(effective_index)

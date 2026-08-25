@@ -83,6 +83,7 @@ def test_apply_camera_device_live_delegates_to_service_and_refreshes_pipeline():
     assert kwargs["previous_index"] == 0
     assert kwargs["target_index"] == 2
     assert kwargs["apply_camera"] is app._window.camera_widget.set_camera
+    assert kwargs["force"] is False
 
     assert ok is False
     assert effective_index == 0
@@ -158,3 +159,25 @@ def test_main_reading_selector_switches_and_persists(mock_set_camera_index):
     mock_set_camera_index.assert_called_once_with(-2, persist=True)
     app._window.camera_widget.set_source_selection.assert_called_with(-2)
     app._window.clear_permission_warning.assert_called_once()
+
+
+@patch("klaus.main.config.set_camera_index")
+@patch("klaus.main.config.reload")
+def test_remarkable_pairing_forces_active_tablet_client_refresh(
+    mock_reload, mock_set_camera_index
+):
+    app = _make_app(MagicMock())
+    app._apply_camera_device_live = MagicMock(return_value=(True, -4))
+    app._window.chat_widget = SimpleNamespace(add_status_message=MagicMock())
+    app._window.show = MagicMock()
+    app._window.raise_ = MagicMock()
+    app._window.activateWindow = MagicMock()
+
+    KlausApp._on_remarkable_paired(app, "Paired over Wi-Fi.")
+
+    mock_reload.assert_called_once()
+    app._apply_camera_device_live.assert_called_once_with(-4, force=True)
+    mock_set_camera_index.assert_called_once_with(-4, persist=True)
+    app._window.chat_widget.add_status_message.assert_called_once_with(
+        "Paired over Wi-Fi."
+    )

@@ -45,9 +45,11 @@ class DeviceSwitchService:
         previous_index: int,
         target_index: int,
         apply_camera: Callable[[object], None],
+        *,
+        force: bool = False,
     ) -> CameraSwitchResult:
         target = int(target_index)
-        if target == previous_index:
+        if target == previous_index and not force:
             return CameraSwitchResult(True, current_camera, target)
 
         current_camera.stop()
