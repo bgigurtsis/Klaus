@@ -65,3 +65,14 @@ def test_realtime_replay_pauses_voice_detection_when_interruption_is_disabled() 
     vad_recorder.pause.assert_called_once()
     vad_recorder.suspend_stream.assert_called_once()
     vad_recorder.prime_with_seed.assert_not_called()
+
+
+def test_speech_start_warms_up_brain() -> None:
+    turn_state = TurnState()
+    brain = MagicMock()
+    vad_recorder = MagicMock()
+
+    coordinator = _make_coordinator(turn_state, vad_recorder=vad_recorder, brain=brain)
+    coordinator.on_vad_speech_start()
+
+    brain.warm_up.assert_called_once()

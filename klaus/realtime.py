@@ -138,6 +138,22 @@ class RealtimeBrain:
         """Choose context locally without adding a second model request."""
         return local_route_decision(question)
 
+    def warm_up(self) -> None:
+        """Open or refresh the WebSocket off the turn path.
+
+        Called when the user starts speaking, so a first-turn handshake or a
+        max-age reconnect overlaps the recording instead of landing between
+        end-of-speech and the answer.
+        """
+        def _connect() -> None:
+            with self._turn_lock:
+                try:
+                    self._ensure_connected()
+                except Exception as exc:
+                    logger.warning("Realtime warm-up failed: %s", exc)
+
+        threading.Thread(target=_connect, daemon=True).start()
+
     def clear_history(self) -> None:
         """Start a new server conversation for a new Klaus reading session."""
         self.close()

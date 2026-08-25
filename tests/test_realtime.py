@@ -423,3 +423,30 @@ def test_replay_uses_out_of_band_realtime_audio() -> None:
     assert response["input"] == []
     assert "The exact prior answer." in response["instructions"]
     assert np.array_equal(audio_output.chunks[0], np.array([40, 50, 60], dtype=np.int16))
+
+
+def test_warm_up_connects_off_the_turn_path():
+    connected = threading.Event()
+
+    class _IdleSocket:
+        def settimeout(self, _t):
+            pass
+
+        def close(self):
+            pass
+
+    def websocket_factory(*_args, **_kwargs):
+        connected.set()
+        return _IdleSocket()
+
+    brain = RealtimeBrain(
+        notes=None,
+        audio_output=SimpleNamespace(),
+        settings=_settings(),
+        websocket_factory=websocket_factory,
+    )
+
+    brain.warm_up()
+
+    assert connected.wait(timeout=2.0)
+    assert brain.last_connect_ms is not None

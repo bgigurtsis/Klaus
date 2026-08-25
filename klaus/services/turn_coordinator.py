@@ -107,6 +107,7 @@ class TurnCoordinator:
             self._audio_output.stop()
         if processing and not speaking:
             return
+        self._warm_up_brain()
         self._signals.state_changed.emit("listening")
 
     def on_vad_speech_maybe_end(self, wav_bytes: bytes) -> None:
@@ -162,6 +163,7 @@ class TurnCoordinator:
         if recorder.is_recording:
             return
         recorder.start_recording()
+        self._warm_up_brain()
         self._signals.state_changed.emit("listening")
 
     def on_key_up(self) -> None:
@@ -179,6 +181,12 @@ class TurnCoordinator:
             self._signals.state_changed.emit("thinking")
             return
         self.start_question_thread(wav_bytes)
+
+    def _warm_up_brain(self) -> None:
+        """Overlap the engine's connection handshake with the recording."""
+        warm_up = getattr(self._get_brain(), "warm_up", None)
+        if callable(warm_up):
+            warm_up()
 
     # -- Turn execution --
 
