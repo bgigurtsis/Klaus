@@ -183,3 +183,20 @@ pairing refresh. Investigated and rejected: a pending-cancel flag for Gemini's
 loop-startup window — `_cancelled()` already polls the event right after the
 session opens, so an early cancel aborts the turn without new state; a
 regression test now pins that.
+
+## 2026-08-25 — main.py decomposed: hotkeys, SessionService, TurnCoordinator
+
+main.py went from 1176 lines to 697 in three moves: `klaus/hotkeys.py` owns
+the pynput gating and global listener (HotkeyListener with
+set_keys/start/stop/restart); `services/session_service.py` owns session CRUD
+and the activation sequence that was duplicated across switch/delete/startup
+(now one `activate` path, and the vault-change notes rebind reuses
+`sync_notes_bindings`); `services/turn_coordinator.py` owns everything that
+starts, cancels, or tears down a voice turn (VAD callbacks, PTT, barge-in,
+replay, stop, guard stats). Mutable collaborators (recorders, pipeline,
+brain, input mode) reach the coordinator through getter lambdas because
+KlausApp hot-swaps them on device switches and settings changes — chosen over
+passing the app object (hidden coupling) and over re-wiring the coordinator
+on every swap (churn). KlausApp keeps thin @_safe_slot delegates so Qt signal
+connections and the safe-slot behavior stay in one place. Revisit the getter
+pattern if a coordinator dependency stops being hot-swappable.

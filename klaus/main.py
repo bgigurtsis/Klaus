@@ -48,24 +48,14 @@ from klaus.notes import NotesManager
 from klaus.remarkable_pairing_server import RemarkablePairingServer
 from klaus.services import (
     DeviceSwitchService,
-    PipelineContext,
-    PipelineHooks,
     QuestionPipeline,
     SessionService,
     SessionView,
-    Transcription,
-    TurnState,
     SpeculativeTranscriber,
+    TurnCoordinator,
+    TurnState,
 )
 from klaus.ui.main_window import MainWindow
-
-
-def _new_guard_stats() -> dict[str, int]:
-    """Create a fresh per-session STT guard stats dict."""
-    return {
-        "vad_discarded": 0,
-        "quality_gate_discarded": 0,
-    }
 
 
 def _configured_mic_device() -> int | None:
@@ -100,8 +90,6 @@ class KlausApp:
         self._turn_state = TurnState()
         self._input_mode: str = self._runtime_settings.input_mode
         self._last_ui_state = "idle"
-        self._guard_stats = _new_guard_stats()
-        self._guard_stats_lock = threading.Lock()
         self._hotkeys = HotkeyListener(
             self._runtime_settings.push_to_talk_key,
             self._runtime_settings.toggle_key,
@@ -161,6 +149,20 @@ class KlausApp:
         self._memory = Memory()
         self._rebuild_question_pipeline()
         self._ensure_device_switch_service()
+        self._coordinator = TurnCoordinator(
+            turn_state=self._turn_state,
+            speculative_stt=self._speculative_stt,
+            stt=self._stt,
+            audio_output=self._audio_output,
+            signals=self._signals,
+            get_vad_recorder=lambda: self._vad_recorder,
+            get_ptt_recorder=lambda: self._ptt_recorder,
+            get_pipeline=lambda: self._question_pipeline,
+            get_brain=lambda: self._brain,
+            get_input_mode=lambda: self._input_mode,
+            get_current_session_id=lambda: self._session_service.current_session_id,
+            update_exchange_count=lambda: self._session_service.update_exchange_count(),
+        )
 
     def _rebuild_question_pipeline(self) -> None:
         required = ("_stt", "_camera", "_brain", "_memory", "_notes")
@@ -351,39 +353,6 @@ class KlausApp:
             target=self._audio_output.play_pcm, args=(tone_factory(),), daemon=True,
         ).start()
 
-    def _session_tag(self) -> str:
-        if self._current_session_id:
-            return self._current_session_id[:8]
-        return "none"
-
-    def _reset_guard_stats(self) -> None:
-        """Reset guard stats whenever the active session changes."""
-        with self._guard_stats_lock:
-            self._guard_stats = _new_guard_stats()
-            snapshot = dict(self._guard_stats)
-        logger.info(
-            "STT guard stats reset (session=%s): vad_discarded=%d | quality_gate_discarded=%d",
-            self._session_tag(),
-            snapshot["vad_discarded"],
-            snapshot["quality_gate_discarded"],
-        )
-
-    def _increment_guard_stat(self, key: str, event: str, reason: str = "-") -> None:
-        """Increment one guard stat and log a structured snapshot."""
-        with self._guard_stats_lock:
-            if key not in self._guard_stats:
-                return
-            self._guard_stats[key] += 1
-            snapshot = dict(self._guard_stats)
-        logger.info(
-            "STT guard event=%s reason=%s session=%s vad_discarded=%d quality_gate_discarded=%d",
-            event,
-            reason,
-            self._session_tag(),
-            snapshot["vad_discarded"],
-            snapshot["quality_gate_discarded"],
-        )
-
     # -- Input mode --
 
     def _setup_input_mode(self) -> None:
@@ -425,69 +394,22 @@ class KlausApp:
         self._signals.state_changed.emit("idle")
         logger.info("Toggled input mode to %s", self._input_mode)
 
-    # -- VAD callbacks --
+    # -- VAD callbacks (delegate to the coordinator; called from audio threads) --
 
     def _on_vad_speech_start(self) -> None:
-        """Called from VAD thread when speech begins."""
-        if self._input_mode != "voice_activation":
-            return
-        processing, speaking = self._turn_state.snapshot()
-        if speaking:
-            self._audio_output.stop()
-        if processing and not speaking:
-            return
-        self._signals.state_changed.emit("listening")
+        self._coordinator.on_vad_speech_start()
 
     def _on_vad_speech_maybe_end(self, wav_bytes: bytes) -> None:
-        """Called from VAD thread on early silence: start speculative STT."""
-        if self._input_mode != "voice_activation" or self._turn_state.processing:
-            return
-        self._speculative_stt.start(wav_bytes)
+        self._coordinator.on_vad_speech_maybe_end(wav_bytes)
 
     def _on_vad_speech_end(self, wav_bytes: bytes) -> None:
-        """Called from VAD thread when speech ends with silence timeout."""
-        if self._input_mode != "voice_activation":
-            return
-        if not wav_bytes:
-            self._speculative_stt.clear()
-            self._signals.state_changed.emit("idle")
-            return
-        processing, speaking = self._turn_state.snapshot()
-        if processing and not speaking:
-            return
-        self._vad_recorder.pause()
-        self._start_question_thread(wav_bytes)
+        self._coordinator.on_vad_speech_end(wav_bytes)
 
     def _on_barge_in(self, seed) -> None:
-        """Called from the audio thread when the user talks over Klaus.
-
-        Cancels the in-flight turn and stops playback. The seed audio (the
-        user's first words, captured while Klaus was speaking) is replayed
-        into the recorder once the pipeline winds down.
-        """
-        if not self._turn_state.barge_in(seed):
-            return
-        logger.info("Barge-in: interrupting playback")
-        # Cancellation closes the output stream, so keep it off the audio callback.
-        threading.Thread(
-            target=self._question_pipeline.cancel_active,
-            daemon=True,
-        ).start()
+        self._coordinator.on_barge_in(seed)
 
     def _on_vad_discard(self, reason: str) -> None:
-        """Track why a VAD candidate was dropped before STT."""
-        if reason.startswith("quality_"):
-            self._increment_guard_stat(
-                key="quality_gate_discarded",
-                event="vad_discard",
-                reason=reason,
-            )
-            return
-        self._increment_guard_stat(
-            key="vad_discarded",
-            event="vad_discard",
-            reason=reason,
-        )
+        self._coordinator.on_vad_discard(reason)
 
     # -- Session management --
 
@@ -504,7 +426,7 @@ class KlausApp:
             self._memory,
             self._notes,
             view,
-            reset_guard_stats=self._reset_guard_stats,
+            reset_guard_stats=self._coordinator.reset_guard_stats,
             clear_brain_history=lambda: self._brain.clear_history(),
         )
 
@@ -539,120 +461,11 @@ class KlausApp:
 
     @_safe_slot
     def _on_key_down(self) -> None:
-        if self._input_mode != "push_to_talk":
-            return
-        if self._turn_state.processing:
-            self._turn_state.request_cancel()
-            self._question_pipeline.cancel_active()
-        if self._ptt_recorder.is_recording:
-            return
-        self._ptt_recorder.start_recording()
-        self._signals.state_changed.emit("listening")
+        self._coordinator.on_key_down()
 
     @_safe_slot
     def _on_key_up(self) -> None:
-        if self._input_mode != "push_to_talk":
-            return
-        if not self._ptt_recorder.is_recording:
-            return
-        wav_bytes = self._ptt_recorder.stop_recording()
-        if wav_bytes is None:
-            self._signals.state_changed.emit("idle")
-            return
-
-        if self._turn_state.queue_ptt_wav(wav_bytes):
-            self._signals.state_changed.emit("thinking")
-            return
-        self._start_question_thread(wav_bytes)
-
-    def _start_question_thread(self, wav_bytes: bytes) -> None:
-        cancel_event = self._turn_state.begin_turn()
-        threading.Thread(
-            target=self._process_question,
-            args=(wav_bytes, cancel_event),
-            daemon=True,
-        ).start()
-
-    def _voice_transcriber(self):
-        """Build a transcriber that prefers a valid speculative transcript."""
-        gap = self._vad_recorder.speculative_gap_bytes
-        speculative = self._speculative_stt
-
-        def transcribe(wav: bytes) -> Transcription:
-            result = speculative.collect(wav, gap)
-            if result is not None:
-                return Transcription(result, speculative_hit=True)
-            return Transcription(self._stt.transcribe(wav), speculative_hit=False)
-
-        return transcribe
-
-    def _process_question(
-        self, wav_bytes: bytes, cancel_event: threading.Event
-    ) -> None:
-        barge_in_active = (
-            self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED
-        )
-        try:
-            context = PipelineContext(
-                input_mode=self._input_mode,
-                current_session_id=self._current_session_id,
-                # With barge-in the mic stays open (gated) during playback;
-                # otherwise suspend it to free the audio device.
-                suspend_input_stream=(
-                    None if barge_in_active else self._vad_recorder.suspend_stream
-                ),
-                cancel_event=cancel_event,
-                transcriber=(
-                    self._voice_transcriber()
-                    if self._input_mode == "voice_activation"
-                    else None
-                ),
-                speech_ended_at=(
-                    self._vad_recorder.last_voiced_at
-                    if self._input_mode == "voice_activation"
-                    else None
-                ),
-            )
-            hooks = PipelineHooks(
-                on_state=self._signals.state_changed.emit,
-                on_transcription=self._signals.transcription_ready.emit,
-                on_response=self._signals.response_ready.emit,
-                on_sessions_changed=self._signals.sessions_changed.emit,
-                on_exchange_count_updated=self._update_exchange_count,
-                on_speaking_started=self._on_pipeline_speaking_started,
-                on_assistant_text_delta=self._signals.assistant_text_delta.emit,
-                on_cancelled=self._on_pipeline_cancelled,
-            )
-            self._question_pipeline.run(
-                wav_bytes,
-                context=context,
-                hooks=hooks,
-            )
-
-        except Exception as e:
-            logger.error("Processing failed: %s", e, exc_info=True)
-            self._signals.error.emit(str(e))
-            self._signals.state_changed.emit("idle")
-        finally:
-            seed, queued_wav = self._turn_state.end_turn()
-            if self._input_mode == "voice_activation":
-                self._vad_recorder.exit_gated_mode()
-                self._vad_recorder.resume_stream()
-                self._vad_recorder.resume(settle_ms=450)
-                if seed is not None:
-                    self._vad_recorder.prime_with_seed(seed)
-            if queued_wav is not None and self._input_mode == "push_to_talk":
-                self._start_question_thread(queued_wav)
-
-    def _on_pipeline_speaking_started(self) -> None:
-        self._turn_state.speaking_started()
-        if self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED:
-            self._vad_recorder.enter_gated_mode()
-        self._signals.state_changed.emit("speaking")
-
-    def _on_pipeline_cancelled(self) -> None:
-        """Called from the pipeline thread when a turn is cancelled."""
-        self._signals.turn_cancelled.emit()
+        self._coordinator.on_key_up()
 
     # -- UI callbacks --
 
@@ -699,39 +512,15 @@ class KlausApp:
         for ex in exchanges:
             if ex.id == exchange_id:
                 threading.Thread(
-                    target=self._replay_audio, args=(ex.assistant_text,), daemon=True
+                    target=self._coordinator.replay,
+                    args=(ex.assistant_text,),
+                    daemon=True,
                 ).start()
                 return
 
-    def _replay_audio(self, text: str) -> None:
-        self._turn_state.begin_replay()
-        barge_in_active = (
-            self._input_mode == "voice_activation" and config.BARGE_IN_ENABLED
-        )
-        if barge_in_active:
-            self._vad_recorder.enter_gated_mode()
-        elif self._input_mode == "voice_activation":
-            self._vad_recorder.pause()
-            self._vad_recorder.suspend_stream()
-        self._signals.state_changed.emit("speaking")
-        try:
-            self._brain.speak_text(text)
-        finally:
-            seed = self._turn_state.end_replay()
-            if self._input_mode == "voice_activation":
-                self._vad_recorder.exit_gated_mode()
-                self._vad_recorder.resume_stream()
-                self._vad_recorder.resume(settle_ms=450)
-                if seed is not None:
-                    self._vad_recorder.prime_with_seed(seed)
-            self._signals.state_changed.emit("idle")
-
     @_safe_slot
     def _on_stop_requested(self) -> None:
-        """Handle stop button click from the UI (thinking or speaking)."""
-        if self._turn_state.request_cancel():
-            logger.info("Stop requested via UI")
-            self._question_pipeline.cancel_active()
+        self._coordinator.request_stop()
 
     def _show_device_switch_error(self, title: str, message: str) -> None:
         QMessageBox.warning(self._window, title, message)

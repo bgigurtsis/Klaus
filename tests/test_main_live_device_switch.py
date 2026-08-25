@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from klaus.main import KlausApp
+from klaus.services.turn_coordinator import TurnCoordinator
 from klaus.services.turn_state import TurnState
 
 
@@ -35,36 +36,61 @@ def _make_app(service: MagicMock) -> KlausApp:
     return app
 
 
-def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
-    app = KlausApp.__new__(KlausApp)
-    app._input_mode = "push_to_talk"
-    app._turn_state = TurnState()
-    cancel_event = app._turn_state.begin_turn()
-    app._question_pipeline = MagicMock()
-    app._ptt_recorder = MagicMock(is_recording=False)
-    app._signals = MagicMock()
+def _make_coordinator(
+    turn_state: TurnState,
+    *,
+    ptt_recorder: MagicMock,
+    pipeline: MagicMock,
+    signals: MagicMock,
+) -> TurnCoordinator:
+    return TurnCoordinator(
+        turn_state=turn_state,
+        speculative_stt=MagicMock(),
+        stt=MagicMock(),
+        audio_output=MagicMock(),
+        signals=signals,
+        get_vad_recorder=MagicMock(),
+        get_ptt_recorder=lambda: ptt_recorder,
+        get_pipeline=lambda: pipeline,
+        get_brain=MagicMock(),
+        get_input_mode=lambda: "push_to_talk",
+        get_current_session_id=lambda: None,
+        update_exchange_count=MagicMock(),
+    )
 
-    KlausApp._on_key_down(app)
+
+def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
+    turn_state = TurnState()
+    cancel_event = turn_state.begin_turn()
+    pipeline = MagicMock()
+    ptt_recorder = MagicMock(is_recording=False)
+    signals = MagicMock()
+
+    coordinator = _make_coordinator(
+        turn_state, ptt_recorder=ptt_recorder, pipeline=pipeline, signals=signals
+    )
+    coordinator.on_key_down()
 
     assert cancel_event.is_set()
-    app._question_pipeline.cancel_active.assert_called_once()
-    app._ptt_recorder.start_recording.assert_called_once()
-    app._signals.state_changed.emit.assert_called_once_with("listening")
+    pipeline.cancel_active.assert_called_once()
+    ptt_recorder.start_recording.assert_called_once()
+    signals.state_changed.emit.assert_called_once_with("listening")
 
 
 def test_ptt_release_queues_question_until_cancelled_turn_finishes() -> None:
-    app = KlausApp.__new__(KlausApp)
-    app._input_mode = "push_to_talk"
-    app._turn_state = TurnState()
-    app._turn_state.begin_turn()
-    app._ptt_recorder = MagicMock(is_recording=True)
-    app._ptt_recorder.stop_recording.return_value = b"next-question"
-    app._signals = MagicMock()
+    turn_state = TurnState()
+    turn_state.begin_turn()
+    ptt_recorder = MagicMock(is_recording=True)
+    ptt_recorder.stop_recording.return_value = b"next-question"
+    signals = MagicMock()
 
-    KlausApp._on_key_up(app)
+    coordinator = _make_coordinator(
+        turn_state, ptt_recorder=ptt_recorder, pipeline=MagicMock(), signals=signals
+    )
+    coordinator.on_key_up()
 
-    assert app._turn_state.end_turn() == (None, b"next-question")
-    app._signals.state_changed.emit.assert_called_once_with("thinking")
+    assert turn_state.end_turn() == (None, b"next-question")
+    signals.state_changed.emit.assert_called_once_with("thinking")
 
 
 def test_apply_camera_device_live_delegates_to_service_and_refreshes_pipeline():

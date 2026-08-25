@@ -13,6 +13,7 @@ from klaus.services.question_pipeline import (
 )
 from klaus.services.session_service import SessionService, SessionView
 from klaus.services.speculative_stt import SpeculativeTranscriber
+from klaus.services.turn_coordinator import TurnCoordinator
 from klaus.services.turn_state import TurnState
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "SessionView",
     "SpeculativeTranscriber",
     "Transcription",
+    "TurnCoordinator",
     "TurnState",
 ]

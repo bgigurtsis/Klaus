@@ -1,4 +1,4 @@
-"""Tests for replay audio behavior in the app coordinator."""
+"""Tests for replay audio behavior in the turn coordinator."""
 
 from __future__ import annotations
 
@@ -6,44 +6,62 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from klaus.main import KlausApp
+from klaus.services.turn_coordinator import TurnCoordinator
 from klaus.services.turn_state import TurnState
 
 
+def _make_coordinator(
+    turn_state: TurnState,
+    *,
+    vad_recorder: MagicMock,
+    brain: MagicMock,
+) -> TurnCoordinator:
+    return TurnCoordinator(
+        turn_state=turn_state,
+        speculative_stt=MagicMock(),
+        stt=MagicMock(),
+        audio_output=MagicMock(),
+        signals=MagicMock(),
+        get_vad_recorder=lambda: vad_recorder,
+        get_ptt_recorder=MagicMock(),
+        get_pipeline=MagicMock(),
+        get_brain=lambda: brain,
+        get_input_mode=lambda: "voice_activation",
+        get_current_session_id=lambda: None,
+        update_exchange_count=MagicMock(),
+    )
+
+
 def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
-    app = KlausApp.__new__(KlausApp)
-    app._input_mode = "voice_activation"
-    app._turn_state = TurnState()
-    app._brain = MagicMock()
-    app._vad_recorder = MagicMock()
-    app._signals = MagicMock()
+    turn_state = TurnState()
+    brain = MagicMock()
+    vad_recorder = MagicMock()
     seed = np.array([1, 2, 3], dtype=np.int16)
-    app._brain.speak_text.side_effect = lambda _text: app._turn_state.barge_in(seed)
+    brain.speak_text.side_effect = lambda _text: turn_state.barge_in(seed)
 
-    with patch("klaus.main.config.BARGE_IN_ENABLED", True):
-        KlausApp._replay_audio(app, "Repeat this answer.")
+    coordinator = _make_coordinator(turn_state, vad_recorder=vad_recorder, brain=brain)
+    with patch("klaus.services.turn_coordinator.config.BARGE_IN_ENABLED", True):
+        coordinator.replay("Repeat this answer.")
 
-    app._brain.speak_text.assert_called_once_with("Repeat this answer.")
-    app._vad_recorder.enter_gated_mode.assert_called_once()
-    app._vad_recorder.pause.assert_not_called()
-    app._vad_recorder.exit_gated_mode.assert_called_once()
-    app._vad_recorder.resume_stream.assert_called_once()
-    app._vad_recorder.resume.assert_called_once()
-    app._vad_recorder.prime_with_seed.assert_called_once_with(seed)
+    brain.speak_text.assert_called_once_with("Repeat this answer.")
+    vad_recorder.enter_gated_mode.assert_called_once()
+    vad_recorder.pause.assert_not_called()
+    vad_recorder.exit_gated_mode.assert_called_once()
+    vad_recorder.resume_stream.assert_called_once()
+    vad_recorder.resume.assert_called_once()
+    vad_recorder.prime_with_seed.assert_called_once_with(seed)
 
 
 def test_realtime_replay_pauses_voice_detection_when_interruption_is_disabled() -> None:
-    app = KlausApp.__new__(KlausApp)
-    app._input_mode = "voice_activation"
-    app._turn_state = TurnState()
-    app._brain = MagicMock()
-    app._vad_recorder = MagicMock()
-    app._signals = MagicMock()
+    turn_state = TurnState()
+    brain = MagicMock()
+    vad_recorder = MagicMock()
 
-    with patch("klaus.main.config.BARGE_IN_ENABLED", False):
-        KlausApp._replay_audio(app, "Repeat this answer.")
+    coordinator = _make_coordinator(turn_state, vad_recorder=vad_recorder, brain=brain)
+    with patch("klaus.services.turn_coordinator.config.BARGE_IN_ENABLED", False):
+        coordinator.replay("Repeat this answer.")
 
-    app._vad_recorder.enter_gated_mode.assert_not_called()
-    app._vad_recorder.pause.assert_called_once()
-    app._vad_recorder.suspend_stream.assert_called_once()
-    app._vad_recorder.prime_with_seed.assert_not_called()
+    vad_recorder.enter_gated_mode.assert_not_called()
+    vad_recorder.pause.assert_called_once()
+    vad_recorder.suspend_stream.assert_called_once()
+    vad_recorder.prime_with_seed.assert_not_called()
