@@ -6,7 +6,14 @@ from unittest.mock import MagicMock
 
 from klaus.notes import NotesManager
 from klaus.realtime import AskCancelled
-from klaus.services.question_pipeline import PipelineContext, PipelineHooks, QuestionPipeline
+from klaus.services.question_pipeline import (
+    PipelineContext,
+    PipelineHooks,
+    QuestionPipeline,
+    TimingsAggregator,
+    Transcription,
+    TurnTimings,
+)
 
 
 def _route(**kwargs):
@@ -333,6 +340,84 @@ def test_cancel_active_calls_realtime_brain():
     pipeline.cancel_active()
 
     brain.cancel_current.assert_called_once()
+
+
+def test_turn_timings_summary_includes_extended_marks():
+    timings = TurnTimings(start=10.0, speech_ended_at=9.8)
+    timings.transcript_ready = 10.1
+    timings.route_ready = 10.15
+    timings.first_text_delta = 10.6
+    timings.first_audio = 10.9
+    timings.turn_done = 12.0
+    timings.image_capture_ms = 42.0
+    timings.connect_ms = 310.0
+    timings.speculative_hit = True
+
+    summary = timings.summary()
+
+    assert "vad_wait=200ms" in summary
+    assert "transcript=100ms" in summary
+    assert "spec=hit" in summary
+    assert "image_capture=42ms" in summary
+    assert "connect=310ms" in summary
+    assert "first_audio=900ms" in summary
+    assert "done=2000ms" in summary
+
+
+def test_turn_timings_summary_marks_missing_values_with_dash():
+    summary = TurnTimings(start=10.0).summary()
+
+    assert "vad_wait=-ms" in summary
+    assert "spec=-" in summary
+    assert "connect=-ms" in summary
+    assert "image_capture=-ms" in summary
+
+
+def test_transcription_hit_flag_reaches_timings(caplog):
+    stt = MagicMock()
+    camera = MagicMock()
+    camera.capture_thumbnail_bytes.return_value = b"thumb"
+    camera.capture_text_context.return_value = None
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    brain.ask_audio.return_value = SimpleNamespace(
+        notes_file_changed=False,
+        assistant_text="Answer",
+        user_text="Question",
+        image_base64=None,
+        searches=[],
+    )
+
+    with caplog.at_level("INFO", logger="klaus.services.question_pipeline"):
+        _pipeline(stt, camera, brain).run(
+            b"wav",
+            context=PipelineContext(
+                input_mode="voice_activation",
+                current_session_id=None,
+                transcriber=lambda _wav: Transcription("Question", speculative_hit=True),
+            ),
+            hooks=_hooks(),
+        )
+
+    stt.transcribe.assert_not_called()
+    assert any("spec=hit" in record.getMessage() for record in caplog.records)
+
+
+def test_timings_aggregator_logs_percentiles(caplog):
+    aggregator = TimingsAggregator(log_every=3)
+    for delta in (0.1, 0.2, 0.3):
+        timings = TurnTimings(start=0.0)
+        timings.transcript_ready = delta
+        timings.first_audio = delta * 2
+        timings.turn_done = delta * 3
+        with caplog.at_level("INFO", logger="klaus.services.question_pipeline"):
+            aggregator.record(timings)
+
+    messages = [r.getMessage() for r in caplog.records if "Turn latency" in r.getMessage()]
+    assert len(messages) == 1
+    assert "transcript p50=200ms" in messages[0]
+    assert "first_audio p50=400ms" in messages[0]
+    assert "done p50=600ms" in messages[0]
 
 
 def test_tablet_capture_runs_after_transcription_and_persists_chat_thumbnail():

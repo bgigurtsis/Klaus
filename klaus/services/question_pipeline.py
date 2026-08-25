@@ -26,25 +26,100 @@ class TurnTimings:
     """Per-turn latency marks (perf_counter seconds), logged at turn end."""
 
     start: float = field(default_factory=time.perf_counter)
+    speech_ended_at: float | None = None
     transcript_ready: float | None = None
     route_ready: float | None = None
     first_text_delta: float | None = None
     first_audio: float | None = None
     turn_done: float | None = None
+    image_capture_ms: float | None = None
+    connect_ms: float | None = None
+    speculative_hit: bool | None = None
 
     def _delta_ms(self, mark: float | None) -> str:
         if mark is None:
             return "-"
         return f"{(mark - self.start) * 1000:.0f}"
 
+    @staticmethod
+    def _raw_ms(value: float | None) -> str:
+        if value is None:
+            return "-"
+        return f"{value:.0f}"
+
+    def vad_wait_ms(self) -> float | None:
+        """Time between the last voiced frame and the pipeline starting."""
+        if self.speech_ended_at is None:
+            return None
+        return (self.start - self.speech_ended_at) * 1000
+
     def summary(self) -> str:
+        spec = "-" if self.speculative_hit is None else ("hit" if self.speculative_hit else "miss")
         return (
+            f"vad_wait={self._raw_ms(self.vad_wait_ms())}ms "
             f"transcript={self._delta_ms(self.transcript_ready)}ms "
+            f"spec={spec} "
             f"route={self._delta_ms(self.route_ready)}ms "
+            f"image_capture={self._raw_ms(self.image_capture_ms)}ms "
+            f"connect={self._raw_ms(self.connect_ms)}ms "
             f"first_text_delta={self._delta_ms(self.first_text_delta)}ms "
             f"first_audio={self._delta_ms(self.first_audio)}ms "
             f"done={self._delta_ms(self.turn_done)}ms"
         )
+
+
+@dataclass(frozen=True)
+class Transcription:
+    """A transcript plus whether the speculative STT result was used."""
+
+    text: str
+    speculative_hit: bool | None = None
+
+
+class TimingsAggregator:
+    """Rolling p50/p95 over completed turns, logged every `log_every` turns."""
+
+    _TRACKED = ("transcript", "first_audio", "done")
+
+    def __init__(self, log_every: int = 10) -> None:
+        self._log_every = log_every
+        self._lock = threading.Lock()
+        self._samples: dict[str, list[float]] = {k: [] for k in self._TRACKED}
+        self._count = 0
+
+    @staticmethod
+    def _percentile(values: list[float], fraction: float) -> float:
+        ordered = sorted(values)
+        index = min(len(ordered) - 1, round(fraction * (len(ordered) - 1)))
+        return ordered[index]
+
+    def record(self, timings: TurnTimings) -> None:
+        marks = {
+            "transcript": timings.transcript_ready,
+            "first_audio": timings.first_audio,
+            "done": timings.turn_done,
+        }
+        with self._lock:
+            self._count += 1
+            for key, mark in marks.items():
+                if mark is not None:
+                    self._samples[key].append((mark - timings.start) * 1000)
+            if self._count % self._log_every == 0:
+                logger.info("Turn latency over %d turns: %s", self._count, self._stats())
+
+    def _stats(self) -> str:
+        parts = []
+        for key in self._TRACKED:
+            values = self._samples[key]
+            if values:
+                parts.append(
+                    f"{key} p50={self._percentile(values, 0.5):.0f}ms "
+                    f"p95={self._percentile(values, 0.95):.0f}ms"
+                )
+        return " ".join(parts) if parts else "no samples"
+
+
+_aggregator = TimingsAggregator()
 
 
 @dataclass(frozen=True)
@@ -53,7 +128,8 @@ class PipelineContext:
     current_session_id: str | None
     suspend_input_stream: Callable[[], None] | None = None
     cancel_event: threading.Event | None = None
-    transcriber: Callable[[bytes], str] | None = None
+    transcriber: Callable[[bytes], "str | Transcription"] | None = None
+    speech_ended_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -79,12 +155,17 @@ class QuestionPipeline:
         self._notes = notes
 
     def run(self, wav_bytes: bytes, *, context: PipelineContext, hooks: PipelineHooks) -> None:
-        timings = TurnTimings()
+        timings = TurnTimings(speech_ended_at=context.speech_ended_at)
         cancel_event = context.cancel_event
 
         logger.info("Transcribing audio...")
         transcribe = context.transcriber or self._stt.transcribe
-        transcript = transcribe(wav_bytes)
+        result = transcribe(wav_bytes)
+        if isinstance(result, Transcription):
+            transcript = result.text
+            timings.speculative_hit = result.speculative_hit
+        else:
+            transcript = result
         timings.transcript_ready = time.perf_counter()
         if not transcript:
             logger.info("Empty transcript, returning to idle")
@@ -142,7 +223,9 @@ class QuestionPipeline:
             or needs_screenshot
             or capture_screenshots
         ):
+            capture_start = time.perf_counter()
             image_b64 = self._camera.capture_base64_jpeg()
+            timings.image_capture_ms = (time.perf_counter() - capture_start) * 1000
         screenshot_bytes = None
         if image_b64:
             try:
@@ -243,6 +326,9 @@ class QuestionPipeline:
             self._finish_cancelled(hooks, timings)
             return
         finally:
+            connect_ms = getattr(self._brain, "last_connect_ms", None)
+            if isinstance(connect_ms, (int, float)):
+                timings.connect_ms = float(connect_ms)
             self._notes.set_pending_screenshot(None)
 
         if exchange.notes_file_changed and context.current_session_id:
@@ -299,6 +385,7 @@ class QuestionPipeline:
         hooks.on_sessions_changed()
         timings.turn_done = time.perf_counter()
         logger.info("Realtime turn timings: %s", timings.summary())
+        _aggregator.record(timings)
         hooks.on_state("idle")
 
     def _finish_cancelled(self, hooks: PipelineHooks, timings: TurnTimings) -> None:

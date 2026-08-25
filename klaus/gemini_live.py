@@ -8,6 +8,7 @@ import json
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 import numpy as np
@@ -61,6 +62,7 @@ class GeminiLiveBrain:
         self._active_loop: asyncio.AbstractEventLoop | None = None
         self._active_session = None
         self._history: list[dict] = []
+        self.last_connect_ms: float | None = None
         self._tools = self._build_tools()
 
     def _build_tools(self) -> list[dict]:
@@ -129,6 +131,7 @@ class GeminiLiveBrain:
             raise ValueError("The recorded question did not contain audio")
 
         with self._turn_lock:
+            self.last_connect_ms = None
             self._cancel_event.clear()
             if self._notes:
                 self._notes.reset_changed()
@@ -238,12 +241,14 @@ class GeminiLiveBrain:
         self._response_active = True
         transcript = ""
 
+        connect_start = time.perf_counter()
         try:
             try:
                 async with client.aio.live.connect(
                     model=self._settings.live_model,
                     config=session_config,
                 ) as session:
+                    self.last_connect_ms = (time.perf_counter() - connect_start) * 1000
                     with self._session_lock:
                         self._active_loop = asyncio.get_running_loop()
                         self._active_session = session

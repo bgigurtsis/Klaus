@@ -115,6 +115,7 @@ class RealtimeBrain:
         self._last_item_id: str | None = None
         self._last_content_index = 0
         self._played_frames = 0
+        self.last_connect_ms: float | None = None
         self._tools = self._build_tools()
 
     def _build_tools(self) -> list[dict]:
@@ -198,6 +199,7 @@ class RealtimeBrain:
             raise ValueError("The recorded question did not contain audio")
 
         with self._turn_lock:
+            self.last_connect_ms = None
             self._ensure_connected()
             if self._notes:
                 self._notes.reset_changed()
@@ -464,13 +466,17 @@ class RealtimeBrain:
         if self._ws is not None and age < _CONNECTION_MAX_AGE_SECONDS:
             return
         self.close()
+        connect_start = time.monotonic()
         model = self._settings.live_model
         url = _REALTIME_URL.format(model=model)
         headers = [f"Authorization: Bearer {self._settings.openai_api_key}"]
         self._ws = self._websocket_factory(url, header=headers, timeout=10)
         self._ws.settimeout(_RECV_POLL_SECONDS)
         self._connected_at = time.monotonic()
-        logger.info("Connected GPT Realtime session (%s)", model)
+        self.last_connect_ms = (self._connected_at - connect_start) * 1000
+        logger.info(
+            "Connected GPT Realtime session (%s) in %.0fms", model, self.last_connect_ms
+        )
 
     def _session_update(self, instructions: str) -> dict:
         session: dict = {

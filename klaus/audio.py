@@ -3,6 +3,7 @@ import io
 import logging
 import math
 import threading
+import time
 import wave
 from typing import Callable
 
@@ -151,6 +152,7 @@ class VoiceActivatedRecorder:
         self._settle_frames = 0
 
         self._speaking = False
+        self.last_voiced_at: float | None = None
         self._chunks: list[np.ndarray] = []
         self._silent_frames = 0
         self._voiced_frames = 0
@@ -547,6 +549,7 @@ class VoiceActivatedRecorder:
                     self._start_voiced_run = 0
                     return
                 self._speaking = True
+                self.last_voiced_at = time.perf_counter()
                 self._silent_frames = 0
                 self._chunks = buffered_frames
                 self._pre_buffer.clear()
@@ -567,6 +570,7 @@ class VoiceActivatedRecorder:
             self._chunks.append(frame)
             self._total_frames += 1
             if is_speech:
+                self.last_voiced_at = time.perf_counter()
                 self._voiced_frames += 1
                 self._silent_frames = 0
                 self._current_voiced_run += 1

@@ -9,6 +9,7 @@ from klaus.services.question_pipeline import (
     PipelineContext,
     PipelineHooks,
     QuestionPipeline,
+    Transcription,
 )
 from klaus.services.speculative_stt import SpeculativeTranscriber
 
@@ -20,4 +21,5 @@ __all__ = [
     "PipelineHooks",
     "QuestionPipeline",
     "SpeculativeTranscriber",
+    "Transcription",
 ]

@@ -156,6 +156,7 @@ from klaus.services import (
     PipelineContext,
     PipelineHooks,
     QuestionPipeline,
+    Transcription,
     SpeculativeTranscriber,
 )
 from klaus.ui.main_window import MainWindow
@@ -876,11 +877,11 @@ class KlausApp:
         gap = self._vad_recorder.speculative_gap_bytes
         speculative = self._speculative_stt
 
-        def transcribe(wav: bytes) -> str:
+        def transcribe(wav: bytes) -> Transcription:
             result = speculative.collect(wav, gap)
             if result is not None:
-                return result
-            return self._stt.transcribe(wav)
+                return Transcription(result, speculative_hit=True)
+            return Transcription(self._stt.transcribe(wav), speculative_hit=False)
 
         return transcribe
 
@@ -901,6 +902,11 @@ class KlausApp:
                 cancel_event=self._cancel_event,
                 transcriber=(
                     self._voice_transcriber()
+                    if self._input_mode == "voice_activation"
+                    else None
+                ),
+                speech_ended_at=(
+                    self._vad_recorder.last_voiced_at
                     if self._input_mode == "voice_activation"
                     else None
                 ),
