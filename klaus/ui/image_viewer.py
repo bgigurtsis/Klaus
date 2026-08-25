@@ -85,13 +85,17 @@ class ImageViewerDialog(QDialog):
         target = self._image_label.contentsRect().size()
         if target.width() <= 0 or target.height() <= 0:
             return
-        self._image_label.setPixmap(
-            self._pixmap.scaled(
-                target,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        # Scale to physical pixels and tag the ratio, otherwise Retina
+        # displays render the image at logical resolution and it looks soft.
+        ratio = self.devicePixelRatioF()
+        scaled = self._pixmap.scaled(
+            int(target.width() * ratio),
+            int(target.height() * ratio),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
+        scaled.setDevicePixelRatio(ratio)
+        self._image_label.setPixmap(scaled)
 
 
 def show_image_viewer(

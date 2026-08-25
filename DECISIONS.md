@@ -351,3 +351,17 @@ the 150 ms drain margin configurable. Revisit if Bluetooth sinks (buffering
 PortAudio cannot see) still leak a tail past the estimate — the margin
 constant is the knob. Also added a `barge_in` guard-stat counter so false
 triggers are visible in logs.
+
+## 2026-08-25 — Chat capture image: one high-res JPEG, Retina-aware scaling
+
+The click-to-zoom "Captured screenshot" viewer was blurry: it received the
+same 320 px JPEG the chat card uses and stretched it to a ~1200 px window,
+and both the card and the viewer scaled pixmaps in logical pixels (soft on
+Retina). Decision: capture_thumbnail_bytes now keeps up to 2048 px wide at
+JPEG q85 (and no longer upscales frames narrower than the cap), and both the
+card and the viewer scale to physical pixels with setDevicePixelRatio. One
+blob still serves feed and viewer; SQLite grows to roughly 100–400 KB per
+captured exchange, which we accepted over a two-blob schema migration.
+Rejected: keeping 320 px and passing live full-res bytes alongside it —
+history reloaded from the DB would stay blurry. Revisit if the DB grows
+enough to slow session loads; the knobs are the 2048 cap and q85.

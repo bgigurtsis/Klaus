@@ -146,16 +146,20 @@ class Camera:
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
         return buf.tobytes()
 
-    def capture_thumbnail_bytes(self, max_width: int = 320) -> bytes | None:
-        """Return a small JPEG thumbnail as raw bytes (for the chat feed)."""
+    def capture_thumbnail_bytes(self, max_width: int = 2048) -> bytes | None:
+        """Return a JPEG of the current frame for the chat feed and viewer.
+
+        The chat card scales it down for display; the click-to-zoom viewer
+        shows it near full size, so keep enough resolution to read text."""
         frame = self.get_frame_rgb()
         if frame is None:
             return None
         img = Image.fromarray(frame)
-        ratio = max_width / img.width
-        img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
+        if img.width > max_width:
+            ratio = max_width / img.width
+            img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
         buf = BytesIO()
-        img.save(buf, format="JPEG", quality=75)
+        img.save(buf, format="JPEG", quality=85)
         return buf.getvalue()
 
     def capture_text_context(self) -> str | None:

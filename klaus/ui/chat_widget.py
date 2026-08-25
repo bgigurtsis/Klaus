@@ -117,11 +117,16 @@ class MessageCard(QFrame):
             pixmap.loadFromData(thumbnail_bytes)
             if not pixmap.isNull():
                 thumb.set_zoom_pixmap(pixmap)
+                # Scale to physical pixels so the card thumbnail stays
+                # sharp on Retina displays.
+                ratio = self.devicePixelRatioF()
                 scaled = pixmap.scaled(
-                    500, 180,
+                    int(500 * ratio),
+                    int(180 * ratio),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
+                scaled.setDevicePixelRatio(ratio)
                 thumb.setPixmap(scaled)
                 thumb.image_clicked.connect(
                     lambda image: show_image_viewer(
