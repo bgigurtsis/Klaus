@@ -170,10 +170,14 @@ class CameraWidget(QWidget):
         self._set_status("live")
 
         h, w, ch = frame.shape
-        if w > self.PREVIEW_WIDTH:
-            scale = self.PREVIEW_WIDTH / w
+        preview_rect = self._video_label.contentsRect()
+        max_width = max(1, preview_rect.width())
+        max_height = max(1, preview_rect.height())
+        scale = min(max_width / w, max_height / h, 1.0)
+        if scale < 1.0:
             frame = cv2.resize(
-                frame, (self.PREVIEW_WIDTH, int(h * scale)),
+                frame,
+                (max(1, int(w * scale)), max(1, int(h * scale))),
                 interpolation=cv2.INTER_AREA,
             )
             h, w, ch = frame.shape
