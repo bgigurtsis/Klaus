@@ -21,15 +21,39 @@ DRAIN_MARGIN_S = 0.15
 _FALLBACK_LATENCY_S = 0.5
 
 
+class PlaybackWorker(threading.Thread):
+    """Own queued playback until completion and report device failures."""
+
+    def __init__(self, output, audio_queue, **callbacks) -> None:
+        super().__init__(daemon=True)
+        self._output = output
+        self._queue = audio_queue
+        self._callbacks = callbacks
+        self._error: Exception | None = None
+
+    def run(self) -> None:
+        try:
+            self._output.play_pcm_stream(self._queue, **self._callbacks)
+        except Exception as exc:
+            self._error = exc
+
+    def finish(self) -> None:
+        self._queue.put(None)
+        # Generation can finish long before a buffered answer finishes playing.
+        self.join()
+        if self._error is not None:
+            raise RuntimeError(f"Audio playback failed: {self._error}") from self._error
+
+
 def _clamp_latency(stream: sd.OutputStream) -> float:
     """Read the stream's output latency, clamped to a sane range."""
     try:
         latency = float(stream.latency)
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError):
         return _FALLBACK_LATENCY_S
     if not 0.0 < latency < 10.0:
         return _FALLBACK_LATENCY_S
-    return min(max(latency, 0.05), 1.0)
+    return max(latency, 0.05)
 
 
 class AudioOutput:
@@ -88,20 +112,28 @@ class AudioOutput:
                 dtype="int16",
                 latency="high",
             )
-            self._stream.start()
+            try:
+                self._stream.start()
+            except Exception:
+                self._close_stream_locked()
+                raise
             self._stream_latency = _clamp_latency(self._stream)
             logger.info("Opened audio output stream (%d Hz, %d ch)", rate, channels)
             return self._stream
 
     def _close_stream_locked(self) -> None:
-        if self._stream is not None and not self._stream.closed:
+        stream, self._stream = self._stream, None
+        if stream is not None and not stream.closed:
             try:
-                self._stream.stop()
-                self._stream.close()
+                stream.abort()
             except Exception:
                 pass
+            finally:
+                try:
+                    stream.close()
+                except Exception:
+                    logger.debug("Audio stream close failed", exc_info=True)
             logger.info("Closed audio output stream")
-        self._stream = None
 
     def _write_audio(
         self, stream: sd.OutputStream, audio: np.ndarray, playback_id: int
@@ -109,6 +141,8 @@ class AudioOutput:
         offset = 0
         while offset < len(audio) and self._is_current(playback_id):
             end = min(offset + WRITE_BLOCK_FRAMES, len(audio))
+            # The microphone can hear a block before write() returns.
+            self._report_playback(audio[offset:end], PCM_SAMPLE_RATE)
             try:
                 underflowed = stream.write(audio[offset:end])
                 if underflowed is True:
@@ -127,7 +161,6 @@ class AudioOutput:
             self._drain_deadline = (
                 time.monotonic() + self._stream_latency + DRAIN_MARGIN_S
             )
-            self._report_playback(audio[offset:end], PCM_SAMPLE_RATE)
             offset = end
         return offset
 
@@ -139,13 +172,17 @@ class AudioOutput:
         on_frames_played: Callable[[int], None] | None = None,
     ) -> None:
         """Play a live 24 kHz PCM stream from the Realtime API."""
-        playback_id = self._begin_playback()
         with self._stream_lock:
+            self._playback_id += 1
+            playback_id = self._playback_id
             self._stream_playback_active = True
         first_audio = True
         try:
             while self._is_current(playback_id):
-                audio = audio_queue.get()
+                try:
+                    audio = audio_queue.get(timeout=0.05)
+                except queue.Empty:
+                    continue
                 if audio is None:
                     break
                 if audio.size == 0:
@@ -164,7 +201,8 @@ class AudioOutput:
             # Leave the stream open so the next cue or response skips the
             # device open/close cycle; stop() still closes it on cancel.
             with self._stream_lock:
-                self._stream_playback_active = False
+                if playback_id == self._playback_id:
+                    self._stream_playback_active = False
 
     def play_pcm(self, audio: np.ndarray) -> None:
         """Play one PCM buffer (an app cue). Skipped while a response plays."""
@@ -172,20 +210,21 @@ class AudioOutput:
             if self._stream_playback_active:
                 logger.debug("Skipping audio cue: a response is playing")
                 return
-        playback_id = self._begin_playback()
+            self._playback_id += 1
+            playback_id = self._playback_id
         if audio.size == 0:
             return
         stream = self._ensure_stream(PCM_SAMPLE_RATE, 1, playback_id)
         if stream is not None:
             self._write_audio(stream, audio, playback_id)
 
-    def wait_for_drain(self, timeout: float = 2.0) -> None:
+    def wait_for_drain(self, timeout: float | None = None) -> None:
         """Block until the hardware buffer has likely finished playing.
 
         The deadline is an estimate from the last write plus the stream
         latency; stop() clears it, so a cancel unblocks any waiter.
         """
-        give_up_at = time.monotonic() + timeout
+        give_up_at = float("inf") if timeout is None else time.monotonic() + timeout
         while True:
             now = time.monotonic()
             deadline = self._drain_deadline
@@ -197,6 +236,7 @@ class AudioOutput:
         """Stop playback and close the output stream."""
         with self._stream_lock:
             self._playback_id += 1
+            self._stream_playback_active = False
             self._drain_deadline = 0.0
             self._close_stream_locked()
         logger.info("Audio playback interrupted")

@@ -17,7 +17,7 @@ import numpy as np
 import websocket
 
 import klaus.config as config
-from klaus.audio_output import PCM_SAMPLE_RATE, AudioOutput
+from klaus.audio_output import PCM_SAMPLE_RATE, AudioOutput, PlaybackWorker
 from klaus.notes import (
     CONFIGURE_NOTE_CAPTURE_TOOL,
     NotesManager,
@@ -330,14 +330,11 @@ class RealtimeBrain:
             def frames_played(count: int) -> None:
                 self._played_frames += count
 
-            playback_thread = threading.Thread(
-                target=self._audio_output.play_pcm_stream,
-                args=(audio_queue,),
-                kwargs={
-                    "on_first_audio": playback_started,
-                    "on_frames_played": frames_played,
-                },
-                daemon=True,
+            playback_thread = PlaybackWorker(
+                self._audio_output,
+                audio_queue,
+                on_first_audio=playback_started,
+                on_frames_played=frames_played,
             )
             playback_thread.start()
 
@@ -438,16 +435,23 @@ class RealtimeBrain:
                             break
                         self.close()
                         raise RuntimeError(str(error.get("message", error)))
+            except Exception:
+                self._audio_output.stop()
+                raise
             finally:
-                with self._response_state_lock:
-                    self._response_active = False
-                    self._cancel_requested = False
-                audio_queue.put(None)
-                playback_thread.join(timeout=10)
+                if cancelled:
+                    self._audio_output.stop()
+                try:
+                    playback_thread.finish()
+                finally:
+                    with self._response_state_lock:
+                        self._response_active = False
+                        self._cancel_requested = False
                 if cancelled:
                     self.close()
 
-            if cancelled:
+            if cancelled or (cancel_event is not None and cancel_event.is_set()):
+                self.close()
                 raise AskCancelled()
 
             answer = transcript.strip()
@@ -462,13 +466,15 @@ class RealtimeBrain:
                 notes_file_changed=self._notes.changed if self._notes else False,
             )
 
-    def speak_text(self, text: str) -> None:
+    def speak_text(self, text: str, *, cancel_event: threading.Event | None = None) -> None:
         """Replay text through GPT Realtime without changing conversation history."""
         spoken_text = text.strip()
         if not spoken_text:
             return
 
         with self._turn_lock:
+            if cancel_event is not None and cancel_event.is_set():
+                raise AskCancelled()
             self._ensure_connected()
             self._send_with_reconnect(
                 [
@@ -497,15 +503,19 @@ class RealtimeBrain:
             self._played_frames = 0
 
             audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
-            playback_thread = threading.Thread(
-                target=self._audio_output.play_pcm_stream,
-                args=(audio_queue,),
-                daemon=True,
-            )
+            playback_thread = PlaybackWorker(self._audio_output, audio_queue)
             playback_thread.start()
 
+            cancelled = False
+            cancel_deadline: float | None = None
             try:
                 while True:
+                    if cancel_event is not None and cancel_event.is_set() and not cancelled:
+                        self.cancel_current()
+                        cancelled = True
+                        cancel_deadline = time.monotonic() + _CANCEL_ACK_TIMEOUT_SECONDS
+                    if cancel_deadline is not None and time.monotonic() >= cancel_deadline:
+                        break
                     event = self._receive_event()
                     if event is None:
                         continue
@@ -519,20 +529,32 @@ class RealtimeBrain:
                         response = event.get("response", {})
                         status = response.get("status")
                         if status == "cancelled":
+                            cancelled = True
                             break
                         if status in {"failed", "incomplete"}:
                             detail = response.get("status_details") or status
                             raise RuntimeError(f"Realtime replay {status}: {detail}")
                         break
                     elif event_type == "error":
+                        if cancelled:
+                            break
                         error = event.get("error", event)
                         raise RuntimeError(str(error.get("message", error)))
+            except Exception:
+                self._audio_output.stop()
+                raise
             finally:
-                with self._response_state_lock:
-                    self._response_active = False
-                    self._cancel_requested = False
-                audio_queue.put(None)
-                playback_thread.join(timeout=10)
+                if cancelled:
+                    self._audio_output.stop()
+                try:
+                    playback_thread.finish()
+                finally:
+                    with self._response_state_lock:
+                        self._response_active = False
+                        self._cancel_requested = False
+            if cancelled or (cancel_event is not None and cancel_event.is_set()):
+                self.close()
+                raise AskCancelled()
 
     def _ensure_connected(self) -> None:
         age = time.monotonic() - self._connected_at

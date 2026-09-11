@@ -116,6 +116,7 @@ class KlausApp:
         self._turn_state = TurnState()
         self._input_mode: str = self._runtime_settings.input_mode
         self._last_ui_state = "idle"
+        self._settings_open = False
         self._hotkeys = HotkeyListener(
             self._runtime_settings.push_to_talk_key,
             self._runtime_settings.toggle_key,
@@ -159,7 +160,7 @@ class KlausApp:
         self._camera = Camera(settings.camera_device_index)
         self._active_camera_index = settings.camera_device_index
         self._active_mic_device = _configured_mic_device()
-        self._ptt_recorder = PushToTalkRecorder()
+        self._ptt_recorder = PushToTalkRecorder(device=self._active_mic_device)
         self._vad_recorder = self._build_vad_recorder(self._active_mic_device)
         self._stt = AsyncSpeechToText(
             settings=settings,
@@ -423,7 +424,7 @@ class KlausApp:
     @_safe_slot
     def _toggle_input_mode(self) -> None:
         """Switch between push-to-talk and voice activation."""
-        if self._turn_state.processing:
+        if self._turn_state.processing or self._settings_open:
             return
 
         self._cancel_active_capture_for_mode_switch()
@@ -486,10 +487,15 @@ class KlausApp:
 
     @_safe_slot
     def _on_session_changed(self, session_id: str) -> None:
+        if self._turn_state.processing:
+            self._session_service.refresh_list()
+            return
         self._session_service.activate(session_id)
 
     @_safe_slot
     def _on_new_session(self, title: str) -> None:
+        if self._turn_state.processing:
+            return
         self._session_service.create(title)
 
     @_safe_slot
@@ -498,12 +504,16 @@ class KlausApp:
 
     @_safe_slot
     def _on_session_deleted(self, session_id: str) -> None:
+        if self._turn_state.processing:
+            return
         self._session_service.delete(session_id)
 
     # -- Push-to-talk --
 
     @_safe_slot
     def _on_key_down(self) -> None:
+        if self._settings_open:
+            return
         self._coordinator.on_key_down()
 
     @_safe_slot
@@ -552,6 +562,8 @@ class KlausApp:
 
     @_safe_slot
     def _on_replay(self, exchange_id: str) -> None:
+        if self._ptt_recorder.is_recording:
+            return
         exchanges = self._memory.get_exchanges(self._current_session_id or "")
         for ex in exchanges:
             if ex.id == exchange_id:
@@ -622,7 +634,7 @@ class KlausApp:
 
     def _apply_mic_device_live(self, new_device: int | None) -> tuple[bool, int | None]:
         """Switch the active microphone immediately, with automatic rollback."""
-        if self._turn_state.processing:
+        if self._turn_state.processing or self._ptt_recorder.is_recording:
             logger.info("Deferred microphone switch: a turn is in progress")
             self._show_device_switch_error(
                 "Turn in Progress",
@@ -635,10 +647,11 @@ class KlausApp:
             current_vad=self._vad_recorder,
             previous_device=self._active_mic_device,
             target_device=new_device,
-            input_mode=self._input_mode,
+            input_mode="push_to_talk" if self._settings_open else self._input_mode,
         )
         self._vad_recorder = result.vad_recorder
         self._active_mic_device = result.active_device
+        self._ptt_recorder = PushToTalkRecorder(device=result.active_device)
         self._audio_output.set_playback_observer(
             self._vad_recorder.observe_playback,
         )
@@ -647,6 +660,30 @@ class KlausApp:
     @_safe_slot
     def _on_settings_requested(self) -> None:
         """Open settings and apply non-device settings when the dialog closes."""
+        if self._turn_state.processing or self._ptt_recorder.is_recording:
+            self._show_device_switch_error(
+                "Turn in Progress",
+                "Stop the answer or finish recording before opening Settings.",
+            )
+            return
+        self._settings_open = True
+        self._vad_recorder.stop()
+        self._hotkeys.stop()
+        try:
+            self._show_settings()
+        finally:
+            self._settings_open = False
+            self._hotkeys.restart(
+                self._runtime_settings.push_to_talk_key,
+                self._runtime_settings.toggle_key,
+            )
+            self._window.set_hotkeys(
+                self._hotkeys.ptt_key_name, self._hotkeys.toggle_key_name,
+            )
+            self._setup_input_mode()
+
+    def _show_settings(self) -> None:
+        """Apply settings while voice capture remains stopped."""
         from klaus.ui.settings_dialog import SettingsDialog
         dlg = SettingsDialog(
             self._window,
@@ -655,11 +692,15 @@ class KlausApp:
         )
         def on_camera_device_changed(new_index: int) -> None:
             _, effective_index = self._apply_camera_device_live(new_index)
+            config.set_camera_index(effective_index, persist=True)
             dlg.set_camera_selection(effective_index)
 
         def on_mic_device_changed(new_device: object) -> None:
             parsed_device = new_device if new_device is None else int(new_device)
             _, effective_device = self._apply_mic_device_live(parsed_device)
+            config.set_mic_index(
+                -1 if effective_device is None else effective_device, persist=True,
+            )
             dlg.set_mic_selection(effective_device)
 
         dlg.camera_device_changed.connect(on_camera_device_changed)
@@ -668,14 +709,6 @@ class KlausApp:
 
         # Settings dialog saves + reloads config on accept.
         self._runtime_settings = config.get_runtime_settings()
-        self._hotkeys.restart(
-            self._runtime_settings.push_to_talk_key,
-            self._runtime_settings.toggle_key,
-        )
-        self._window.set_hotkeys(
-            self._hotkeys.ptt_key_name, self._hotkeys.toggle_key_name
-        )
-
         vault = config.OBSIDIAN_VAULT_PATH or ""
         current_base = self._notes.base_path
         if vault != current_base:
@@ -700,7 +733,7 @@ class KlausApp:
 
     @_safe_slot
     def _on_error(self, message: str) -> None:
-        self._window.chat_widget.dismiss_thinking()
+        self._window.chat_widget.abort_assistant_stream()
         self._window.chat_widget.add_error_message(
             _humanize_error(message),
             on_retry=self._coordinator.retry_last_failed,

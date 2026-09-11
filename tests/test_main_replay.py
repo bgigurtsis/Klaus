@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import numpy as np
 
@@ -37,13 +37,13 @@ def test_realtime_replay_keeps_spoken_interruption_enabled() -> None:
     brain = MagicMock()
     vad_recorder = MagicMock()
     seed = np.array([1, 2, 3], dtype=np.int16)
-    brain.speak_text.side_effect = lambda _text: turn_state.barge_in(seed)
+    brain.speak_text.side_effect = lambda _text, **_kwargs: turn_state.barge_in(seed)
 
     coordinator = _make_coordinator(turn_state, vad_recorder=vad_recorder, brain=brain)
     with patch("klaus.services.turn_coordinator.config.BARGE_IN_ENABLED", True):
         coordinator.replay("Repeat this answer.")
 
-    brain.speak_text.assert_called_once_with("Repeat this answer.")
+    brain.speak_text.assert_called_once_with("Repeat this answer.", cancel_event=ANY)
     vad_recorder.enter_gated_mode.assert_called_once()
     vad_recorder.pause.assert_not_called()
     vad_recorder.exit_gated_mode.assert_called_once()
@@ -76,6 +76,36 @@ def test_speech_start_warms_up_brain() -> None:
     coordinator.on_vad_speech_start()
 
     brain.warm_up.assert_called_once()
+
+
+def test_replay_rejects_overlap_without_replacing_cancellation() -> None:
+    state = TurnState()
+    event = state.begin_turn()
+    brain = MagicMock()
+    coordinator = _make_coordinator(state, vad_recorder=MagicMock(), brain=brain)
+    coordinator.replay("Overlapping replay")
+    brain.speak_text.assert_not_called()
+    state.request_cancel()
+    assert event.is_set()
+
+
+def test_ptt_question_waits_for_replay_teardown() -> None:
+    state = TurnState()
+    brain = MagicMock()
+    coordinator = _make_coordinator(state, vad_recorder=MagicMock(), brain=brain)
+    coordinator._get_input_mode = lambda: "push_to_talk"
+    coordinator.start_question_thread = MagicMock()
+
+    def during_replay(_text, *, cancel_event):
+        assert state.processing
+        assert state.queue_ptt_wav(b"next question")
+        state.request_cancel()
+        assert cancel_event.is_set()
+
+    brain.speak_text.side_effect = during_replay
+    coordinator.replay("Read this")
+    coordinator.start_question_thread.assert_called_once_with(b"next question")
+    assert not state.processing
 
 
 def test_failed_turn_enables_retry() -> None:

@@ -68,6 +68,51 @@ def test_empty_transcript_returns_idle():
     assert states == ["idle"]
 
 
+def test_cancellation_after_provider_return_does_not_save_or_capture():
+    cancel = threading.Event()
+    stt = MagicMock()
+    stt.transcribe.return_value = "Explain this"
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    memory = MagicMock()
+    notes = MagicMock(capture_mode="conversation", capture_screenshots=False)
+    hooks = _hooks(on_cancelled=MagicMock())
+
+    def ask(**kwargs):
+        cancel.set()
+        return SimpleNamespace(
+            user_text="Explain this", assistant_text="Cancelled answer",
+            notes_file_changed=False, image_base64=None, searches=[],
+        )
+
+    brain.ask_audio.side_effect = ask
+    _pipeline(stt, MagicMock(), brain, memory, notes).run(
+        b"wav", context=PipelineContext(
+            input_mode="voice_activation", current_session_id="session", cancel_event=cancel,
+        ), hooks=hooks,
+    )
+    memory.save_exchange.assert_not_called()
+    notes.capture_exchange.assert_not_called()
+    hooks.on_response.assert_not_called()
+    hooks.on_cancelled.assert_called_once()
+
+
+def test_legacy_disabled_capture_does_not_request_screenshots():
+    stt = MagicMock()
+    stt.transcribe.return_value = "Explain gravity"
+    brain = MagicMock()
+    brain.decide_route.return_value = _route(use_image=False)
+    camera = MagicMock()
+    notes = MagicMock(capture_mode="off", capture_screenshots=True)
+    pipeline = _pipeline(stt, camera, brain, notes=notes)
+    pipeline._run_realtime_turn = MagicMock()
+    pipeline.run(
+        b"wav", context=PipelineContext(input_mode="push_to_talk", current_session_id=None),
+        hooks=_hooks(),
+    )
+    camera.capture_base64_jpeg.assert_not_called()
+
+
 def test_echo_transcript_is_discarded_before_routing():
     stt = MagicMock()
     stt.transcribe.return_value = "what I said a moment ago"

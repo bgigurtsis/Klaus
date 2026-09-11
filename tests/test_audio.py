@@ -17,6 +17,30 @@ from klaus.audio import (
 
 
 class TestPushToTalkRecorder:
+    @patch("klaus.audio.sd.InputStream")
+    def test_selected_microphone_is_used(self, stream_class):
+        rec = PushToTalkRecorder(device=7)
+        rec.start_recording()
+        assert stream_class.call_args.kwargs["device"] == 7
+        rec.stop_recording()
+
+    @patch("klaus.audio.sd.InputStream")
+    def test_failed_start_closes_stream_and_allows_retry(self, stream_class):
+        failed = MagicMock()
+        failed.start.side_effect = RuntimeError("device unavailable")
+        recovered = MagicMock()
+        stream_class.side_effect = [failed, recovered]
+        rec = PushToTalkRecorder()
+
+        with pytest.raises(RuntimeError, match="device unavailable"):
+            rec.start_recording()
+        assert not rec.is_recording
+        failed.close.assert_called_once()
+        rec.start_recording()
+        assert rec.is_recording
+        recovered.start.assert_called_once()
+        rec.stop_recording()
+
     def test_not_recording_by_default(self):
         rec = PushToTalkRecorder()
         assert rec.is_recording is False
@@ -281,6 +305,20 @@ class TestSpeculativeMaybeEnd:
 
 
 class TestBargeInGate:
+    def test_echo_gain_jump_does_not_turn_quiet_prefix_into_barge_in(self):
+        barge = []
+        rec = self._gated_recorder(barge)
+        playback = np.random.default_rng(27).integers(
+            -10000, 10000, FRAME_SIZE * 23, dtype=np.int16,
+        )
+        rec.observe_playback(playback, 16000)
+        for frame in np.split(playback[:FRAME_SIZE * 20] // 100, 20):
+            rec._process_gate_frame(frame)
+        for frame in np.split(playback[FRAME_SIZE * 20:] // 2, 3):
+            rec._process_gate_frame(frame)
+        assert barge == []
+        assert rec._gated
+
     def _gated_recorder(self, barge):
         rec = _make_vad_recorder(
             on_barge_in=barge.append,

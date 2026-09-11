@@ -354,7 +354,9 @@ class NotesManager:
                 return file_error
 
         self.capture_mode = normalized_mode
-        if include_screenshots is not None:
+        if normalized_mode == "off":
+            self.capture_screenshots = False
+        elif include_screenshots is not None:
             self.capture_screenshots = include_screenshots
         self._changed = True
         self._capture_changed = True

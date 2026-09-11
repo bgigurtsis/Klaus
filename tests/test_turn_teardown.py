@@ -194,6 +194,30 @@ def test_genuine_question_with_novel_words_is_not_echo() -> None:
     )
 
 
+def test_followup_using_the_same_vocabulary_is_not_echo() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock(),
+    )
+    coordinator._on_assistant_text_delta("The model can explain why the result changed.")
+    assert not coordinator._is_echo_of_assistant("Why can the model explain the result?")
+
+
+def test_discarded_echo_does_not_extend_the_echo_window() -> None:
+    state = TurnState()
+    coordinator = _coordinator(state, vad_recorder=MagicMock(), pipeline=MagicMock())
+    coordinator._assistant_active_at = 123.0
+    coordinator._process_question(b"echo", state.begin_turn())
+    assert coordinator._assistant_active_at == 123.0
+
+
+def test_replay_text_is_available_to_echo_guard() -> None:
+    coordinator = _coordinator(
+        TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock(),
+    )
+    coordinator.replay("This is the replayed answer.")
+    assert coordinator._is_echo_of_assistant("the replayed answer")
+
+
 def test_echo_match_expires_outside_window() -> None:
     coordinator = _coordinator(
         TurnState(), vad_recorder=MagicMock(), pipeline=MagicMock()

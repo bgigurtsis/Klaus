@@ -287,6 +287,10 @@ class Memory:
             note_file_path=note_file_path,
         )
         with self._write_lock:
+            if self._conn.execute(
+                "SELECT 1 FROM sessions WHERE id = ?", (session_id,),
+            ).fetchone() is None:
+                raise ValueError("Cannot save an exchange without an existing session")
             self._conn.execute(
                 """INSERT INTO exchanges
                    (id, session_id, user_text, assistant_text, image_hash, searches_json,

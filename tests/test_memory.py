@@ -18,6 +18,15 @@ def mem(tmp_db):
     m.close()
 
 
+def test_missing_session_cannot_leave_an_orphan_exchange(mem):
+    with pytest.raises(ValueError, match="existing session"):
+        mem.save_exchange("missing", "Question", "Answer")
+    assert mem.count_exchanges("missing") == 0
+    session = mem.create_session("Still usable")
+    mem.save_exchange(session.id, "Question", "Answer")
+    assert mem.count_exchanges(session.id) == 1
+
+
 class TestSessions:
     def test_create_session(self, mem):
         session = mem.create_session("Test Paper")

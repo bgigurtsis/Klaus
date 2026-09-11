@@ -56,6 +56,43 @@ def test_reading_source_step_defaults_to_audio_only(qt_app) -> None:
     wizard.close()
 
 
+def test_back_to_camera_step_preserves_selection(qt_app, monkeypatch):
+    wizard = SetupWizard()
+    started = []
+    monkeypatch.setattr(wizard._camera_preview, "start", started.append)
+    wizard._populate_cameras()
+    wizard._camera_combo.setCurrentIndex(wizard._camera_combo.findData(-3))
+    wizard._populate_cameras()
+    assert wizard._camera_combo.currentData() == -3
+    assert wizard._collected["camera_index"] == -3
+    assert started[-1] == -3
+    wizard.close()
+
+
+def test_rejected_settings_devices_never_persist_the_request(qt_app, monkeypatch):
+    from unittest.mock import MagicMock
+    camera_save = MagicMock()
+    mic_save = MagicMock()
+    monkeypatch.setattr("klaus.config.set_camera_index", camera_save)
+    monkeypatch.setattr("klaus.config.set_mic_index", mic_save)
+    dialog = SettingsDialog(active_camera_index=-1, active_mic_device=None)
+    monkeypatch.setattr(dialog, "_start_mic", lambda: None)
+    monkeypatch.setattr("klaus.ui.settings_dialog.list_input_devices", lambda: [])
+    dialog._populate_cameras()
+    dialog._populate_mics()
+    dialog.camera_device_changed.connect(lambda _requested: dialog.set_camera_selection(-1))
+    dialog.mic_device_changed.connect(lambda _requested: dialog.set_mic_selection(None))
+    dialog._camera_combo.setCurrentIndex(dialog._camera_combo.findData(-3))
+    dialog._on_camera_changed()
+    dialog._mic_combo.addItem("Test microphone", 123)
+    dialog._mic_combo.setCurrentIndex(dialog._mic_combo.findData(123))
+    assert dialog._camera_combo.currentData() == -1
+    assert dialog._mic_combo.currentData() == -1
+    camera_save.assert_not_called()
+    mic_save.assert_not_called()
+    dialog.close()
+
+
 @pytest.mark.parametrize(
     ("model", "effort", "required_slug"),
     [
@@ -160,6 +197,8 @@ def test_setup_persists_only_the_selected_provider_key(qt_app, monkeypatch) -> N
         lambda model: saved_model.append(model),
     )
     monkeypatch.setattr("klaus.config.save_reasoning_effort", lambda _effort: None)
+    saved_cameras: list[int] = []
+    monkeypatch.setattr("klaus.config.save_camera_index", saved_cameras.append)
     monkeypatch.setattr("klaus.config.save_mic_index", lambda _index: None)
     monkeypatch.setattr("klaus.config.mark_setup_complete", lambda: None)
     monkeypatch.setattr("klaus.config.reload", lambda: None)
@@ -168,6 +207,7 @@ def test_setup_persists_only_the_selected_provider_key(qt_app, monkeypatch) -> N
 
     assert saved_keys == [("openai", "sk-test-openai")]
     assert saved_model == ["gpt-realtime-2.1-mini"]
+    assert saved_cameras == [-1]
     wizard.close()
 
 

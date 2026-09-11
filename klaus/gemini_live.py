@@ -14,7 +14,7 @@ from collections.abc import Callable
 import numpy as np
 
 import klaus.config as config
-from klaus.audio_output import AudioOutput
+from klaus.audio_output import AudioOutput, PlaybackWorker
 from klaus.notes import (
     CONFIGURE_NOTE_CAPTURE_TOOL,
     NotesManager,
@@ -188,7 +188,7 @@ class GeminiLiveBrain:
                 notes_file_changed=self._notes.changed if self._notes else False,
             )
 
-    def speak_text(self, text: str) -> None:
+    def speak_text(self, text: str, *, cancel_event: threading.Event | None = None) -> None:
         """Replay text through Gemini Live without changing conversation history."""
         spoken_text = text.strip()
         if not spoken_text:
@@ -208,7 +208,7 @@ class GeminiLiveBrain:
                     on_text_delta=None,
                     on_speaking_started=None,
                     on_first_audio=None,
-                    external_cancel_event=None,
+                    external_cancel_event=cancel_event,
                 )
             )
 
@@ -256,11 +256,8 @@ class GeminiLiveBrain:
             if on_first_audio:
                 on_first_audio()
 
-        playback_thread = threading.Thread(
-            target=self._audio_output.play_pcm_stream,
-            args=(audio_queue,),
-            kwargs={"on_first_audio": playback_started},
-            daemon=True,
+        playback_thread = PlaybackWorker(
+            self._audio_output, audio_queue, on_first_audio=playback_started,
         )
         playback_thread.start()
         self._response_active = True
@@ -321,6 +318,8 @@ class GeminiLiveBrain:
                             if function_calls:
                                 responses = []
                                 for call in function_calls:
+                                    if self._cancelled(external_cancel_event):
+                                        raise AskCancelled()
                                     result = self._run_tool(
                                         {
                                             "name": getattr(call, "name", ""),
@@ -329,6 +328,8 @@ class GeminiLiveBrain:
                                             ),
                                         }
                                     )
+                                    if self._cancelled(external_cancel_event):
+                                        raise AskCancelled()
                                     responses.append(
                                         types.FunctionResponse(
                                             id=getattr(call, "id", ""),
@@ -347,13 +348,19 @@ class GeminiLiveBrain:
                 if self._cancelled(external_cancel_event):
                     raise AskCancelled() from None
                 raise
+        except Exception:
+            self._audio_output.stop()
+            raise
         finally:
             with self._session_lock:
                 self._active_loop = None
                 self._active_session = None
-            self._response_active = False
-            audio_queue.put(None)
-            playback_thread.join(timeout=10)
+            if self._cancelled(external_cancel_event):
+                self._audio_output.stop()
+            try:
+                playback_thread.finish()
+            finally:
+                self._response_active = False
 
         if self._cancelled(external_cancel_event):
             raise AskCancelled()

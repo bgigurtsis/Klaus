@@ -115,6 +115,10 @@ class SessionService:
         logger.info("Deleting session %s", session_id[:8])
         self._memory.delete_session(session_id)
 
+        if self._current_session_id is not None and session_id != self._current_session_id:
+            self.refresh_list()
+            return
+
         sessions = self._memory.list_sessions()
         if not sessions:
             sessions = [self._memory.create_session("Untitled Session")]

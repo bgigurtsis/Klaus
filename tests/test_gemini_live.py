@@ -9,6 +9,7 @@ import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+import pytest
 
 from google.genai import types
 
@@ -132,6 +133,35 @@ def test_output_transcription_streams_each_delta(monkeypatch) -> None:
 
     assert deltas == ["Stream", "ing text", " as it arrives."]
     assert answer == "Streaming text as it arrives."
+
+
+def test_output_failure_reaches_gemini_caller(monkeypatch) -> None:
+    session = _LiveSession([SimpleNamespace(
+        server_content=SimpleNamespace(
+            output_transcription=SimpleNamespace(text="An answer."),
+            model_turn=None, turn_complete=True,
+        ),
+    )])
+    client = SimpleNamespace(aio=SimpleNamespace(live=SimpleNamespace(connect=lambda **_k: session)))
+    monkeypatch.setattr("google.genai.Client", lambda **_k: client)
+
+    class BrokenOutput(_AudioOutput):
+        def play_pcm_stream(self, *_args, **_kwargs):
+            raise OSError("speaker disconnected")
+
+    brain = GeminiLiveBrain(notes=None, audio_output=BrokenOutput())
+    with pytest.raises(RuntimeError, match="speaker disconnected"):
+        brain.speak_text("An answer.")
+    assert not brain._response_active
+
+
+def test_replay_passes_cancellation_into_gemini_turn(monkeypatch):
+    brain = GeminiLiveBrain(notes=None, audio_output=_AudioOutput())
+    run_turn = AsyncMock(return_value="An answer.")
+    monkeypatch.setattr(brain, "_run_turn", run_turn)
+    cancel = threading.Event()
+    brain.speak_text("An answer.", cancel_event=cancel)
+    assert run_turn.call_args.kwargs["external_cancel_event"] is cancel
 
 
 def test_cancel_before_session_loop_starts_still_aborts_turn():

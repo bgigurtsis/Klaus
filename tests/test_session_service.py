@@ -33,6 +33,19 @@ def _service(memory, notes=None, view=None):
     )
 
 
+def test_deleting_another_session_keeps_the_active_chat():
+    memory = MagicMock()
+    memory.list_sessions.return_value = [_session("newest", "Newest"), _session("active", "Active")]
+    view = _view()
+    service = _service(memory, view=view)
+    service._current_session_id = "active"
+    service.delete("older")
+    assert service.current_session_id == "active"
+    view.clear_chat.assert_not_called()
+    service._clear_brain_history.assert_not_called()
+    view.set_sessions.assert_called_once()
+
+
 def test_load_initial_creates_first_session_when_none_exist():
     memory = MagicMock()
     memory.list_sessions.return_value = []

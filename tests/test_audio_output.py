@@ -3,12 +3,76 @@
 from __future__ import annotations
 
 import queue
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from klaus.audio_output import DRAIN_MARGIN_S, AudioOutput
+
+
+def test_cancel_unblocks_a_stream_waiting_for_more_audio():
+    output = AudioOutput()
+    waiting = threading.Event()
+
+    class ObservedQueue(queue.Queue):
+        def get(self, *args, **kwargs):
+            waiting.set()
+            return super().get(*args, **kwargs)
+
+    audio_queue = ObservedQueue()
+    worker = threading.Thread(target=output.play_pcm_stream, args=(audio_queue,), daemon=True)
+    worker.start()
+    assert waiting.wait(1)
+    output.stop()
+    worker.join(timeout=1)
+    try:
+        assert not worker.is_alive()
+    finally:
+        audio_queue.put(None)
+        worker.join(timeout=1)
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_echo_reference_arrives_before_the_speaker_write(stream_class):
+    events = []
+    stream = MagicMock(closed=False)
+    stream.write.side_effect = lambda _audio: events.append("write")
+    stream_class.return_value = stream
+    output = AudioOutput(playback_observer=lambda *_args: events.append("reference"))
+    output.play_pcm(np.ones(100, dtype=np.int16))
+    assert events == ["reference", "write"]
+    output.stop()
+    stream.abort.assert_called_once()
+    stream.stop.assert_not_called()
+
+
+def test_playback_worker_reports_device_failure():
+    from klaus.audio_output import PlaybackWorker
+    output = MagicMock()
+    output.play_pcm_stream.side_effect = OSError("speaker disconnected")
+    worker = PlaybackWorker(output, queue.Queue())
+    worker.start()
+    with pytest.raises(RuntimeError, match="speaker disconnected"):
+        worker.finish()
+
+
+@patch("klaus.audio_output.sd.OutputStream")
+def test_failed_output_start_reopens_a_new_stream_on_retry(stream_class):
+    failed = MagicMock(closed=False)
+    failed.start.side_effect = OSError("speaker unavailable")
+    recovered = MagicMock(closed=False)
+    stream_class.side_effect = [failed, recovered]
+    output = AudioOutput()
+    audio = np.ones(100, dtype=np.int16)
+    with pytest.raises(OSError, match="speaker unavailable"):
+        output.play_pcm(audio)
+    failed.close.assert_called_once()
+    output.play_pcm(audio)
+    recovered.start.assert_called_once()
+    recovered.write.assert_called_once()
 
 
 @patch("klaus.audio_output.sd.OutputStream")
@@ -157,11 +221,11 @@ def test_unreadable_stream_latency_falls_back(output_stream) -> None:
 
 
 @patch("klaus.audio_output.sd.OutputStream")
-def test_extreme_stream_latency_is_clamped(output_stream) -> None:
+def test_reported_device_latency_is_not_shortened(output_stream) -> None:
     stream = MagicMock(closed=False, latency=5.0)
     output_stream.return_value = stream
     output = AudioOutput()
 
     output.play_pcm(np.arange(100, dtype=np.int16))
 
-    assert output._stream_latency == 1.0
+    assert output._stream_latency == 5.0

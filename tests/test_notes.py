@@ -11,6 +11,16 @@ from klaus.realtime import RealtimeBrain
 from klaus.skill_loader import load_skill_instructions
 
 
+def test_stopping_capture_clears_screenshot_opt_in(tmp_path):
+    notes = NotesManager(str(tmp_path))
+    notes.configure_capture("conversation", "Study.md", include_screenshots=True)
+    assert notes.capture_screenshots
+    notes.configure_capture("off")
+    assert not notes.capture_screenshots
+    notes.configure_capture("conversation")
+    assert not notes.capture_screenshots
+
+
 class _FakeAudioOutput:
     def stop(self) -> None:
         pass

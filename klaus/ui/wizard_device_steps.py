@@ -74,14 +74,22 @@ class DeviceStepsMixin:
         self._stack.addWidget(page)
 
     def _populate_cameras(self) -> None:
+        selected = self._collected.get("camera_index", -1)
         self._camera_combo.blockSignals(True)
         self._camera_combo.clear()
         self._camera_combo.addItem("No reading source (audio only)", -1)
         cameras = list_camera_devices()
         for cam in cameras:
             self._camera_combo.addItem(format_camera_label(cam), cam.index)
+        selected_index = self._camera_combo.findData(selected)
+        self._camera_combo.setCurrentIndex(max(0, selected_index))
         self._camera_combo.blockSignals(False)
-        self._on_camera_changed()
+        selected = self._camera_combo.currentData()
+        self._collected["camera_index"] = selected
+        if selected != -1:
+            self._camera_preview.start(selected)
+        else:
+            self._camera_preview.stop()
 
     def _on_camera_changed(self) -> None:
         idx = self._camera_combo.currentData()

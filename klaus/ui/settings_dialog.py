@@ -399,10 +399,11 @@ class SettingsDialog(QDialog):
             and not config.REMARKABLE_CERTIFICATE_SHA256
             and not self._pair_remarkable()
         ):
-            self.set_camera_selection(self._active_camera_index or -1)
+            self.set_camera_selection(
+                self._active_camera_index if self._active_camera_index is not None else -1
+            )
             return
         self._active_camera_index = cam_idx
-        config.set_camera_index(cam_idx, persist=True)
         self.camera_device_changed.emit(cam_idx)
 
     def _refresh_remarkable_status(self) -> None:
@@ -628,7 +629,6 @@ class SettingsDialog(QDialog):
             mic_idx = -1
         mic_idx = int(mic_idx)
         self._active_mic_device = None if mic_idx < 0 else mic_idx
-        config.set_mic_index(mic_idx, persist=True)
         self._start_mic()
         self.mic_device_changed.emit(None if mic_idx < 0 else mic_idx)
 

@@ -74,9 +74,12 @@ class TurnState:
             wav, self._queued_ptt_wav = self._queued_ptt_wav, None
             return seed, wav
 
-    def begin_replay(self) -> threading.Event:
-        """Mark a replay (speaking only) active and return its cancel event."""
+    def begin_replay(self) -> threading.Event | None:
+        """Claim an idle turn for replay, or reject an overlapping request."""
         with self._lock:
+            if self._processing or self._speaking:
+                return None
+            self._processing = True
             self._speaking = True
             self._barge_in_seed = None
             self._cancel_event = threading.Event()
@@ -85,6 +88,7 @@ class TurnState:
     def end_replay(self) -> np.ndarray | None:
         """Clear the speaking flag and consume any barge-in seed."""
         with self._lock:
+            self._processing = False
             self._speaking = False
             seed, self._barge_in_seed = self._barge_in_seed, None
             return seed

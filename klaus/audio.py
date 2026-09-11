@@ -35,8 +35,9 @@ def to_wav_bytes(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> bytes:
 class PushToTalkRecorder:
     """Records audio while a key is held, producing a WAV buffer on release."""
 
-    def __init__(self, sample_rate: int = SAMPLE_RATE):
+    def __init__(self, sample_rate: int = SAMPLE_RATE, device: int | None = None):
         self._sample_rate = sample_rate
+        self._device = device
         self._recording = False
         self._chunks: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
@@ -49,20 +50,28 @@ class PushToTalkRecorder:
             self._chunks = []
             self._recording = True
             try:
-                dev = sd.query_devices(kind="input")
+                dev = sd.query_devices(device=self._device, kind="input")
                 logger.info(
                     "Recording started (mic: %s, %d Hz)",
                     dev.get("name", "unknown"), self._sample_rate,
                 )
             except Exception:
                 logger.info("Recording started (%d Hz)", self._sample_rate)
-            self._stream = sd.InputStream(
-                samplerate=self._sample_rate,
-                channels=CHANNELS,
-                dtype=DTYPE,
-                callback=self._audio_callback,
-            )
-            self._stream.start()
+            try:
+                self._stream = sd.InputStream(
+                    samplerate=self._sample_rate,
+                    channels=CHANNELS,
+                    dtype=DTYPE,
+                    device=self._device,
+                    callback=self._audio_callback,
+                )
+                self._stream.start()
+            except Exception:
+                self._recording = False
+                if self._stream is not None:
+                    self._stream.close()
+                    self._stream = None
+                raise
 
     def _audio_callback(
         self,
@@ -249,6 +258,9 @@ class VoiceActivatedRecorder:
                 self._stream.start()
             except Exception as exc:
                 self._running = False
+                if self._stream is not None:
+                    self._stream.close()
+                    self._stream = None
                 logger.error("Failed to open mic for VAD: %s", exc)
                 return
 
@@ -464,6 +476,9 @@ class VoiceActivatedRecorder:
                 )
                 self._stream.start()
             except Exception as exc:
+                if self._stream is not None:
+                    self._stream.close()
+                    self._stream = None
                 logger.error("Failed to reopen mic stream: %s", exc)
                 return
         logger.debug("VAD stream resumed")
@@ -531,7 +546,10 @@ class VoiceActivatedRecorder:
             self._gate_run = 0
             seed_frame_count = self._gate_run_needed + self._gate_seed_prefix_frames
             seed = np.concatenate(list(self._gate_frames)[-seed_frame_count:])
-            if self._matches_recent_playback(seed):
+            # Test the voiced run without the quiet lead-in used to retain
+            # first words. A changing echo gain can dilute the seed match.
+            candidate = seed[-max(3, self._gate_run_needed) * FRAME_SIZE:]
+            if self._matches_recent_playback(candidate):
                 return
             self._gated = False
             self._gate_frames.clear()

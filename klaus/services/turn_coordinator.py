@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 
 import klaus.config as config
+from klaus.realtime import AskCancelled
 from klaus.services.question_pipeline import (
     PipelineContext,
     PipelineHooks,
@@ -43,8 +44,6 @@ def _new_guard_stats() -> dict[str, int]:
 _WORD_RE = re.compile(r"[a-z0-9']+")
 # Keep roughly the last minute of assistant speech for echo matching.
 _RECENT_ASSISTANT_CHARS = 4_000
-# A transcript this similar to recent assistant speech is treated as echo.
-_ECHO_OVERLAP_THRESHOLD = 0.8
 # Echo can only arrive while Klaus speaks or shortly after; outside this
 # window a matching transcript is a genuine question reusing the same words.
 _ECHO_WINDOW_S = 6.0
@@ -99,6 +98,8 @@ class TurnCoordinator:
 
     def reset_guard_stats(self) -> None:
         """Reset guard stats whenever the active session changes."""
+        self._recent_assistant_text = ""
+        self._assistant_active_at = 0.0
         with self._guard_stats_lock:
             self._guard_stats = _new_guard_stats()
             snapshot = dict(self._guard_stats)
@@ -140,14 +141,9 @@ class TurnCoordinator:
         recent_text = self._recent_assistant_text
         if not words or not recent_text:
             return False
-        if len(words) < 3:
-            # Too few words for overlap stats: require the exact phrase.
-            recent_joined = " ".join(_normalize_words(recent_text))
-            is_echo = f" {' '.join(words)} " in f" {recent_joined} "
-        else:
-            recent_words = set(_normalize_words(recent_text))
-            overlap = sum(1 for w in words if w in recent_words) / len(words)
-            is_echo = overlap >= _ECHO_OVERLAP_THRESHOLD
+        # Shared vocabulary alone cannot distinguish a follow-up from echo.
+        recent_joined = " ".join(_normalize_words(recent_text))
+        is_echo = f" {' '.join(words)} " in f" {recent_joined} "
         if is_echo:
             self._increment_guard_stat(key="echo_discarded", event="echo_discard")
         return is_echo
@@ -215,10 +211,19 @@ class TurnCoordinator:
         if self._turn_state.processing:
             self._turn_state.request_cancel()
             self._get_pipeline().cancel_active()
+        else:
+            # A finished response can still occupy the device buffer.
+            self._audio_output.stop()
         recorder = self._get_ptt_recorder()
         if recorder.is_recording:
             return
-        recorder.start_recording()
+        try:
+            recorder.start_recording()
+        except Exception as exc:
+            logger.exception("Microphone recording failed")
+            self._signals.error.emit(str(exc))
+            self._signals.state_changed.emit("idle")
+            return
         self._warm_up_brain()
         self._signals.state_changed.emit("listening")
 
@@ -314,7 +319,8 @@ class TurnCoordinator:
                 # Keep the barge-in gate armed until the speaker buffer has
                 # drained: the audible tail must not reach the ungated VAD.
                 self._audio_output.wait_for_drain()
-                self._assistant_active_at = time.monotonic()
+                if self._turn_state.speaking:
+                    self._assistant_active_at = time.monotonic()
             seed, queued_wav = self._turn_state.end_turn()
             if voice_mode:
                 vad_recorder.exit_gated_mode()
@@ -339,7 +345,11 @@ class TurnCoordinator:
 
     def replay(self, text: str) -> None:
         """Speak a stored answer again (runs on a worker thread)."""
-        self._turn_state.begin_replay()
+        cancel_event = self._turn_state.begin_replay()
+        if cancel_event is None:
+            return
+        self._recent_assistant_text = text[-_RECENT_ASSISTANT_CHARS:]
+        self._assistant_active_at = time.monotonic()
         vad_recorder = self._get_vad_recorder()
         voice_mode = self._get_input_mode() == "voice_activation"
         if voice_mode and config.BARGE_IN_ENABLED:
@@ -349,18 +359,26 @@ class TurnCoordinator:
             vad_recorder.suspend_stream()
         self._signals.state_changed.emit("speaking")
         try:
-            self._get_brain().speak_text(text)
+            self._get_brain().speak_text(text, cancel_event=cancel_event)
+        except AskCancelled:
+            pass
+        except Exception as exc:
+            logger.exception("Replay failed")
+            self._signals.error.emit(str(exc))
         finally:
             if voice_mode:
                 self._audio_output.wait_for_drain()
-            seed = self._turn_state.end_replay()
+                self._assistant_active_at = time.monotonic()
+            seed, queued_wav = self._turn_state.end_turn()
+            self._signals.state_changed.emit("idle")
             if voice_mode:
                 vad_recorder.exit_gated_mode()
                 vad_recorder.resume_stream()
                 vad_recorder.resume(settle_ms=450)
                 if seed is not None:
                     vad_recorder.prime_with_seed(seed)
-            self._signals.state_changed.emit("idle")
+            if queued_wav is not None and self._get_input_mode() == "push_to_talk":
+                self.start_question_thread(queued_wav)
 
     def request_stop(self) -> None:
         """Stop button: cancel whatever is thinking or speaking."""

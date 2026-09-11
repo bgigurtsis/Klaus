@@ -224,6 +224,7 @@ class QuestionPipeline:
         needs_screenshot = bool(_SCREENSHOT_PATTERN.search(transcript))
         capture_screenshots = (
             getattr(self._notes, "capture_screenshots", False) is True
+            and getattr(self._notes, "capture_mode", "off") != "off"
         )
         if (
             (route_decision.use_image and not reading_text)
@@ -347,6 +348,10 @@ class QuestionPipeline:
             if isinstance(connect_ms, (int, float)):
                 timings.connect_ms = float(connect_ms)
             self._notes.set_pending_screenshot(None)
+
+        if context.cancel_event is not None and context.cancel_event.is_set():
+            self._finish_cancelled(hooks, timings)
+            return
 
         if exchange.notes_file_changed and context.current_session_id:
             self._memory.set_session_notes_file(

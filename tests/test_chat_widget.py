@@ -45,6 +45,24 @@ def test_first_fragment_replaces_thinking_placeholder(chat):
     assert chat._streaming_card._text == "The answer starts and continues."
 
 
+def test_provider_error_detaches_partial_answer_before_next_turn(chat):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from klaus.main import KlausApp
+
+    app = KlausApp.__new__(KlausApp)
+    app._window = SimpleNamespace(chat_widget=chat)
+    app._coordinator = MagicMock()
+    chat.append_assistant_stream("Partial answer")
+    partial = chat._streaming_card
+    KlausApp._on_error(app, "connection dropped")
+    chat.show_thinking()
+    chat.append_assistant_stream("Fresh answer")
+    assert chat._streaming_card is not partial
+    assert chat._streaming_card._text == "Fresh answer"
+    assert "Fresh answer" not in partial._text
+
+
 def test_finalize_replaces_placeholder_text(chat):
     chat.show_thinking()
 

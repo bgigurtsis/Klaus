@@ -157,8 +157,7 @@ class SetupWizard(ContentStepsMixin, DeviceStepsMixin, QMainWindow):
         cfg.save_live_model(model)
         cfg.save_reasoning_effort(str(self._reasoning_effort_combo.currentData()))
         cam_idx = self._collected["camera_index"]
-        if cam_idx != -1:
-            cfg.save_camera_index(cam_idx)
+        cfg.save_camera_index(cam_idx)
         mic_idx = int(self._collected.get("mic_index", -1))
         cfg.save_mic_index(mic_idx)
         bg = self._collected.get("user_background", "")

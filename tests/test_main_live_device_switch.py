@@ -16,9 +16,11 @@ def _make_app(service: MagicMock) -> KlausApp:
     app._device_switch_service = service
     app._camera = "old-camera"
     app._vad_recorder = "old-vad"
+    app._ptt_recorder = MagicMock(is_recording=False)
     app._active_camera_index = 0
     app._active_mic_device = 1
     app._input_mode = "voice_activation"
+    app._settings_open = False
     app._audio_output = MagicMock()
     app._window = SimpleNamespace(
         camera_widget=SimpleNamespace(
@@ -75,6 +77,38 @@ def test_ptt_press_during_answer_cancels_and_starts_new_recording() -> None:
     pipeline.cancel_active.assert_called_once()
     ptt_recorder.start_recording.assert_called_once()
     signals.state_changed.emit.assert_called_once_with("listening")
+
+
+def test_ptt_failure_shows_an_error_and_returns_to_idle():
+    recorder = MagicMock(is_recording=False)
+    recorder.start_recording.side_effect = OSError("microphone unavailable")
+    signals = MagicMock()
+    coordinator = _make_coordinator(
+        TurnState(), ptt_recorder=recorder, pipeline=MagicMock(), signals=signals,
+    )
+    coordinator.on_key_down()
+    signals.error.emit.assert_called_once_with("microphone unavailable")
+    signals.state_changed.emit.assert_called_once_with("idle")
+
+
+def test_ptt_clears_completed_answer_audio_before_opening_microphone():
+    manager = MagicMock()
+    manager.recorder.is_recording = False
+    coordinator = _make_coordinator(
+        TurnState(), ptt_recorder=manager.recorder, pipeline=MagicMock(), signals=MagicMock(),
+    )
+    coordinator._audio_output = manager.output
+    coordinator.on_key_down()
+    names = [call[0] for call in manager.mock_calls]
+    assert names.index("output.stop") < names.index("recorder.start_recording")
+
+
+def test_replay_does_not_start_during_ptt_recording():
+    app = _make_app(MagicMock())
+    app._ptt_recorder.is_recording = True
+    app._memory = MagicMock()
+    app._on_replay("answer")
+    app._memory.get_exchanges.assert_not_called()
 
 
 def test_ptt_release_queues_question_until_cancelled_turn_finishes() -> None:
@@ -167,6 +201,7 @@ def test_apply_mic_device_live_delegates_to_service_and_updates_active_device():
     assert effective_device == 4
     assert app._vad_recorder is new_vad
     assert app._active_mic_device == 4
+    assert app._ptt_recorder._device == 4
     app._audio_output.set_playback_observer.assert_called_once_with(
         new_vad.observe_playback,
     )
@@ -253,3 +288,49 @@ def test_mic_switch_refused_while_turn_in_progress() -> None:
     assert effective_device == 1
     service.switch_mic.assert_not_called()
     app._show_device_switch_error.assert_called_once()
+
+
+def test_mic_switch_refused_while_ptt_is_recording():
+    service = MagicMock()
+    app = _make_app(service)
+    app._ptt_recorder.is_recording = True
+    ok, device = app._apply_mic_device_live(4)
+    assert not ok
+    assert device == 1
+    service.switch_mic.assert_not_called()
+
+
+def test_session_switch_waits_until_the_answer_finishes():
+    app = _make_app(MagicMock())
+    app._session_service = MagicMock()
+    app._turn_state.begin_turn()
+    app._on_session_changed("another")
+    app._on_new_session("New")
+    app._on_session_deleted("active")
+    app._session_service.activate.assert_not_called()
+    app._session_service.create.assert_not_called()
+    app._session_service.delete.assert_not_called()
+    app._session_service.refresh_list.assert_called_once()
+
+
+def test_settings_pause_capture_until_clients_finish_reloading():
+    app = _make_app(MagicMock())
+    app._vad_recorder = MagicMock()
+    app._hotkeys = MagicMock()
+    app._coordinator = MagicMock()
+    app._runtime_settings = SimpleNamespace(push_to_talk_key="§", toggle_key="§")
+    app._window.set_hotkeys = MagicMock()
+    app._setup_input_mode = MagicMock()
+
+    def show_settings():
+        assert app._settings_open
+        app._vad_recorder.stop.assert_called_once()
+        app._hotkeys.stop.assert_called_once()
+        app._on_key_down()
+        app._coordinator.on_key_down.assert_not_called()
+
+    app._show_settings = show_settings
+    app._on_settings_requested()
+    assert not app._settings_open
+    app._setup_input_mode.assert_called_once()
+    app._hotkeys.restart.assert_called_once_with("§", "§")

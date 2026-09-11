@@ -425,6 +425,82 @@ def test_replay_uses_out_of_band_realtime_audio() -> None:
     assert np.array_equal(audio_output.chunks[0], np.array([40, 50, 60], dtype=np.int16))
 
 
+@pytest.mark.parametrize("replay", [False, True])
+def test_provider_waits_for_a_long_buffered_answer(replay) -> None:
+    class SlowOutput(_FakeAudioOutput):
+        finished = False
+
+        def play_pcm_stream(self, audio_queue, **kwargs):
+            super().play_pcm_stream(audio_queue, **kwargs)
+            # Model generation can run more than ten seconds ahead of speakers.
+            time.sleep(10.1)
+            self.finished = True
+
+    websocket = _FakeWebSocket([
+        {"type": "response.output_audio_transcript.delta", "delta": "An answer."},
+        {"type": "response.done", "response": {"status": "completed", "output": []}},
+    ])
+    output = SlowOutput()
+    brain = RealtimeBrain(
+        notes=None, audio_output=output, settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: websocket,
+    )
+    if replay:
+        brain.speak_text("An answer.")
+    else:
+        brain.ask_audio(
+            wav_bytes=_wav_bytes(np.ones(3, dtype=np.int16), sample_rate=24000),
+            question="Explain", route_decision=_route(),
+        )
+    assert output.finished
+
+
+@pytest.mark.parametrize("replay", [False, True])
+def test_output_failure_reaches_caller_and_releases_response(replay) -> None:
+    class BrokenOutput(_FakeAudioOutput):
+        def play_pcm_stream(self, *_args, **_kwargs):
+            raise OSError("speaker disconnected")
+
+    websocket = _FakeWebSocket([
+        {"type": "response.output_audio_transcript.delta", "delta": "An answer."},
+        {"type": "response.done", "response": {"status": "completed", "output": []}},
+    ])
+    brain = RealtimeBrain(
+        notes=None, audio_output=BrokenOutput(), settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: websocket,
+    )
+    with pytest.raises(RuntimeError, match="speaker disconnected"):
+        if replay:
+            brain.speak_text("An answer.")
+        else:
+            brain.ask_audio(
+                wav_bytes=_wav_bytes(np.ones(3, dtype=np.int16), sample_rate=24000),
+                question="Explain", route_decision=_route(),
+            )
+    assert not brain._response_active
+
+
+def test_replay_cancel_exits_when_provider_never_acknowledges(monkeypatch) -> None:
+    websocket = _FakeWebSocket([])
+    brain = RealtimeBrain(
+        notes=None, audio_output=_FakeAudioOutput(), settings=_settings(),
+        websocket_factory=lambda *_args, **_kwargs: websocket,
+    )
+    cancel = threading.Event()
+
+    def receive():
+        cancel.set()
+        time.sleep(0.002)
+        return None
+
+    monkeypatch.setattr(brain, "_receive_event", receive)
+    monkeypatch.setattr("klaus.realtime._CANCEL_ACK_TIMEOUT_SECONDS", 0.01)
+    with pytest.raises(AskCancelled):
+        brain.speak_text("Cancel me", cancel_event=cancel)
+    assert websocket.closed
+    assert any(event["type"] == "response.cancel" for event in websocket.sent)
+
+
 def test_warm_up_connects_off_the_turn_path():
     connected = threading.Event()
 
